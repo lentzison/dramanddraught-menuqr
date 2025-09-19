@@ -30,7 +30,7 @@ function generateLocationPage(location) {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>${location.name} - MenuQR</title>
+      <title>Dram & Draught ${location.name} - Whiskey Bar & Cocktails</title>
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -284,7 +284,7 @@ function generateLocationPage(location) {
     </head>
     <body>
       <div class="hero">
-        <h1>📍 ${location.name}</h1>
+        <h1>🥃 Dram & Draught ${location.name}</h1>
         <p class="tagline">Welcome to Our ${location.city} Location</p>
         ${location.specialText ? `<p style="color: #764ba2; font-weight: 600; margin-top: 10px;">🎉 ${location.specialText}</p>` : ''}
       </div>
@@ -419,7 +419,7 @@ function generateHomepage(locations) {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>MenuQR - All Locations</title>
+      <title>Dram & Draught - Locations in North Carolina</title>
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -552,8 +552,9 @@ function generateHomepage(locations) {
     </head>
     <body>
       <div class="hero">
-        <h1>📍 MenuQR</h1>
+        <h1>🥃 Dram & Draught</h1>
         <p>Select Your Location</p>
+        <p style="margin-top: 10px; color: #999; font-size: 0.9em;">300+ Whiskeys | Craft Cocktails | NC Beers</p>
       </div>
 
       <div class="container">

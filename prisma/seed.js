@@ -15,6 +15,7 @@ async function main() {
       zipCode: '27401',
       phone: '(336) 555-0001',
       email: 'greensboro@menuqr.com',
+      specialText: 'Happy Hour 4-7 PM Daily!',
       hours: {
         monday: '11:00 AM - 10:00 PM',
         tuesday: '11:00 AM - 10:00 PM',
@@ -24,7 +25,9 @@ async function main() {
         saturday: '11:00 AM - 11:00 PM',
         sunday: '12:00 PM - 9:00 PM'
       },
-      features: ['Outdoor Seating', 'Free WiFi', 'Parking'],
+      features: ['Outdoor Seating', 'Free WiFi', 'Parking', 'Happy Hour', 'Live Music Fridays'],
+      facebook: 'https://facebook.com/menuqrgreensboro',
+      instagram: 'https://instagram.com/menuqrgreensboro',
       isActive: true
     },
     {
@@ -36,6 +39,7 @@ async function main() {
       zipCode: '27601',
       phone: '(919) 555-0002',
       email: 'raleigh@menuqr.com',
+      specialText: 'Trivia Night Every Tuesday!',
       hours: {
         monday: '11:00 AM - 10:00 PM',
         tuesday: '11:00 AM - 10:00 PM',
@@ -45,7 +49,8 @@ async function main() {
         saturday: '11:00 AM - 11:00 PM',
         sunday: '12:00 PM - 9:00 PM'
       },
-      features: ['Live Music', 'Happy Hour', 'Private Events'],
+      features: ['Live Music', 'Happy Hour', 'Private Events', 'Trivia Nights', 'Craft Cocktails'],
+      instagram: 'https://instagram.com/menuqrraleigh',
       isActive: true
     },
     {
@@ -57,6 +62,7 @@ async function main() {
       zipCode: '27701',
       phone: '(919) 555-0003',
       email: 'durham@menuqr.com',
+      specialText: 'New Vegan Menu Available!',
       hours: {
         monday: '11:00 AM - 10:00 PM',
         tuesday: '11:00 AM - 10:00 PM',
@@ -66,7 +72,9 @@ async function main() {
         saturday: '11:00 AM - 11:00 PM',
         sunday: '12:00 PM - 9:00 PM'
       },
-      features: ['Craft Beer', 'Vegan Options', 'Dog Friendly'],
+      features: ['Craft Beer', 'Vegan Options', 'Dog Friendly', 'Patio', 'Local Ingredients'],
+      facebook: 'https://facebook.com/menuqrdurham',
+      instagram: 'https://instagram.com/menuqrdurham',
       isActive: true
     },
     {
@@ -120,6 +128,7 @@ async function main() {
       zipCode: '28201',
       phone: '(704) 555-0006',
       email: 'charlotte@menuqr.com',
+      specialText: 'Rooftop Bar Now Open!',
       hours: {
         monday: '11:00 AM - 11:00 PM',
         tuesday: '11:00 AM - 11:00 PM',
@@ -129,7 +138,10 @@ async function main() {
         saturday: '11:00 AM - 12:00 AM',
         sunday: '11:00 AM - 10:00 PM'
       },
-      features: ['Rooftop Bar', 'Full Bar', 'Late Night'],
+      features: ['Rooftop Bar', 'Full Bar', 'Late Night', 'DJ Weekends', 'VIP Section'],
+      facebook: 'https://facebook.com/menuqrcharlotte',
+      instagram: 'https://instagram.com/menuqrcharlotte',
+      twitter: 'https://twitter.com/menuqrcharlotte',
       isActive: true
     },
     {

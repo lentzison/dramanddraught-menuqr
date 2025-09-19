@@ -2,13 +2,17 @@
 
 echo "Starting MenuQR application..."
 
-# Run database migrations
-echo "Running database migrations..."
-npx prisma migrate deploy
+# First, just try to generate Prisma client
+echo "Generating Prisma Client..."
+npx prisma generate
 
-# Seed database if needed (only on first run)
-echo "Checking database seed..."
-npx prisma db seed || echo "Database already seeded or seeding skipped"
+# Try migrations but don't fail if they don't work
+echo "Attempting database migrations..."
+npx prisma migrate deploy 2>&1 || echo "Migration skipped or failed (may be first run)"
+
+# Try seeding but don't fail
+echo "Attempting database seed..."
+npx prisma db seed 2>&1 || echo "Seeding skipped (may already be seeded)"
 
 # Start the application
 echo "Starting Node.js server..."

@@ -37,5 +37,5 @@ RUN chmod +x start.sh
 
 # The app must listen on 3000 for CapRover
 EXPOSE 3000
-# Run startup script
-CMD ["./start.sh"]
+# Run the app directly (skip database for now)
+CMD ["npm", "start"]

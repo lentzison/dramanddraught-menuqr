@@ -9,5 +9,13 @@
     "start": "node index.js",
     "deploy": "./deploy.sh"
   },
-  "private": true
+  "private": true,
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.16.2",
+    "dotenv": "^17.2.2",
+    "prisma": "^6.16.2"
+  }
 }

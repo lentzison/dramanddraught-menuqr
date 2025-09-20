@@ -7,5 +7,5 @@ COPY . .
 # Expose port
 EXPOSE 3000
 
-# Start the test app
-CMD ["node", "test.js"]
+# Start the app
+CMD ["node", "index.js"]

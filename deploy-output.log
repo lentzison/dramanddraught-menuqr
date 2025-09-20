@@ -1,1 +1,17 @@
 🚀 Automated CapRover Deployment
+[main e23d47d] Auto-deploy 2025-09-20 12:02:18
+ 1 file changed, 1 insertion(+)
+ create mode 100644 deploy-output.log
+📦 Deployment package ready
+spawn caprover deploy -n captain-01 -a menuqr
+
+
+Preparing deployment to CapRover...
+
+[1m[32m**** Protip ****[39m[22m
+You seem to have deployed [92mmenuqr[39m from this directory in the past, use --default flag to avoid having to re-enter the information.
+
+Ensuring authentication...
+[32m?[39m [1mgit branch name to be deployed:[22m[0m [0m[2m(master) [22m[43D[43C[2K[G[32m?[39m [1mgit branch name to be deployed:[22m[0m [0mm[35D[35C[2K[G[32m?[39m [1mgit branch name to be deployed:[22m[0m [0mma[36D[36C[2K[G[32m?[39m [1mgit branch name to be deployed:[22m[0m [0mmai[37D[37C[2K[G[32m?[39m [1mgit branch name to be deployed:[22m[0m [0mmain[38D[38C[2K[G[32m?[39m [1mgit branch name to be deployed:[22m[0m [0my[35D[35C[2K[G[32m?[39m [1mgit branch name to be deployed:[22m[0m [0m[36mmain[39m[38D[38C
+[32m?[39m [1mnote that uncommitted and gitignored files (if any) will not be pushed to serv
+er! Are you sure you want to deploy?[22m[0m [0m[2m(Y/n) [22m[1A[43D[123C✅ Deployment complete!

@@ -1,11 +1,12 @@
 FROM node:20-alpine
+
 WORKDIR /app
 
-# Copy all files
-COPY . .
+# Copy only the server file
+COPY server.js .
 
-# Expose port
+# Port that CapRover expects
 EXPOSE 3000
 
-# Start the app
-CMD ["node", "index.js"]
+# Run directly with node
+CMD ["node", "server.js"]

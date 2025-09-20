@@ -8,7 +8,7 @@
     "build": "echo 'No build step required'",
     "start": "node index.js",
     "start:full": "node index.js",
-    "deploy": "./deploy.sh",
+    "deploy": "./npm-deploy.sh",
     "deploy:auto": "./deploy-auto.sh",
     "deploy:webhook": "./deploy-webhook.sh",
     "deploy:force": "git add -A && git commit -m 'Force deploy' --allow-empty && ./deploy-auto.sh"

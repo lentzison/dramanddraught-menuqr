@@ -1,41 +1,17 @@
-# ---- Build stage ----
-FROM node:20-alpine AS build
+FROM node:20-alpine
 WORKDIR /app
 
-# Install deps first for better caching
+# Copy package files
 COPY package*.json ./
-RUN npm ci
 
-# Copy Prisma schema
-COPY prisma ./prisma
+# Install dependencies (if any)
+RUN npm ci --only=production || true
 
-# Generate Prisma Client
-RUN npx prisma generate
-
-# Copy source and build
+# Copy application files
 COPY . .
-# If this is Next.js, make sure you have "build": "next build" in package.json
-RUN npm run build
 
-# ---- Run stage ----
-FROM node:20-alpine AS runner
-WORKDIR /app
-ENV NODE_ENV=production
-
-# Only bring what we need to run
-COPY --from=build /app/package*.json ./
-RUN npm ci --omit=dev
-
-# Bring built app
-COPY --from=build /app ./
-
-# Copy production env file
-COPY .env.production .env
-
-# Make startup script executable
-RUN chmod +x start.sh
-
-# The app must listen on 3000 for CapRover
+# Expose port
 EXPOSE 3000
-# Run the app directly (skip database for now)
-CMD ["npm", "start"]
+
+# Start the app
+CMD ["node", "server.js"]

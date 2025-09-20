@@ -1,21 +1,31 @@
 #!/bin/bash
 
-# CapRover Auto-Deploy Script
-echo "🚀 Starting automated CapRover deployment..."
+echo "🚀 Automated CapRover Deployment"
 
-# Commit any changes
-if [ -n "$(git status --porcelain)" ]; then
-    echo "📝 Committing changes..."
-    git add -A
-    TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-    git commit -m "Auto-deploy: $TIMESTAMP"
+# Commit changes
+git add -A 2>/dev/null
+git commit -m "Auto-deploy $(date '+%Y-%m-%d %H:%M:%S')" 2>/dev/null || true
+
+# Create tar file
+git archive --format=tar HEAD -o deploy.tar
+
+echo "📦 Deployment package ready"
+
+# Use expect if available, otherwise use printf
+if command -v expect >/dev/null 2>&1; then
+    expect -c "
+        set timeout 60
+        spawn caprover deploy -n captain-01 -a menuqr
+        expect \"branch name\"
+        send \"main\r\"
+        expect \"deploy?\"
+        send \"y\r\"
+        expect eof
+    "
 else
-    echo "No uncommitted changes"
+    # Use printf to provide answers
+    printf 'main\ny\n' | caprover deploy -n captain-01 -a menuqr
 fi
 
-# Deploy using caprover with the default saved configuration
-echo "🚢 Deploying to CapRover..."
-echo "" | caprover deploy --default
-
-echo "✅ Deployment triggered!"
-echo "🌐 Your app should be available at: https://menuqr.apps.dramanddraught.com"
+rm -f deploy.tar
+echo "✅ Deployment complete!"

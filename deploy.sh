@@ -1,29 +1,34 @@
 #!/bin/bash
 
-echo "🚀 Deploying to CapRover..."
+clear
+echo "=================================="
+echo "   CAPROVER DEPLOYMENT HELPER     "
+echo "=================================="
+echo ""
 
-# Add all changes
-git add -A
+# Navigate to project directory
+cd /Users/lentz/Documents/Development/Web/menuqr
 
-# Commit with timestamp
-TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-git commit -m "Deploy: $TIMESTAMP" || echo "No changes to commit"
+# Commit any pending changes
+echo "📝 Preparing files for deployment..."
+git add -A 2>/dev/null
+git commit -m "Deploy: $(date '+%Y-%m-%d %H:%M:%S')" 2>/dev/null || echo "✅ No new changes to commit"
 
-# Create deployment package
-echo "Creating deployment package..."
-git archive --format=tar HEAD > deploy.tar
+# Show current status
+echo ""
+echo "📦 Project: menuqr"
+echo "🌿 Branch: $(git branch --show-current)"
+echo "📍 Latest commit: $(git log -1 --oneline)"
+echo ""
 
-# Try deployment with auto-answers
-echo "Starting deployment..."
-printf "main\ny\n" | caprover deploy --default 2>&1 | while IFS= read -r line; do
-    echo "$line"
-    if [[ "$line" == *"successfully"* ]]; then
-        echo "✅ Deployment successful!"
-        break
-    fi
-done
-
-# Clean up
-rm -f deploy.tar
-
-echo "✅ Deployment script complete!"
+echo "=================================="
+echo "  RUN THIS COMMAND:"
+echo "=================================="
+echo ""
+echo "caprover deploy -n captain-01 -a menuqr"
+echo ""
+echo "When prompted:"
+echo "  • Git branch: main"
+echo "  • Deploy? y"
+echo ""
+echo "=================================="

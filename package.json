@@ -6,12 +6,11 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "echo 'No build step required'",
-    "start": "node server.js",
+    "start": "node index.js",
     "start:full": "node index.js",
-    "deploy": "./npm-deploy.sh",
-    "deploy:auto": "./deploy-auto.sh",
-    "deploy:webhook": "./deploy-webhook.sh",
-    "deploy:force": "git add -A && git commit -m 'Force deploy' --allow-empty && ./deploy-auto.sh"
+    "deploy": "./deploy-ci.sh",
+    "deploy:ci": "./deploy-ci.sh",
+    "deploy:force": "git add -A && git commit -m 'Force deploy' --allow-empty && ./deploy-ci.sh"
   },
   "private": true,
   "prisma": {

@@ -1,22 +1,22 @@
 # MenuQR Deployment Guide
 
 ## Overview
-This deployment uses CapRover's tar file method with a captain-definition containing dockerfileLines.
+This deployment uses CapRover's tar file method with a `captain-definition` pointing to the Dockerfile.
 
 ## Deployment Methods
 
-### 1. Quick Deploy (Recommended)
-```bash
-npm run deploy
-```
-This runs the deploy.sh script automatically.
+### 1. Non-Interactive (App Token) — Recommended
+This requires no prompts and no saved machine config.
 
-### 2. Manual Deploy
+1) In CapRover dashboard → Apps → `menuqr` → Deployment → App Token → Enable and copy the token.
+2) In your shell, export the token and run the script:
 ```bash
-./deploy.sh
+export CAPROVER_APP_TOKEN=YOUR_APP_TOKEN
+npm run deploy:ci
 ```
+This uses `deploy-ci.sh` and `caprover deploy --appToken ... --tarFile ...`.
 
-### 3. Force Deploy (with git commit)
+### 2. Force Deploy (with git commit)
 ```bash
 npm run deploy:force
 ```
@@ -31,14 +31,14 @@ This creates an empty commit and deploys.
 
 ## Files Included in Deployment
 
-- `server.js` - Main server file
-- `captain-definition` - Created during deployment
+- `index.js` - Main server file
+- `captain-definition` - Points to Dockerfile
 
 ## CapRover Configuration
 
 - **URL**: https://captain.apps.dramanddraught.com
 - **App Name**: menuqr
-- **Port**: 3000 (required by CapRover)
+- **Ports**: Container listens on 3000 and 80; CapRover default (80) works.
 
 ## Access the App
 
@@ -66,13 +66,15 @@ If deployment fails:
 npm install -g caprover
 ```
 
-2. Must be logged into CapRover:
-```bash
-caprover login
-```
+2. For App Token deploys, no login is required.
 
 ## Notes
 
 - The deployment uses a minimal Docker image (node:20-alpine)
-- Only the server.js file is copied to keep the image small
-- No build step is required as this is a simple Node.js server
+- App code is copied; no build step required
+- Server is bound on both 3000 and 80 for compatibility
+
+## Security Notes
+
+- Prefer App Tokens over embedding the CapRover admin password in scripts.
+- Store `CAPROVER_APP_TOKEN` in CI/CD secrets or your shell profile, not in the repo.

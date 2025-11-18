@@ -21,6 +21,7 @@ model Location {
   phone       String?
   email       String?
   hours       Json?    // Store hours as JSON object
+  links       Json?    // Linktree-style buttons: [{label, url}]
   description String?
   image       String?  // URL to location image
   qrCode      String?  // URL to QR code image

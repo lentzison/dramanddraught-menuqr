@@ -1,10 +1,4 @@
 {
   "schemaVersion": 2,
-  "dockerfileLines": [
-    "FROM node:20-alpine",
-    "WORKDIR /app",
-    "COPY server.js .",
-    "EXPOSE 3000",
-    "CMD [\"node\", \"server.js\"]"
-  ]
+  "dockerfilePath": "./Dockerfile"
 }

@@ -1,12 +1,21 @@
 FROM node:20-alpine
 
+# Prisma on Alpine needs openssl and libc6-compat
+RUN apk add --no-cache openssl libc6-compat
+
 WORKDIR /app
 
-# Copy only the server file
-COPY server.js .
+# Install deps and generate Prisma client
+COPY package*.json ./
+COPY prisma ./prisma
+RUN npm ci --omit=dev && npx prisma generate
 
-# Port that CapRover expects
-EXPOSE 3000
+# Copy application source
+COPY . .
 
-# Run directly with node
-CMD ["node", "server.js"]
+ENV NODE_ENV=production
+ENV PORT=80
+EXPOSE 80
+
+# Apply schema changes on startup then run app
+CMD ["sh","-c","npx prisma db push && node index.js"]

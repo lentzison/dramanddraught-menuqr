@@ -8,8 +8,10 @@
     "build": "echo 'No build step required'",
     "start": "node index.js",
     "start:full": "node index.js",
+    "deploy:trigger": "git commit --allow-empty -m \"chore: trigger deploy\" && git push origin main",
     "deploy": "./deploy-ci.sh",
     "deploy:ci": "./deploy-ci.sh",
+    "seed:images": "node prisma/generate-special-images.js",
     "deploy:force": "git add -A && git commit -m 'Force deploy' --allow-empty && ./deploy-ci.sh"
   },
   "private": true,
@@ -18,7 +20,11 @@
   },
   "dependencies": {
     "@prisma/client": "^6.16.2",
+    "bcryptjs": "^3.0.3",
     "dotenv": "^17.2.2",
+    "google-auth-library": "^10.2.0",
+    "googleapis": "^154.0.0",
+    "pg": "^8.19.0",
     "prisma": "^6.16.2"
   }
 }

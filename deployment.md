@@ -16,7 +16,13 @@ npm run deploy:ci
 ```
 This uses `deploy-ci.sh` and `caprover deploy --appToken ... --tarFile ...`.
 
-### 2. Force Deploy (with git commit)
+### 2. Trigger a webhook deploy from git push
+```bash
+npm run deploy:trigger
+```
+This creates an empty commit and pushes `main`; your GitHub Action will start on push automatically.
+
+### 3. Force Deploy (with git commit)
 ```bash
 npm run deploy:force
 ```

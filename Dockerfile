@@ -8,7 +8,7 @@ WORKDIR /app
 # Install deps and generate Prisma client
 COPY package*.json ./
 COPY prisma ./prisma
-RUN npm ci --omit=dev && npx prisma generate
+RUN npm install --omit=dev && npx prisma generate
 
 # Copy application source
 COPY . .

@@ -44,10 +44,124 @@ model Location {
   updatedAt   DateTime @updatedAt
 
   // Relations
-  menuCategories MenuCategory[]
-  events        Event[]
+  menuCategories   MenuCategory[]
+  events           Event[]
+  dayThemes        DayTheme[]
+  flights          Flight[]
+  featuredBottles  FeaturedBottle[]
+  guestFeedbacks   GuestFeedback[]
 
   @@index([slug])
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+model DayTheme {
+  id          String     @id @default(uuid())
+  dayOfWeek   DayOfWeek
+  locationId  String?
+  name        String     // e.g. "Industry Night", "Classic Tuesday"
+  tagline     String?
+  description String?
+  isActive    Boolean    @default(true)
+
+  location    Location?  @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  specials    DailySpecial[]
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@unique([dayOfWeek, locationId])
+  @@index([dayOfWeek])
+}
+
+model DailySpecial {
+  id           String   @id @default(uuid())
+  dayThemeId   String
+  name         String
+  description  String?
+  price        String?  // Flexible: "$8", "50% off", "2-for-1"
+  imageUrl     String?
+  category     String?  // e.g. "cocktail", "beer", "food"
+  displayOrder Int      @default(0)
+  isActive     Boolean  @default(true)
+
+  // Rich content fields
+  section      String?  // Groups specials under a header: "$8 Cocktails", "$5 Shots & More"
+  detailText   String?  // Longer sell copy / tasting notes paragraph
+  badges       String?  // Comma-separated tags: "New", "Staff Pick", "LTO"
+  timeWindow   String?  // Time constraint: "Until 7 PM", "All night"
+  isFeatured   Boolean  @default(false) // Gold border / visual emphasis
+
+  dayTheme     DayTheme @relation(fields: [dayThemeId], references: [id], onDelete: Cascade)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([dayThemeId])
+}
+
+model Flight {
+  id          String      @id @default(uuid())
+  locationId  String?
+  month       Int         // 1-12
+  year        Int
+  theme       String      // e.g. "American Single Malts"
+  description String?
+  price       String?     // e.g. "$15"
+  isActive    Boolean     @default(true)
+
+  location    Location?   @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  pours       FlightPour[]
+
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@unique([month, year, locationId])
+  @@index([month, year])
+}
+
+model FlightPour {
+  id           String  @id @default(uuid())
+  flightId     String
+  spiritName   String
+  pourSize     String? // e.g. "1 oz"
+  description  String?
+  tastingNotes String?
+  displayOrder Int     @default(0)
+
+  flight       Flight  @relation(fields: [flightId], references: [id], onDelete: Cascade)
+
+  @@index([flightId])
+}
+
+model FeaturedBottle {
+  id           String   @id @default(uuid())
+  locationId   String?
+  month        Int      // 1-12
+  year         Int
+  name         String
+  description  String?
+  regularPrice String?  // What it normally costs
+  costPrice    String   // Break-even price
+  category     String?  // e.g. "bourbon", "scotch"
+  displayOrder Int      @default(0)
+  isActive     Boolean  @default(true)
+
+  location     Location? @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([month, year])
 }
 
 model MenuCategory {
@@ -102,4 +216,23 @@ model Event {
   updatedAt   DateTime @updatedAt
 
   @@index([locationId, startDate])
+}
+
+model GuestFeedback {
+  id              String   @id @default(uuid())
+  locationId      String?
+  locationName    String
+  locationSlug    String
+  rating          Int
+  guestName       String?
+  guestEmail      String?
+  feedbackText    String
+  newsletterOptIn Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  location        Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+  @@index([locationId])
+  @@index([createdAt])
 }

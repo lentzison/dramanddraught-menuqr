@@ -126,6 +126,18 @@ function isUsefulBottleNoteText(text) {
   return true;
 }
 
+function truncateToWordBoundary(text, maxLen, minKeepRatio = 0.65) {
+  const sanitized = String(text || '').trim();
+  if (!sanitized || sanitized.length <= maxLen) return sanitized;
+  const candidate = sanitized.slice(0, Math.max(1, maxLen));
+  const cutIndex = candidate.lastIndexOf(' ');
+  const minKeep = Math.floor(maxLen * minKeepRatio);
+  if (cutIndex >= minKeep) {
+    return candidate.slice(0, cutIndex).trim();
+  }
+  return candidate;
+}
+
 function isTrivialNotesEntry(entry) {
   const text = String((entry && entry.text) || '').trim().toLowerCase();
   if (!text) return true;
@@ -620,23 +632,23 @@ function pickCacheKeyForBottleNotes(bottle) {
 
 function sanitizeBottleNoteText(text, maxLen = 220) {
   if (typeof text !== 'string') return '';
-  return text.trim().replace(/\s+/g, ' ').slice(0, maxLen);
+  return truncateToWordBoundary(text.trim().replace(/\s+/g, ' '), maxLen);
 }
 
 function normalizeAiBottleNotesPayload(payload) {
   if (!payload || typeof payload !== 'object') return null;
-  const summary = sanitizeBottleNoteText(payload.summary || payload.blurb || payload.title, 180);
+  const summary = sanitizeBottleNoteText(payload.summary || payload.blurb || payload.title, 260);
   const rawNotes = Array.isArray(payload.notes) ? payload.notes : [];
   const notes = rawNotes
     .map((item) => {
       if (!item || typeof item !== 'object') return null;
       const label = sanitizeBottleNoteText(item.label || '', 28);
-      const text = sanitizeBottleNoteText(item.text || item.description || '', 240);
+      const text = sanitizeBottleNoteText(item.text || item.description || '', 360);
       if (!text) return null;
       return { label: label || 'Tasting note', text };
     })
     .filter(Boolean)
-    .slice(0, 4);
+    .slice(0, 5);
 
   if (!summary && notes.length === 0) return null;
   return { summary, notes };
@@ -1492,7 +1504,7 @@ async function fetchAiBottleNotes(rawBottle) {
           body: JSON.stringify({
             model: OPENAI_MODEL,
             temperature: 0.2,
-            max_tokens: hasSourceNotes ? 220 : 320,
+            max_tokens: hasSourceNotes ? 300 : 500,
             messages: [
               {
                 role: 'system',

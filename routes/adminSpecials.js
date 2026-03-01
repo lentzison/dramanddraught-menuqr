@@ -8,6 +8,101 @@ function normalizeText(value) {
   return String(value || '').trim();
 }
 
+function normalizeCategory(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  return normalized || null;
+}
+
+function toStringArray(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || '').trim()).filter(Boolean);
+  }
+  if (typeof value === 'string') {
+    return value.split(',').map((item) => item.trim()).filter(Boolean);
+  }
+  return [String(value).trim()].filter(Boolean);
+}
+
+function normalizeOrderValue(value, fallback = 0) {
+  const parsed = parseInt(value, 10);
+  if (Number.isFinite(parsed) && parsed >= 0) {
+    return parsed;
+  }
+  return fallback;
+}
+
+function getAllCategories(specials = []) {
+  return [...new Set((specials || [])
+    .map((special) => normalizeCategory(special.category))
+    .filter(Boolean))];
+}
+
+function normalizeSpecialDisplayOrder(prisma, dayThemeId) {
+  return prisma.dailySpecial.findMany({
+    where: { dayThemeId, isActive: true },
+    orderBy: [{ displayOrder: 'asc' }, { createdAt: 'asc' }]
+  }).then((specials) => {
+    const updates = specials
+      .map((special, index) => {
+        if (special.displayOrder === index) return null;
+        return prisma.dailySpecial.update({
+          where: { id: special.id },
+          data: { displayOrder: index },
+        });
+      })
+      .filter(Boolean);
+
+    if (!updates.length) return;
+    return prisma.$transaction(updates);
+  });
+}
+
+async function reorderSpecialToPosition(prisma, dayThemeId, specialId, targetIndex) {
+  const specials = await prisma.dailySpecial.findMany({
+    where: { dayThemeId, isActive: true },
+    orderBy: [{ displayOrder: 'asc' }, { createdAt: 'asc' }],
+  });
+
+  const sourceIndex = specials.findIndex((special) => special.id === specialId);
+  if (sourceIndex < 0) return false;
+
+  const sanitizedTarget = Math.max(0, Math.min(targetIndex, specials.length - 1));
+  if (sourceIndex === sanitizedTarget) return true;
+
+  const normalized = [...specials];
+  const [entry] = normalized.splice(sourceIndex, 1);
+  normalized.splice(sanitizedTarget, 0, entry);
+
+  const updates = normalized.map((special, index) =>
+    prisma.dailySpecial.update({
+      where: { id: special.id },
+      data: { displayOrder: index },
+    })
+  );
+  if (updates.length) await prisma.$transaction(updates);
+  return true;
+}
+
+function parseSpecialOrderPayload(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return toStringArray(value).filter((item) => !!item);
+  }
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return toStringArray(parsed);
+      }
+      return [];
+    } catch {
+      return toStringArray(value);
+    }
+  }
+  return [];
+}
+
 function escapeHtml(value) {
   const input = normalizeText(value);
   return input
@@ -396,6 +491,11 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
           where: { dayOfWeek: day, locationId: locationId }
         });
         if (theme) {
+          const maxOrderSpecial = await prisma.dailySpecial.findFirst({
+            where: { dayThemeId: theme.id },
+            orderBy: { displayOrder: 'desc' },
+          });
+          const fallbackOrder = maxOrderSpecial ? maxOrderSpecial.displayOrder + 1 : 0;
           await prisma.dailySpecial.create({
             data: {
               dayThemeId: theme.id,
@@ -403,15 +503,16 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
               description: body.specialDescription || null,
               price: body.specialPrice || null,
               imageUrl: body.specialImageUrl || null,
-              category: body.specialCategory || null,
-              displayOrder: parseInt(body.specialOrder) || 0,
               section: body.specialSection || null,
               detailText: body.specialDetailText || null,
               badges: body.specialBadges || null,
               timeWindow: body.specialTimeWindow || null,
               isFeatured: body.specialFeatured === 'on',
+              category: normalizeCategory(body.specialCategory),
+              displayOrder: normalizeOrderValue(body.specialOrder, fallbackOrder),
             }
           });
+          await normalizeSpecialDisplayOrder(prisma, theme.id);
         }
         redirect(res, pathname);
         return true;
@@ -425,7 +526,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
             description: body.specialDescription || null,
             price: body.specialPrice || null,
             imageUrl: body.specialImageUrl || null,
-            category: body.specialCategory || null,
+            category: normalizeCategory(body.specialCategory),
             displayOrder: parseInt(body.specialOrder) || 0,
             section: body.specialSection || null,
             detailText: body.specialDetailText || null,
@@ -434,12 +535,137 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
             isFeatured: body.specialFeatured === 'on',
           }
         }).catch(() => {});
+        const updated = await prisma.dailySpecial.findUnique({ where: { id: body.specialId }});
+        if (updated && updated.dayThemeId) await normalizeSpecialDisplayOrder(prisma, updated.dayThemeId);
+        redirect(res, pathname);
+        return true;
+      }
+
+      if (action === 'setSpecialCategory' && body.specialId) {
+        const special = await prisma.dailySpecial.findUnique({ where: { id: body.specialId } });
+        if (special) {
+          await prisma.dailySpecial.update({
+            where: { id: special.id },
+            data: { category: normalizeCategory(body.specialCategory) },
+          });
+          await normalizeSpecialDisplayOrder(prisma, special.dayThemeId);
+        }
+        redirect(res, pathname);
+        return true;
+      }
+
+      if (action === 'setSpecialCategoryBulk' && body.specialIds) {
+        const theme = await prisma.dayTheme.findFirst({ where: { dayOfWeek: day, locationId: locationId } });
+        if (!theme) {
+          redirect(res, pathname);
+          return true;
+        }
+
+        const specialIds = toStringArray(body.specialIds).filter((id) => typeof id === 'string' && id.trim() !== '');
+        if (specialIds.length > 0) {
+          const category = normalizeCategory(body.specialCategory);
+          await prisma.dailySpecial.updateMany({
+            where: {
+              id: { in: specialIds },
+              dayThemeId: theme.id,
+            },
+            data: {
+              category,
+            },
+          });
+        }
+        redirect(res, pathname);
+        return true;
+      }
+
+      if (action === 'reorderSpecials' && (body.specialOrderPayload || body.specialIds)) {
+        const theme = await prisma.dayTheme.findFirst({ where: { dayOfWeek: day, locationId: locationId } });
+        if (!theme) {
+          redirect(res, pathname);
+          return true;
+        }
+
+        const proposedOrder = parseSpecialOrderPayload(body.specialOrderPayload || body.specialIds);
+        if (proposedOrder.length > 0) {
+          const current = await prisma.dailySpecial.findMany({
+            where: { dayThemeId: theme.id, isActive: true },
+            orderBy: [{ displayOrder: 'asc' }, { createdAt: 'asc' }],
+          });
+          const knownIds = new Set(current.map((item) => item.id));
+          const orderedIds = proposedOrder.filter((id) => knownIds.has(id));
+          const missing = current.map((item) => item.id).filter((id) => !orderedIds.includes(id));
+          const finalOrder = [...orderedIds, ...missing];
+
+          const updates = finalOrder.map((id, index) =>
+            prisma.dailySpecial.update({
+              where: { id },
+              data: { displayOrder: index },
+            })
+          );
+          if (updates.length) await prisma.$transaction(updates);
+        }
+
+        redirect(res, pathname);
+        return true;
+      }
+
+      if (action === 'moveSpecial' && body.specialId) {
+        const theme = await prisma.dayTheme.findFirst({ where: { dayOfWeek: day, locationId: locationId } });
+        if (!theme) {
+          redirect(res, pathname);
+          return true;
+        }
+
+        const specials = await prisma.dailySpecial.findMany({
+          where: { dayThemeId: theme.id, isActive: true },
+          orderBy: [{ displayOrder: 'asc' }, { createdAt: 'asc' }],
+        });
+        const idx = specials.findIndex((item) => item.id === body.specialId);
+        if (idx >= 0) {
+          const direction = (normalizeText(body.direction) || '').toLowerCase();
+          if (direction === 'up' && idx > 0) {
+            const prev = specials[idx - 1];
+            const current = specials[idx];
+            await prisma.$transaction([
+              prisma.dailySpecial.update({ where: { id: current.id }, data: { displayOrder: prev.displayOrder } }),
+              prisma.dailySpecial.update({ where: { id: prev.id }, data: { displayOrder: current.displayOrder } }),
+            ]);
+            await normalizeSpecialDisplayOrder(prisma, theme.id);
+          }
+          if (direction === 'down' && idx < specials.length - 1) {
+            const next = specials[idx + 1];
+            const current = specials[idx];
+            await prisma.$transaction([
+              prisma.dailySpecial.update({ where: { id: current.id }, data: { displayOrder: next.displayOrder } }),
+              prisma.dailySpecial.update({ where: { id: next.id }, data: { displayOrder: current.displayOrder } }),
+            ]);
+            await normalizeSpecialDisplayOrder(prisma, theme.id);
+          }
+        }
+        redirect(res, pathname);
+        return true;
+      }
+
+      if (action === 'setSpecialOrder' && body.specialId) {
+        const theme = await prisma.dayTheme.findFirst({ where: { dayOfWeek: day, locationId: locationId } });
+        if (!theme) {
+          redirect(res, pathname);
+          return true;
+        }
+        const requested = parseInt(body.specialOrderValue, 10);
+        if (Number.isInteger(requested) && requested >= 0) {
+          await reorderSpecialToPosition(prisma, theme.id, body.specialId, requested);
+        }
         redirect(res, pathname);
         return true;
       }
 
       if (action === 'deleteSpecial' && body.specialId) {
+        const current = await prisma.dailySpecial.findUnique({ where: { id: body.specialId } });
         await prisma.dailySpecial.delete({ where: { id: body.specialId } }).catch(() => {});
+        if (current && current.dayThemeId) {
+          await normalizeSpecialDisplayOrder(prisma, current.dayThemeId);
+        }
         redirect(res, pathname);
         return true;
       }
@@ -451,8 +677,18 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       where: { dayOfWeek: day, locationId: locationId },
       include: { specials: { orderBy: { displayOrder: 'asc' } } },
     });
+    const categoryOptions = getAllCategories(theme ? theme.specials : []);
 
-    sendHTML(res, 200, dayThemeEditor(day, theme, theme ? theme.specials : [], locations, locationSlug, user));
+    sendHTML(res, 200, dayThemeEditor(
+      day,
+      theme,
+      theme ? theme.specials : [],
+      locations,
+      locationSlug,
+      user,
+      null,
+      categoryOptions
+    ));
     return true;
   }
 

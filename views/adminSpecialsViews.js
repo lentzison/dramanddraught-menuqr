@@ -8,6 +8,29 @@ function escHTML(str) {
   return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+function buildCategoryOptions(selected, options = []) {
+  const merged = ['cocktail', 'beer', 'wine', 'whiskey', 'food', 'other']
+    .concat((options || []).map((value) => String(value || '').trim().toLowerCase()))
+    .filter(Boolean);
+
+  const seen = new Set();
+  const unique = [];
+  for (const value of merged) {
+    if (seen.has(value)) continue;
+    seen.add(value);
+    unique.push(value);
+  }
+
+  return ['']
+    .concat(unique)
+    .map((value) => {
+      const selectedAttr = value === selected ? ' selected' : '';
+      const label = value ? `${value.charAt(0).toUpperCase()}${value.slice(1)}` : 'None';
+      return `<option value="${value}"${selectedAttr}>${label}</option>`;
+    })
+    .join('');
+}
+
 // ─── 7-Day Grid Dashboard ───
 function specialsDashboard(themes, user) {
   const themeMap = {};
@@ -33,7 +56,7 @@ function specialsDashboard(themes, user) {
 }
 
 // ─── Day Theme Editor ───
-function dayThemeEditor(day, theme, specials, locations, locationSlug, user, message) {
+function dayThemeEditor(day, theme, specials, locations, locationSlug, user, message, categoryOptions = []) {
   const isNew = !theme;
   const isOverride = !!locationSlug;
   const loc = locationSlug ? locations.find(l => l.slug === locationSlug) : null;
@@ -46,28 +69,51 @@ function dayThemeEditor(day, theme, specials, locations, locationSlug, user, mes
   ` : '';
 
   const actionUrl = `/admin/specials/day/${day}${isOverride ? `/location/${locationSlug}` : ''}`;
-  const catOptions = (selected) => ['', 'cocktail', 'beer', 'wine', 'whiskey', 'food', 'other'].map(c =>
-    `<option value="${c}" ${selected === c ? 'selected' : ''}>${c ? c.charAt(0).toUpperCase() + c.slice(1) : 'None'}</option>`
-  ).join('');
-
   const specialsList = (specials || []).map((s, i) => `
-    <div class="special-item" id="special-${s.id}">
-      <div style="flex:1">
-        <div class="name">${escHTML(s.name)}</div>
+    <div class="special-item" id="special-${s.id}" data-special-id="${s.id}" draggable="true">
+      <div class="drag-handle" aria-label="Drag to reorder">⋮⋮</div>
+      <label class="special-select">
+        <input type="checkbox" name="specialIds" value="${s.id}" form="bulkCategoryForm" />
+        Select
+      </label>
+      <div class="special-main">
+        <div class="name">${escHTML(s.name)} <span class="muted">#${i + 1}</span></div>
         ${s.description ? `<div class="desc">${escHTML(s.description)}</div>` : ''}
         ${s.section ? `<div class="desc" style="color:#b87333">Section: ${escHTML(s.section)}</div>` : ''}
         ${s.badges ? `<div class="desc">${escHTML(s.badges).split(',').map(b => `<span class="tag" style="background:rgba(212,175,55,0.15); color:#d4af37; margin-right:4px">${b.trim()}</span>`).join('')}</div>` : ''}
       </div>
-      ${s.price ? `<div class="price">${escHTML(s.price)}</div>` : ''}
-      <div style="display:flex; gap:4px; align-items:center">
-        ${s.isFeatured ? '<span class="tag" style="background:rgba(212,175,55,0.3); color:#d4af37">★</span>' : ''}
-        ${s.category ? `<span class="tag" style="background:rgba(212,175,55,0.15); color:#d4af37">${escHTML(s.category)}</span>` : ''}
-        <button type="button" class="btn btn-secondary btn-sm" onclick="toggleEdit('${s.id}')">Edit</button>
-        <form method="POST" action="${actionUrl}" style="display:inline">
-          <input type="hidden" name="_action" value="deleteSpecial" />
+      <div class="special-meta">
+        <div class="special-order-row">
+          <div class="order-label">${s.price ? `<span class="price">${escHTML(s.price)}</span>` : ''}</div>
+          <form method="POST" action="${actionUrl}" class="inline-form">
+            <input type="hidden" name="_action" value="moveSpecial" />
+            <input type="hidden" name="specialId" value="${s.id}" />
+            <button type="submit" name="direction" value="up" class="btn btn-secondary btn-sm${i === 0 ? ' btn-disabled' : ''}" ${i === 0 ? 'disabled' : ''}>↑</button>
+            <button type="submit" name="direction" value="down" class="btn btn-secondary btn-sm${i === specials.length - 1 ? ' btn-disabled' : ''}" ${i === specials.length - 1 ? 'disabled' : ''}>↓</button>
+          </form>
+        </div>
+        <form method="POST" action="${actionUrl}" class="inline-form order-jump">
+          <input type="hidden" name="_action" value="setSpecialOrder" />
           <input type="hidden" name="specialId" value="${s.id}" />
-          <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Delete this special?')">Delete</button>
+          <input type="number" name="specialOrderValue" value="${s.displayOrder}" min="0" max="${Math.max(0, (specials || []).length - 1)}" />
+          <button type="submit" class="btn btn-secondary btn-sm">Move</button>
         </form>
+        <form method="POST" action="${actionUrl}" class="inline-form">
+          <input type="hidden" name="_action" value="setSpecialCategory" />
+          <input type="hidden" name="specialId" value="${s.id}" />
+          <select name="specialCategory">${buildCategoryOptions(s.category, categoryOptions)}</select>
+          <button type="submit" class="btn btn-secondary btn-sm">Set Category</button>
+        </form>
+        <div style="display:flex; gap:4px; align-items:center; flex-wrap:wrap">
+          ${s.isFeatured ? '<span class="tag" style="background:rgba(212,175,55,0.3); color:#d4af37">★</span>' : ''}
+          ${s.category ? `<span class="tag" style="background:rgba(212,175,55,0.15); color:#d4af37">${escHTML(s.category)}</span>` : ''}
+          <button type="button" class="btn btn-secondary btn-sm" onclick="toggleEdit('${s.id}')">Edit</button>
+          <form method="POST" action="${actionUrl}" style="display:inline">
+            <input type="hidden" name="_action" value="deleteSpecial" />
+            <input type="hidden" name="specialId" value="${s.id}" />
+            <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Delete this special?')">Delete</button>
+          </form>
+        </div>
       </div>
     </div>
     <div class="edit-form" id="edit-${s.id}" style="display:none; background:#1a1a1a; border:1px solid #333; border-radius:8px; padding:16px; margin-bottom:10px">
@@ -88,7 +134,7 @@ function dayThemeEditor(day, theme, specials, locations, locationSlug, user, mes
         </div>
         <div class="form-row">
           <div><label>Time Window</label><input type="text" name="specialTimeWindow" value="${escHTML(s.timeWindow)}" placeholder="e.g. Until 7 PM" /></div>
-          <div><label>Category</label><select name="specialCategory">${catOptions(s.category)}</select></div>
+          <div><label>Category</label><select name="specialCategory">${buildCategoryOptions(s.category, categoryOptions)}</select></div>
           <div><label>Order</label><input type="number" name="specialOrder" value="${s.displayOrder}" /></div>
         </div>
         <label style="display:flex; align-items:center; gap:8px; margin-top:8px">
@@ -148,7 +194,24 @@ function dayThemeEditor(day, theme, specials, locations, locationSlug, user, mes
     ${theme ? `
     <div class="card">
       <h2>Specials</h2>
-      ${specialsList || '<p class="empty-state">No specials yet. Add one below.</p>'}
+      ${specialsList ? `
+        <div class="special-controls">
+          <form id="reorderForm" method="POST" action="${actionUrl}" class="inline-form">
+            <input type="hidden" name="_action" value="reorderSpecials" />
+            <input type="hidden" name="specialOrderPayload" id="specialOrderPayload" value="" />
+            <button type="submit" class="btn btn-secondary btn-sm">Save order</button>
+          </form>
+          <form id="bulkCategoryForm" method="POST" action="${actionUrl}" class="inline-form">
+            <input type="hidden" name="_action" value="setSpecialCategoryBulk" />
+            <select name="specialCategory">${buildCategoryOptions('', categoryOptions)}</select>
+            <button type="submit" class="btn btn-secondary btn-sm">Apply category to selected</button>
+            <span class="muted count" id="selectedSpecialCount">0 selected</span>
+          </form>
+        </div>
+        <div id="specialsList" class="specials-list">
+          ${specialsList}
+        </div>
+      ` : '<p class="empty-state">No specials yet. Add one below.</p>'}
 
       <h3>Add Special</h3>
       <form method="POST" action="${actionUrl}">
@@ -184,15 +247,7 @@ function dayThemeEditor(day, theme, specials, locations, locationSlug, user, mes
           </div>
           <div>
             <label>Category</label>
-            <select name="specialCategory">
-              <option value="">None</option>
-              <option value="cocktail">Cocktail</option>
-              <option value="beer">Beer</option>
-              <option value="wine">Wine</option>
-              <option value="whiskey">Whiskey</option>
-              <option value="food">Food</option>
-              <option value="other">Other</option>
-            </select>
+            <select name="specialCategory">${buildCategoryOptions('', categoryOptions)}</select>
           </div>
           <div>
             <label>Display Order</label>
@@ -212,10 +267,85 @@ function dayThemeEditor(day, theme, specials, locations, locationSlug, user, mes
 
     <p style="margin-top:20px"><a href="/admin/specials">&larr; Back to Weekly Overview</a></p>
     <script>
+      function refreshSpecialOrderState() {
+        const container = document.getElementById('specialsList');
+        if (!container) return;
+
+        const items = Array.from(container.querySelectorAll('.special-item'));
+        items.forEach((item, index) => {
+          item.dataset.orderIndex = String(index);
+          var name = item.querySelector('.name');
+          if (name) {
+            name.innerHTML = name.textContent.replace(/\\s+#\\d+$/, '') + ' <span class="muted">#' + (index + 1) + '</span>';
+          }
+        });
+
+        const payload = JSON.stringify(items.map((item) => item.dataset.specialId).filter(Boolean));
+        var payloadEl = document.getElementById('specialOrderPayload');
+        if (payloadEl) payloadEl.value = payload;
+
+        var selectedCountEl = document.getElementById('selectedSpecialCount');
+        if (selectedCountEl) {
+          const selectedCount = items.filter((item) => {
+            const checkbox = item.querySelector('input[type=\"checkbox\"][form=\"bulkCategoryForm\"]');
+            return checkbox && checkbox.checked;
+          }).length;
+          selectedCountEl.textContent = selectedCount + ' selected';
+        }
+      }
+
+      function getReorderList() {
+        return document.getElementById('specialsList');
+      }
+
+      function initializeSpecialDragAndDrop() {
+        var container = getReorderList();
+        if (!container) return;
+
+        var draggedItem = null;
+        var items = Array.from(container.querySelectorAll('.special-item'));
+
+        items.forEach((item) => {
+          item.setAttribute('draggable', 'true');
+          item.addEventListener('dragstart', function(event) {
+            draggedItem = event.currentTarget;
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', draggedItem.dataset.specialId || '');
+            event.currentTarget.classList.add('dragging');
+          });
+
+          item.addEventListener('dragend', function(event) {
+            event.currentTarget.classList.remove('dragging');
+            refreshSpecialOrderState();
+            draggedItem = null;
+          });
+
+          item.addEventListener('dragover', function(event) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'move';
+            const target = event.currentTarget;
+            const bounds = target.getBoundingClientRect();
+            const offset = event.clientY - bounds.top;
+            if (draggedItem && target !== draggedItem) {
+              if (offset < bounds.height / 2) {
+                container.insertBefore(draggedItem, target);
+              } else {
+                container.insertBefore(draggedItem, target.nextSibling);
+              }
+            }
+          });
+
+          item.querySelector('.special-select input[type=\"checkbox\"]').addEventListener('change', refreshSpecialOrderState);
+        });
+      }
+
       function toggleEdit(id) {
         var el = document.getElementById('edit-' + id);
         if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
       }
+
+      initializeSpecialDragAndDrop();
+      refreshSpecialOrderState();
     </script>
   `, user);
 }

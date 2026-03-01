@@ -21,6 +21,7 @@ const OPENAI_COCKTAIL_IMAGE_STYLE = process.env.OPENAI_COCKTAIL_IMAGE_STYLE || '
 const OPENAI_COCKTAIL_IMAGE_QUALITY = process.env.OPENAI_COCKTAIL_IMAGE_QUALITY || 'standard';
 const OPENAI_COCKTAIL_IMAGE_TRANSPARENT_BG = (process.env.OPENAI_COCKTAIL_IMAGE_TRANSPARENT_BG || 'true').toLowerCase() === 'true';
 const OPENAI_CACHE_MS = 1000 * 60 * 60 * 6; // 6 hours
+const OPENAI_DIAGNOSTIC_MAX_DETAIL = 900;
 const GOOGLE_HOURS_CACHE_MS = 1000 * 60 * 60 * 4; // 4 hours
 const GOOGLE_HOURS_ERROR_CACHE_MS = 1000 * 60 * 15; // 15 minutes
 const GOOGLE_REVIEW_URL_BASE = 'https://search.google.com/local/writereview';
@@ -36,6 +37,49 @@ let gmailClientCache = null;
 let gmailAuthError = null;
 let googleServiceAccountToken = { token: '', expiresAt: 0 };
 let googleServiceAccountTokenError = null;
+const openAiDiagnostics = {
+  notes: { ok: false, status: 'not_checked', detail: 'Not checked yet.' },
+  feedback: { ok: false, status: 'not_checked', detail: 'Not checked yet.' },
+  image: { ok: false, status: 'not_checked', detail: 'Not checked yet.' },
+};
+
+function summarizeOpenAIDetail(value) {
+  return String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, OPENAI_DIAGNOSTIC_MAX_DETAIL);
+}
+
+function setOpenAiDiagnostic(section, status, detail = null) {
+  if (!openAiDiagnostics[section]) return;
+  openAiDiagnostics[section] = {
+    ok: status === 'ok',
+    status,
+    detail: summarizeOpenAIDetail(detail),
+    at: new Date().toISOString(),
+  };
+}
+
+function getOpenAiDiagnosticSnapshot() {
+  const hasOpenAiKey = Boolean(process.env.OPENAI_API_KEY && String(process.env.OPENAI_API_KEY).trim());
+  const openAiKey = hasOpenAiKey ? String(process.env.OPENAI_API_KEY).trim() : '';
+  return {
+    enabled: hasOpenAiKey && typeof fetch === 'function',
+    hasKey: hasOpenAiKey,
+    keyPreview: hasOpenAiKey ? `${openAiKey.slice(0, 4)}...${openAiKey.slice(-4)}` : null,
+    models: {
+      bottleNotes: OPENAI_MODEL,
+      feedback: OPENAI_FEEDBACK_MODEL,
+      cocktailImage: OPENAI_COCKTAIL_IMAGE_MODEL,
+    },
+    hasFetch: typeof fetch === 'function',
+    channels: {
+      notes: { ...openAiDiagnostics.notes },
+      feedback: { ...openAiDiagnostics.feedback },
+      image: { ...openAiDiagnostics.image },
+    },
+  };
+}
 
 function sendHTML(res, statusCode, html) {
   if (!res || res.writableEnded || res.finished) return;
@@ -408,20 +452,60 @@ function buildFallbackBottleNotes(rawBottle) {
   if (!rawBottle || typeof rawBottle !== 'object') return null;
   const name = sanitizeBottleNoteText(rawBottle.name || '', 120);
   const displayName = name || 'This featured bottle';
-  const sizeLabel = rawBottle.bottleSize ? sanitizeBottleNoteText(rawBottle.bottleSize, 40) : '';
-  const sizeText = sizeLabel ? ` (${sizeLabel})` : '';
-  const sizePrefix = rawBottle.bottleSize ? ` in ${sizeLabel}` : '';
+
+  const notesHintMap = [
+    {
+      match: /(stagg|bourbon|rye)/i,
+      label: 'Bourbon-style',
+      aroma: 'Crisp caramel and vanilla with a warm grain richness.',
+      palate: 'Structured vanilla, toasted oak, and soft spice on the mid-palate.',
+      finish: 'Drying, warm finish with a gentle chocolate or oak echo.',
+      history: 'This week’s featured lineup includes a bourbon-style release. Ask the bartending team for the exact distillery story and batch notes.',
+    },
+    {
+      match: /(rum|cachaca|cachaça)/i,
+      label: 'Rum-style',
+      aroma: 'Bright sugarcane sweetness and caramel undertones.',
+      palate: 'Layered notes of molasses, spice, and ripe fruit.',
+      finish: 'Clean, crisp finish with a balanced sweet-spice finish.',
+      history: 'This is a house-selected rum entry for the week. Ask the bartender for still-age and origin details.',
+    },
+    {
+      match: /(scotch|whisky|whiskey)/i,
+      label: 'Scotch-style',
+      aroma: 'Smoky smoke, malt, and subtle honeyed grain character.',
+      palate: 'Rich malt depth with peppery or toasted nuance.',
+      finish: 'Dry, lingering finish with mild spice and barrel influence.',
+      history: 'This featured spirit rotates in weekly. Ask the team for the distillery, age statement, and barrel details.',
+    },
+    {
+      match: /(gin|vodka|tequila|mezcal|mezcal)/i,
+      label: 'Spirits-style',
+      aroma: 'Bright botanical and grain-led aromatics.',
+      palate: 'Balanced floral, spice, and citrus impressions.',
+      finish: 'Clean and crisp, with a light, refreshing finish.',
+      history: 'This is a rotating weekly feature. Ask your bartender for the exact producer and backstory.',
+    },
+  ];
+
+  const matchedHint = notesHintMap.find((entry) => entry.match.test(displayName));
+  const fallbackHint = matchedHint || {
+    label: 'Spirit-style',
+    aroma: 'Bright spirit-led aromatics and layered depth.',
+    palate: 'Balanced character with a clear finish profile.',
+    finish: 'A clean, easy finish suited to easy sipping and cocktails.',
+    history: 'This bottle is on a weekly rotation. Ask your bartending team for current release details and background notes.',
+  };
 
   return {
-    summary: `Tasting notes${sizePrefix || ''}`,
+    summary: `Tasting notes for ${displayName}`,
     notes: [
-      {
-        label: 'Tasting note',
-        text: `A crowd-pleasing spirit profile designed for easy sippers and pours alike. Ask your bartender for a quick pour and the best way to enjoy it tonight.`,
-      },
+      { label: 'Aroma', text: fallbackHint.aroma },
+      { label: 'Palate', text: fallbackHint.palate },
+      { label: 'Finish', text: fallbackHint.finish },
       {
         label: 'History',
-        text: `This week’s featured selection is ${displayName}${sizeText}. Share that the history is best described by the bar team for this release.`,
+        text: fallbackHint.history,
       },
     ],
   };
@@ -1132,6 +1216,11 @@ async function sendFeedbackEmails({
 async function generateFeedbackResponse(payload) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey || typeof fetch !== 'function') {
+    setOpenAiDiagnostic(
+      'feedback',
+      !apiKey ? 'missing_api_key' : 'fetch_unavailable',
+      'Feedback fallback used because OpenAI runtime is unavailable.',
+    );
     return buildFeedbackFallback(
       payload.locationName || 'Dram & Draught',
       payload.rating,
@@ -1188,12 +1277,19 @@ Guest feedback: ${feedback}`,
     ]);
 
     if (!response || !response.ok) {
+      const responseText = response ? (await response.text().catch(() => '')) : '';
+      setOpenAiDiagnostic(
+        'feedback',
+        response ? `http_${response.status}` : 'no_response',
+        responseText || 'OpenAI feedback request did not return a valid response.',
+      );
       return buildFeedbackFallback(locationName, rating, guestName, guestEmail, feedback);
     }
 
     const parsed = await response.json();
     const raw = parsed?.choices?.[0]?.message?.content;
     if (!raw || typeof raw !== 'string') {
+      setOpenAiDiagnostic('feedback', 'invalid_payload', 'OpenAI feedback response missing message content.');
       return buildFeedbackFallback(locationName, rating, guestName, guestEmail, feedback);
     }
 
@@ -1205,6 +1301,7 @@ Guest feedback: ${feedback}`,
         && typeof parsedPayload.subject === 'string'
         && typeof parsedPayload.body === 'string'
       ) {
+        setOpenAiDiagnostic('feedback', 'ok', 'Generated JSON content from OpenAI feedback response.');
         return {
           subject: parsedPayload.subject.slice(0, 140).trim() || `Thanks for your feedback on ${locationName}`,
           body: parsedPayload.body.trim(),
@@ -1221,21 +1318,26 @@ Guest feedback: ${feedback}`,
             && typeof parsedPayload.subject === 'string'
             && typeof parsedPayload.body === 'string'
           ) {
+            setOpenAiDiagnostic('feedback', 'ok', 'Extracted JSON content from OpenAI feedback response.');
             return {
               subject: parsedPayload.subject.slice(0, 140).trim() || `Thanks for your feedback on ${locationName}`,
               body: parsedPayload.body.trim(),
             };
           }
         } catch {
+          setOpenAiDiagnostic('feedback', 'parse_failed', 'OpenAI feedback extraction parse failed.');
           return buildFeedbackFallback(locationName, rating, guestName, guestEmail, feedback);
         }
       }
+      setOpenAiDiagnostic('feedback', 'parse_failed', 'No valid JSON payload found in OpenAI feedback response.');
       return buildFeedbackFallback(locationName, rating, guestName, guestEmail, feedback);
     }
   } catch (err) {
+    setOpenAiDiagnostic('feedback', 'request_failed', err?.message || 'OpenAI feedback request failed.');
     return buildFeedbackFallback(locationName, rating, guestName, guestEmail, feedback);
   }
 
+  setOpenAiDiagnostic('feedback', 'fallback', 'Feedback fallback used after parsing path.');
   return buildFeedbackFallback(locationName, rating, guestName, guestEmail, feedback);
 }
 
@@ -1252,7 +1354,14 @@ function getFeedbackFromAddress() {
 
 async function fetchAiBottleNotes(rawBottle) {
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey || typeof fetch !== 'function' || !rawBottle || typeof rawBottle !== 'object') return null;
+  if (!apiKey || typeof fetch !== 'function' || !rawBottle || typeof rawBottle !== 'object') {
+    setOpenAiDiagnostic(
+      'notes',
+      !apiKey ? 'missing_api_key' : (typeof fetch !== 'function' ? 'fetch_unavailable' : 'invalid_input'),
+      'Bottle note AI enhancement unavailable in runtime.',
+    );
+    return null;
+  }
 
   const promptPayload = {
     bottleName: String(rawBottle.name || '').trim(),
@@ -1301,27 +1410,53 @@ async function fetchAiBottleNotes(rawBottle) {
       new Promise((_, reject) => setTimeout(() => reject(new Error('OpenAI request timeout')), 2500)),
     ]);
 
-    if (!response || !response.ok) return null;
+    if (!response || !response.ok) {
+      const responseText = response ? (await response.text().catch(() => '')) : '';
+      setOpenAiDiagnostic(
+        'notes',
+        response ? `http_${response.status}` : 'no_response',
+        responseText || 'OpenAI completion request did not return a valid response.',
+      );
+      return null;
+    }
 
     const parsed = await response.json();
     const raw = parsed?.choices?.[0]?.message?.content;
-    if (!raw || typeof raw !== 'string') return null;
+    if (!raw || typeof raw !== 'string') {
+      setOpenAiDiagnostic('notes', 'invalid_payload', 'OpenAI completion response missing message content.');
+      return null;
+    }
 
     try {
-      return normalizeAiBottleNotesPayload(JSON.parse(raw));
+      const parsedPayload = normalizeAiBottleNotesPayload(JSON.parse(raw));
+      if (!parsedPayload) {
+        setOpenAiDiagnostic('notes', 'parse_failed', 'OpenAI JSON payload could not be normalized.');
+        return null;
+      }
+      setOpenAiDiagnostic('notes', 'ok', 'Bottle notes generated successfully from OpenAI.');
+      return parsedPayload;
     } catch {
       const firstObject = raw.match(/\{[\s\S]*\}/);
       if (firstObject) {
         try {
-          return normalizeAiBottleNotesPayload(JSON.parse(firstObject[0]));
+          const parsedPayload = normalizeAiBottleNotesPayload(JSON.parse(firstObject[0]));
+          if (!parsedPayload) {
+            setOpenAiDiagnostic('notes', 'parse_failed', 'OpenAI JSON payload could not be normalized after extraction.');
+            return null;
+          }
+          setOpenAiDiagnostic('notes', 'ok', 'Bottle notes generated from extracted OpenAI JSON.');
+          return parsedPayload;
         } catch {
+          setOpenAiDiagnostic('notes', 'parse_failed', 'OpenAI JSON payload extraction parse failed.');
           return null;
         }
       }
+      setOpenAiDiagnostic('notes', 'parse_failed', 'No JSON payload found in OpenAI completion response.');
       return null;
     }
   } catch (err) {
     console.warn('OpenAI enhancement failed:', err.message);
+    setOpenAiDiagnostic('notes', 'request_failed', err?.message || 'OpenAI request failed.');
     return null;
   }
 }
@@ -1378,7 +1513,14 @@ function mapOpenAIImageResponse(payload) {
 
 async function fetchCocktailImage(special, timeoutMs = 45000) {
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey || typeof fetch !== 'function') return null;
+  if (!apiKey || typeof fetch !== 'function') {
+    setOpenAiDiagnostic(
+      'image',
+      !apiKey ? 'missing_api_key' : 'fetch_unavailable',
+      'OpenAI image generation unavailable in runtime.',
+    );
+    return null;
+  }
   if (!special || !special.name) return null;
 
   const requestBody = {
@@ -1410,11 +1552,26 @@ async function fetchCocktailImage(special, timeoutMs = 45000) {
       new Promise((_, reject) => setTimeout(() => reject(new Error('OpenAI image request timeout')), timeoutMs)),
     ]);
 
-    if (!response || !response.ok) return null;
+    if (!response || !response.ok) {
+      const responseText = response ? (await response.text().catch(() => '')) : '';
+      setOpenAiDiagnostic(
+        'image',
+        response ? `http_${response.status}` : 'no_response',
+        responseText || 'OpenAI image generation request did not return a valid response.',
+      );
+      return null;
+    }
     const parsed = await response.json();
-    return mapOpenAIImageResponse(parsed);
+    const imageResult = mapOpenAIImageResponse(parsed);
+    setOpenAiDiagnostic(
+      'image',
+      imageResult ? 'ok' : 'invalid_payload',
+      imageResult ? 'Image generated successfully.' : 'OpenAI image response missing supported payload.',
+    );
+    return imageResult;
   } catch (err) {
     console.warn('OpenAI image generation failed:', err.message);
+    setOpenAiDiagnostic('image', 'request_failed', err?.message || 'OpenAI image request failed.');
     return null;
   }
 }
@@ -1714,6 +1871,7 @@ module.exports = {
   sendFeedbackEmails,
   buildFeedbackMailto,
   getFeedbackFromAddress,
+  getOpenAiDiagnosticSnapshot,
   generateCocktailImage,
   buildCocktailImagePrompt,
 };

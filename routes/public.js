@@ -6,6 +6,7 @@ const {
   getDayLabel,
   buildGuestBottleNotesForCatalog,
   buildFeedbackMailto,
+  getOpenAiDiagnosticSnapshot,
   parseBody,
   sendFeedbackEmails,
   getFeedbackFromAddress,
@@ -493,6 +494,16 @@ async function handleMenu(req, res, prisma, locationSlug) {
 }
 
 async function handlePublic(req, res, pathname, prisma) {
+  if (pathname === '/api/ai-status') {
+    if (req.method !== 'GET') {
+      sendJSON(res, 405, { ok: false, error: 'Method Not Allowed' });
+      return true;
+    }
+    const diagnostics = getOpenAiDiagnosticSnapshot();
+    sendJSON(res, 200, { ok: true, ai: diagnostics });
+    return true;
+  }
+
   if (pathname === '/api/feedback') {
     return handleFeedback(req, res, prisma);
   }
@@ -564,7 +575,7 @@ async function handlePublic(req, res, pathname, prisma) {
 
     const location = locs.find((l) => l.slug === slug);
     if (location) {
-      sendHTML(res, 200, generateLocationPage(location));
+      sendHTML(res, 200, generateLocationPage(location, locs));
       return true;
     }
     sendHTML(res, 404, '<h1>Location not found</h1><p><a href="/">Back to locations</a></p>');

@@ -19,9 +19,12 @@ const OPENAI_COCKTAIL_IMAGE_MODEL = process.env.OPENAI_COCKTAIL_IMAGE_MODEL || '
 const OPENAI_COCKTAIL_IMAGE_SIZE = process.env.OPENAI_COCKTAIL_IMAGE_SIZE || '1024x1024';
 const OPENAI_COCKTAIL_IMAGE_STYLE = process.env.OPENAI_COCKTAIL_IMAGE_STYLE || 'natural';
 const OPENAI_COCKTAIL_IMAGE_QUALITY = process.env.OPENAI_COCKTAIL_IMAGE_QUALITY || 'standard';
-const OPENAI_NOTES_REQUEST_TIMEOUT_MS = parseTimeoutMs(process.env.OPENAI_NOTES_REQUEST_TIMEOUT_MS, 10000);
+const OPENAI_NOTES_REQUEST_TIMEOUT_MS = parseTimeoutMs(process.env.OPENAI_NOTES_REQUEST_TIMEOUT_MS, 15000);
 const OPENAI_FEEDBACK_REQUEST_TIMEOUT_MS = parseTimeoutMs(process.env.OPENAI_FEEDBACK_REQUEST_TIMEOUT_MS, 7000);
 const OPENAI_IMAGE_REQUEST_TIMEOUT_MS = parseTimeoutMs(process.env.OPENAI_IMAGE_REQUEST_TIMEOUT_MS, 45000);
+const OPENAI_NOTES_RETRY_ATTEMPTS = parsePositiveInt(process.env.OPENAI_NOTES_RETRY_ATTEMPTS, 1, 0, 3);
+const OPENAI_NOTES_RETRY_DELAY_MS = parseTimeoutMs(process.env.OPENAI_NOTES_RETRY_DELAY_MS, 650);
+const OPENAI_NOTES_MAX_CONCURRENCY = parsePositiveInt(process.env.OPENAI_NOTES_MAX_CONCURRENCY, 2, 1, 6);
 const OPENAI_COCKTAIL_IMAGE_TRANSPARENT_BG = (process.env.OPENAI_COCKTAIL_IMAGE_TRANSPARENT_BG || 'true').toLowerCase() === 'true';
 const OPENAI_CACHE_MS = 1000 * 60 * 60 * 6; // 6 hours
 const OPENAI_DIAGNOSTIC_MAX_DETAIL = 900;
@@ -57,6 +60,52 @@ function parseTimeoutMs(value, fallback) {
   const parsed = Number.parseInt(String(value || ''), 10);
   if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
   return Math.max(1000, parsed);
+}
+
+function parsePositiveInt(value, fallback, min = 1, max = Number.MAX_SAFE_INTEGER) {
+  const parsed = Number.parseInt(String(value || ''), 10);
+  if (!Number.isFinite(parsed) || parsed < min) return fallback;
+  return Math.min(max, parsed);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetriableOpenAiError(error, status) {
+  const normalizedStatus = Number(status || 0);
+  if ([429, 500, 502, 503, 504].includes(normalizedStatus)) return true;
+  const message = String(error?.message || '').toLowerCase();
+  return (
+    message.includes('timeout')
+    || message.includes('network')
+    || message.includes('econnreset')
+    || message.includes('socket')
+    || message.includes('fetch failed')
+    || message.includes('failed to fetch')
+  );
+}
+
+function createOpenAiRetryDelayMs(attempt) {
+  const base = Math.max(250, OPENAI_NOTES_RETRY_DELAY_MS);
+  return Math.min(3000, base * (attempt + 1));
+}
+
+async function mapWithConcurrency(items, limit, worker) {
+  const output = new Array(items.length);
+  let cursor = 0;
+
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const currentIndex = cursor++;
+      if (currentIndex >= items.length) break;
+      const item = items[currentIndex];
+      output[currentIndex] = await worker(item, currentIndex);
+    }
+  });
+
+  await Promise.all(workers);
+  return output;
 }
 
 function toErrorString(err, fallback) {
@@ -1425,87 +1474,113 @@ async function fetchAiBottleNotes(rawBottle) {
       + ' Return strict JSON with keys summary and notes.'
       + ' notes should be an array of objects with label and text. label should be one of: Aroma, Nose, Palate, Finish, Body, Impressions, Tasting note, History.';
 
-  try {
-    const response = await Promise.race([
-      fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: OPENAI_MODEL,
-          temperature: 0.2,
-          max_tokens: hasSourceNotes ? 220 : 320,
-          messages: [
-            {
-              role: 'system',
-              content: systemPrompt
-            },
-            {
-              role: 'user',
-              content: `Input bottle data: ${JSON.stringify(promptPayload)}`
-            },
-            {
-              role: 'user',
-              content: 'Return only JSON no markdown. Example: {"summary":"...","notes":[{"label":"Nose","text":"..."}]}'
-            },
-          ],
-        }),
-      }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error(`OpenAI request timeout after ${OPENAI_NOTES_REQUEST_TIMEOUT_MS}ms`)), OPENAI_NOTES_REQUEST_TIMEOUT_MS)),
-    ]);
-
-    if (!response || !response.ok) {
-      const responseText = response ? (await response.text().catch(() => '')) : '';
-      setOpenAiDiagnostic(
-        'notes',
-        response ? `http_${response.status}` : 'no_response',
-        responseText || 'OpenAI completion request did not return a valid response.',
-      );
-      return null;
-    }
-
-    const parsed = await response.json();
-    const raw = parsed?.choices?.[0]?.message?.content;
-    if (!raw || typeof raw !== 'string') {
-      setOpenAiDiagnostic('notes', 'invalid_payload', 'OpenAI completion response missing message content.');
-      return null;
-    }
-
+  const maxAttempts = 1 + OPENAI_NOTES_RETRY_ATTEMPTS;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const parsedPayload = normalizeAiBottleNotesPayload(JSON.parse(raw));
-      if (!parsedPayload) {
-        setOpenAiDiagnostic('notes', 'parse_failed', 'OpenAI JSON payload could not be normalized.');
+      const response = await Promise.race([
+        fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: OPENAI_MODEL,
+            temperature: 0.2,
+            max_tokens: hasSourceNotes ? 220 : 320,
+            messages: [
+              {
+                role: 'system',
+                content: systemPrompt,
+              },
+              {
+                role: 'user',
+                content: `Input bottle data: ${JSON.stringify(promptPayload)}`,
+              },
+              {
+                role: 'user',
+                content: 'Return only JSON no markdown. Example: {"summary":"...","notes":[{"label":"Nose","text":"..."}]}',
+              },
+            ],
+          }),
+        }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error(`OpenAI request timeout after ${OPENAI_NOTES_REQUEST_TIMEOUT_MS}ms`)), OPENAI_NOTES_REQUEST_TIMEOUT_MS)),
+      ]);
+
+      if (!response || !response.ok) {
+        const responseText = response ? (await response.text().catch(() => '')) : '';
+        const status = Number(response?.status || 0);
+        const retriable = isRetriableOpenAiError(null, status);
+        if (retriable && attempt < maxAttempts) {
+          setOpenAiDiagnostic(
+            'notes',
+            `http_${status}_retry_${attempt}`,
+            `OpenAI request received HTTP ${status}. Retrying...`,
+          );
+          await sleep(createOpenAiRetryDelayMs(attempt));
+          continue;
+        }
+        setOpenAiDiagnostic(
+          'notes',
+          response ? `http_${response.status}` : 'no_response',
+          responseText || 'OpenAI completion request did not return a valid response.',
+        );
         return null;
       }
-      setOpenAiDiagnostic('notes', 'ok', 'Bottle notes generated successfully from OpenAI.');
-      return parsedPayload;
-    } catch {
-      const firstObject = raw.match(/\{[\s\S]*\}/);
-      if (firstObject) {
-        try {
-          const parsedPayload = normalizeAiBottleNotesPayload(JSON.parse(firstObject[0]));
-          if (!parsedPayload) {
-            setOpenAiDiagnostic('notes', 'parse_failed', 'OpenAI JSON payload could not be normalized after extraction.');
-            return null;
-          }
-          setOpenAiDiagnostic('notes', 'ok', 'Bottle notes generated from extracted OpenAI JSON.');
-          return parsedPayload;
-        } catch {
-          setOpenAiDiagnostic('notes', 'parse_failed', 'OpenAI JSON payload extraction parse failed.');
+
+      const parsed = await response.json();
+      const raw = parsed?.choices?.[0]?.message?.content;
+      if (!raw || typeof raw !== 'string') {
+        setOpenAiDiagnostic('notes', 'invalid_payload', 'OpenAI completion response missing message content.');
+        return null;
+      }
+
+      try {
+        const parsedPayload = normalizeAiBottleNotesPayload(JSON.parse(raw));
+        if (!parsedPayload) {
+          setOpenAiDiagnostic('notes', 'parse_failed', 'OpenAI JSON payload could not be normalized.');
           return null;
         }
+        setOpenAiDiagnostic('notes', 'ok', 'Bottle notes generated successfully from OpenAI.');
+        return parsedPayload;
+      } catch {
+        const firstObject = raw.match(/\{[\s\S]*\}/);
+        if (firstObject) {
+          try {
+            const parsedPayload = normalizeAiBottleNotesPayload(JSON.parse(firstObject[0]));
+            if (!parsedPayload) {
+              setOpenAiDiagnostic('notes', 'parse_failed', 'OpenAI JSON payload could not be normalized after extraction.');
+              return null;
+            }
+            setOpenAiDiagnostic('notes', 'ok', 'Bottle notes generated from extracted OpenAI JSON.');
+            return parsedPayload;
+          } catch {
+            setOpenAiDiagnostic('notes', 'parse_failed', 'OpenAI JSON payload extraction parse failed.');
+            return null;
+          }
+        }
+        setOpenAiDiagnostic('notes', 'parse_failed', 'No JSON payload found in OpenAI completion response.');
+        return null;
       }
-      setOpenAiDiagnostic('notes', 'parse_failed', 'No JSON payload found in OpenAI completion response.');
+    } catch (err) {
+      const detail = toErrorString(err, 'OpenAI request failed.');
+      const retriable = isRetriableOpenAiError(err, null);
+      if (retriable && attempt < maxAttempts) {
+        setOpenAiDiagnostic(
+          'notes',
+          `request_failed_retry_${attempt}`,
+          `OpenAI attempt ${attempt} failed: ${detail}. Retrying...`,
+        );
+        await sleep(createOpenAiRetryDelayMs(attempt));
+        continue;
+      }
+      console.warn('OpenAI enhancement failed:', detail);
+      setOpenAiDiagnostic('notes', 'request_failed', detail);
       return null;
     }
-  } catch (err) {
-    const detail = toErrorString(err, 'OpenAI request failed.');
-    console.warn('OpenAI enhancement failed:', detail);
-    setOpenAiDiagnostic('notes', 'request_failed', detail);
-    return null;
   }
+
+  return null;
 }
 
 function normalizeCocktailPrompt(text) {
@@ -1755,15 +1830,17 @@ function getDefaultLinks(location) {
 async function buildGuestBottleNotesForCatalog(bottles, enableAi = false) {
   const list = Array.isArray(bottles) ? bottles : [];
   if (!enableAi) return list;
-  const jobs = list.map(async (bottle) => {
+
+  const enhanced = await mapWithConcurrency(list, OPENAI_NOTES_MAX_CONCURRENCY, async (bottle) => {
     if (!bottle) return bottle;
-    const enhanced = await enhanceBottleNotes(bottle);
+    const notes = await enhanceBottleNotes(bottle);
     return {
       ...bottle,
-      guestNotes: enhanced || buildFallbackBottleNotes(bottle) || null,
+      guestNotes: notes || buildFallbackBottleNotes(bottle) || null,
     };
   });
-  return Promise.all(jobs);
+
+  return enhanced;
 }
 
 function getIcon(label) {

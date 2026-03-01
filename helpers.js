@@ -19,6 +19,9 @@ const OPENAI_COCKTAIL_IMAGE_MODEL = process.env.OPENAI_COCKTAIL_IMAGE_MODEL || '
 const OPENAI_COCKTAIL_IMAGE_SIZE = process.env.OPENAI_COCKTAIL_IMAGE_SIZE || '1024x1024';
 const OPENAI_COCKTAIL_IMAGE_STYLE = process.env.OPENAI_COCKTAIL_IMAGE_STYLE || 'natural';
 const OPENAI_COCKTAIL_IMAGE_QUALITY = process.env.OPENAI_COCKTAIL_IMAGE_QUALITY || 'standard';
+const OPENAI_NOTES_REQUEST_TIMEOUT_MS = parseTimeoutMs(process.env.OPENAI_NOTES_REQUEST_TIMEOUT_MS, 10000);
+const OPENAI_FEEDBACK_REQUEST_TIMEOUT_MS = parseTimeoutMs(process.env.OPENAI_FEEDBACK_REQUEST_TIMEOUT_MS, 7000);
+const OPENAI_IMAGE_REQUEST_TIMEOUT_MS = parseTimeoutMs(process.env.OPENAI_IMAGE_REQUEST_TIMEOUT_MS, 45000);
 const OPENAI_COCKTAIL_IMAGE_TRANSPARENT_BG = (process.env.OPENAI_COCKTAIL_IMAGE_TRANSPARENT_BG || 'true').toLowerCase() === 'true';
 const OPENAI_CACHE_MS = 1000 * 60 * 60 * 6; // 6 hours
 const OPENAI_DIAGNOSTIC_MAX_DETAIL = 900;
@@ -50,6 +53,44 @@ function summarizeOpenAIDetail(value) {
     .slice(0, OPENAI_DIAGNOSTIC_MAX_DETAIL);
 }
 
+function parseTimeoutMs(value, fallback) {
+  const parsed = Number.parseInt(String(value || ''), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.max(1000, parsed);
+}
+
+function toErrorString(err, fallback) {
+  if (!err) return fallback;
+  const cause = err.cause ? err.cause.message || err.cause : null;
+  if (err.message && cause) return `${err.message}; cause: ${cause}`;
+  return err.message || fallback;
+}
+
+function isUsefulBottleNoteText(text) {
+  const normalized = String(text || '').trim();
+  if (!normalized) return false;
+  if (normalized.length < 8) return false;
+  const lower = normalized.toLowerCase();
+  if (/^in\s+\d+\s*(ml|l|oz|cl|pt|g|kg)\b/i.test(lower)) return false;
+  if (/^\d+\s*(ml|l|oz|cl|pt|g|kg)\b/i.test(lower)) return false;
+  if (/^tasting\s+notes?\s+in\s+\d+\s*(ml|l|oz|cl|pt|g|kg)\b/i.test(lower)) return false;
+  return true;
+}
+
+function isTrivialNotesEntry(entry) {
+  const text = String((entry && entry.text) || '').trim().toLowerCase();
+  if (!text) return true;
+  if (text.length <= 12) return true;
+  if (/^tasting\s+notes?\s+in\b/.test(text)) return true;
+  if (/^(in\s+)?\d+\s*(ml|l|oz|cl|pt|g|kg)\b/.test(text)) return true;
+  return false;
+}
+
+function hasSubstantiveParsedNotes(items) {
+  if (!Array.isArray(items) || items.length === 0) return false;
+  return items.some((entry) => !isTrivialNotesEntry(entry));
+}
+
 function setOpenAiDiagnostic(section, status, detail = null) {
   if (!openAiDiagnostics[section]) return;
   openAiDiagnostics[section] = {
@@ -77,6 +118,11 @@ function getOpenAiDiagnosticSnapshot() {
       notes: { ...openAiDiagnostics.notes },
       feedback: { ...openAiDiagnostics.feedback },
       image: { ...openAiDiagnostics.image },
+    },
+    timeouts: {
+      notes: OPENAI_NOTES_REQUEST_TIMEOUT_MS,
+      feedback: OPENAI_FEEDBACK_REQUEST_TIMEOUT_MS,
+      image: OPENAI_IMAGE_REQUEST_TIMEOUT_MS,
     },
   };
 }
@@ -1273,7 +1319,7 @@ Guest feedback: ${feedback}`,
           ],
         }),
       }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('OpenAI feedback request timeout')), 2500)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error(`OpenAI feedback request timeout after ${OPENAI_FEEDBACK_REQUEST_TIMEOUT_MS}ms`)), OPENAI_FEEDBACK_REQUEST_TIMEOUT_MS)),
     ]);
 
     if (!response || !response.ok) {
@@ -1369,7 +1415,7 @@ async function fetchAiBottleNotes(rawBottle) {
     cost: String(rawBottle.costPerOz || '').trim(),
     notes: String(rawBottle.notes || '').trim(),
   };
-  const hasSourceNotes = Boolean(promptPayload.notes);
+  const hasSourceNotes = isUsefulBottleNoteText(promptPayload.notes);
   const systemPrompt = hasSourceNotes
     ? 'You are a copy editor for a high-end cocktail bar menu. Rewrite tasting notes for restaurant guests in a concise, accurate, and enticing way.'
       + ' Keep all concrete details from the source notes and do not invent claims. Return strict JSON with keys summary and notes.'
@@ -1407,7 +1453,7 @@ async function fetchAiBottleNotes(rawBottle) {
           ],
         }),
       }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('OpenAI request timeout')), 2500)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error(`OpenAI request timeout after ${OPENAI_NOTES_REQUEST_TIMEOUT_MS}ms`)), OPENAI_NOTES_REQUEST_TIMEOUT_MS)),
     ]);
 
     if (!response || !response.ok) {
@@ -1455,8 +1501,9 @@ async function fetchAiBottleNotes(rawBottle) {
       return null;
     }
   } catch (err) {
-    console.warn('OpenAI enhancement failed:', err.message);
-    setOpenAiDiagnostic('notes', 'request_failed', err?.message || 'OpenAI request failed.');
+    const detail = toErrorString(err, 'OpenAI request failed.');
+    console.warn('OpenAI enhancement failed:', detail);
+    setOpenAiDiagnostic('notes', 'request_failed', detail);
     return null;
   }
 }
@@ -1549,7 +1596,7 @@ async function fetchCocktailImage(special, timeoutMs = 45000) {
         },
         body: JSON.stringify(requestBody),
       }),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('OpenAI image request timeout')), timeoutMs)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error(`OpenAI image request timeout after ${timeoutMs}ms`)), timeoutMs)),
     ]);
 
     if (!response || !response.ok) {
@@ -1604,7 +1651,7 @@ async function enhanceBottleNotes(rawBottle) {
   }
 
   const parsedNotes = parseBottleNoteSections(rawBottle && rawBottle.notes);
-  if (parsedNotes.length > 0) {
+  if (parsedNotes.length > 0 && hasSubstantiveParsedNotes(parsedNotes)) {
     return {
       summary: 'Tasting notes',
       notes: parsedNotes,

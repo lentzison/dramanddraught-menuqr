@@ -137,6 +137,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
   const hasGiftToYouCopy = /our gift to you/i.test(themeDescription);
   const showGiftToYouSubtitle = isSunday && bottles && bottles.length > 0 && !hasGiftToYouCopy;
   const isSundayBottlesDay = isSunday && (bottles || []).length > 0;
+  const breakEvenServingNote = isSundayBottlesDay ? '1 oz per customer so everyone can get a taste.' : '';
   const isBreakEvenSpecial = (s) => /break even/i.test(`${s && (s.name || '')} ${s && (s.section || '')} ${s && (s.description || '')}`);
   const specialsForDisplay = isSundayBottlesDay ? (specials || []).filter((s) => !isBreakEvenSpecial(s)) : (specials || []);
   const showThemeDescInBanner = theme && specialsForDisplay.length > 0;
@@ -272,6 +273,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
       <div class="section-header">
         <h2>This Week's Break Even Bottle${bottles.length > 1 ? 's' : ''}</h2>
       </div>
+      ${breakEvenServingNote ? `<p class="section-subtitle">Break-even note: ${escHTML(breakEvenServingNote)}</p>` : ''}
       ${showGiftToYouSubtitle ? '<p class="section-subtitle">Select bottles sold at cost &mdash; our gift to you</p>' : ''}
       ${bottles.map(b => `
         <div class="bottle-card">

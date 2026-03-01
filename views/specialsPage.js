@@ -195,10 +195,8 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
     const timeWindow = sanitizeGuestCopy(s.timeWindow || '');
     const sectionKey = sectionKeyForFilter(s.section || 'uncategorized');
     const searchableText = `${s.name} ${s.description || ''} ${s.detailText || ''} ${s.badges || ''}`.toLowerCase();
-    const imageSrc = s.imageUrl && typeof s.imageUrl === 'string' ? s.imageUrl.trim() : '';
     return `
       <div class="deal-card${s.isFeatured ? ' featured' : ''}" data-special-card data-section="${escHTML(sectionKey)}" data-search="${escHTML(searchableText)}">
-        ${imageSrc ? `<div class="deal-art"><img src="${escHTML(imageSrc)}" alt="${escHTML(s.name)} cocktail image" loading="lazy" /></div>` : ''}
         <div class="deal-info">
           <div class="deal-name-row">
             <span class="deal-name">${escHTML(s.name)}</span>
@@ -656,21 +654,6 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         .deal-card.featured {
           border-color: rgba(216,174,73,0.45);
           box-shadow: 0 0 18px rgba(216,174,73,0.12);
-        }
-        .deal-art {
-          width: 84px;
-          height: 84px;
-          border-radius: 10px;
-          border: 1px solid #2a262d;
-          overflow: hidden;
-          flex-shrink: 0;
-          background: rgba(0,0,0,0.28);
-        }
-        .deal-art img {
-          width: 100%;
-          height: 100%;
-          object-fit: cover;
-          display: block;
         }
         .deal-info { min-width: 0; flex: 1; }
         .deal-name-row {

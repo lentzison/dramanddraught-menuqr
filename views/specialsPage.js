@@ -1,3 +1,5 @@
+const { vintageThemeCss } = require('./publicTheme');
+
 const DAYS_ORDER = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
 const DAY_SHORT = { MONDAY: 'Mon', TUESDAY: 'Tue', WEDNESDAY: 'Wed', THURSDAY: 'Thu', FRIDAY: 'Fri', SATURDAY: 'Sat', SUNDAY: 'Sun' };
 const DAY_LABELS = { MONDAY: 'Monday', TUESDAY: 'Tuesday', WEDNESDAY: 'Wednesday', THURSDAY: 'Thursday', FRIDAY: 'Friday', SATURDAY: 'Saturday', SUNDAY: 'Sunday' };
@@ -133,6 +135,11 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
   const displayTagline = shouldHideIndustryNightTagline ? '' : themeTagline;
   const nextAvailable = options.nextAvailable || null;
   const warnings = options.warnings || {};
+  const halfPriceSpirits = options.halfPriceSpirits || [];
+  const isWednesday = activeDay === 'WEDNESDAY';
+  const isThursday = activeDay === 'THURSDAY';
+  const isHalfPriceDay = isWednesday || isThursday;
+  const halfPriceDayLabel = isWednesday ? 'Whiskey' : 'Agave Spirits';
   const themeDescription = sanitizeGuestCopy(theme && typeof theme.description === 'string' ? theme.description : '');
   const hasGiftToYouCopy = /our gift to you/i.test(themeDescription);
   const showGiftToYouSubtitle = isSunday && bottles && bottles.length > 0 && !hasGiftToYouCopy;
@@ -266,7 +273,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
     </div>
   ` : '';
 
-  const bottlesSection = (isSunday && bottles && bottles.length > 0) ? `
+  const bottlesSection = isSunday ? (bottles && bottles.length > 0 ? `
     <div class="section">
       <div class="section-header">
         <h2>This Week's Break Even Bottle${bottles.length > 1 ? 's' : ''}</h2>
@@ -284,6 +291,56 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           ${renderBottleTastingNotes(b)}
         </div>
       `).join('')}
+    </div>
+  ` : `
+    <div class="section">
+      <div class="section-header">
+        <h2>Break Even Bottles</h2>
+      </div>
+      <div class="bottle-card" style="text-align:center; padding:20px 16px">
+        <div class="deal-name" style="margin-bottom:6px">Ask your bartender what this week's break-even bottle is!</div>
+        <p style="color:#aaa; font-size:0.9rem; margin:0">Select bottles sold at cost &mdash; our gift to you</p>
+      </div>
+    </div>
+  `) : '';
+
+  // Group half-price spirits by category for compact display
+  const halfPriceGrouped = {};
+  (halfPriceSpirits || []).forEach(s => {
+    const cat = s.primaryCategory || 'Other';
+    if (!halfPriceGrouped[cat]) halfPriceGrouped[cat] = [];
+    halfPriceGrouped[cat].push(s);
+  });
+  const halfPriceCatKeys = Object.keys(halfPriceGrouped).sort();
+
+  const halfPriceSection = (isHalfPriceDay && halfPriceSpirits.length > 0) ? `
+    <div class="section">
+      <div class="section-header">
+        <h2>Half-Price ${escHTML(halfPriceDayLabel)}</h2>
+      </div>
+      <p class="section-subtitle">50% off select spirits &mdash; ${isToday ? 'tonight only' : dayLabel + ' only'}</p>
+      <div class="hp-search-wrap">
+        <input id="hp-guest-search" type="search" placeholder="Search ${halfPriceSpirits.length} spirits..." aria-label="Search half-price spirits">
+      </div>
+      <div id="hp-guest-list">
+        ${halfPriceCatKeys.map(cat => {
+          const spirits = halfPriceGrouped[cat];
+          return `
+            <div class="hp-cat-group" data-hp-cat-group>
+              <div class="hp-cat-label">${escHTML(cat)} <span class="hp-cat-count">(${spirits.length})</span></div>
+              ${spirits.map(s => {
+                const origPrice = s.oneOzPrice ? `$${s.oneOzPrice}` : '';
+                const halfPrice = s.oneOzPrice ? `$${(s.oneOzPrice / 2).toFixed(0)}` : '';
+                return `<div class="hp-spirit-row" data-hp-search="${escHTML(s.name.toLowerCase())}">
+                  <span class="hp-spirit-name">${escHTML(s.name)}</span>
+                  <span class="hp-spirit-prices">${origPrice ? `<s>${escHTML(origPrice)}</s>` : ''} ${halfPrice ? `<strong>${escHTML(halfPrice)}</strong>` : ''}</span>
+                </div>`;
+              }).join('')}
+            </div>
+          `;
+        }).join('')}
+      </div>
+      <div id="hp-no-results" class="empty-card" style="display:none">No spirits match that search.</div>
     </div>
   ` : '';
 
@@ -322,6 +379,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
     warnings.specials ? 'specials schedule' : null,
     warnings.flight ? 'Friday flight' : null,
     warnings.bottles ? 'Sunday bottle deals' : null,
+    warnings.halfPrice ? 'half-price spirits' : null,
   ].filter(Boolean);
 
   const dataWarningMessage = warningLabels.length ? `
@@ -333,7 +391,8 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
     </div>
   ` : '';
 
-  const emptyThemeMessage = (theme && specialsForDisplay.length === 0 && !isSundayBottlesDay) ? `
+  const isHalfPriceActive = isHalfPriceDay && halfPriceSpirits.length > 0;
+  const emptyThemeMessage = (theme && specialsForDisplay.length === 0 && !isSundayBottlesDay && !isHalfPriceActive) ? `
     <div class="section">
       <div class="empty-card">
         <p>${escHTML(themeDescription || `No individual specials for ${dayLabel}.`)}</p>
@@ -350,35 +409,11 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>${theme ? escHTML(theme.name) : dayLabel + ' Specials'} - Dram & Draught ${escHTML(location.name)}</title>
       <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        :root {
-          --bg-a: #09090c;
-          --bg-b: #19151d;
-          --panel: #16131a;
-          --line: rgba(216, 174, 73, 0.25);
-          --text: #efe7d4;
-          --muted: #b0a99c;
-          --gold: #d9b25f;
-          --amber: #b97c3d;
-        }
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(8px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        body {
-          font-family: "Palatino Linotype", "Bodoni MT", "Trebuchet MS", Georgia, serif;
-          color: var(--text);
-          background:
-            radial-gradient(1200px 620px at 15% -8%, rgba(216, 174, 73, 0.2), transparent 60%),
-            radial-gradient(1000px 520px at 100% 0%, rgba(185, 124, 61, 0.24), transparent 55%),
-            linear-gradient(180deg, var(--bg-a), #0a0a0b 44%, #080809 100%);
-          min-height: 100vh;
-          animation: fadeIn .45s ease-out;
-        }
+        ${vintageThemeCss()}
         .header {
           background:
-            linear-gradient(180deg, rgba(31,27,35,0.95), rgba(11,10,12,0.96)),
-            radial-gradient(circle at 30% 0%, rgba(216,174,73,0.16), transparent 40%);
+            linear-gradient(180deg, rgba(54,36,24,0.96), rgba(22,14,10,0.98)),
+            radial-gradient(circle at 30% 0%, rgba(198,155,84,0.12), transparent 40%);
           text-align: center;
           padding: 28px 20px 10px;
           border-bottom: 1px solid var(--line);
@@ -387,17 +422,17 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           font-size: clamp(1.8rem, 7vw, 2.3rem);
           font-weight: 800;
           line-height: 1;
-          background: linear-gradient(135deg, #f3d7a5, var(--gold), var(--amber));
+          background: linear-gradient(180deg, #f7ead0, #d3ac6d 68%, #9f663d 100%);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
-          letter-spacing: 0.12em;
+          letter-spacing: 0.14em;
           text-transform: uppercase;
         }
         .location-name {
           color: var(--muted);
           font-size: 0.9rem;
           text-transform: uppercase;
-          letter-spacing: 0.1em;
+          letter-spacing: 0.16em;
           margin-top: 7px;
         }
         .day-nav {
@@ -411,33 +446,35 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           -webkit-overflow-scrolling: touch;
           scrollbar-width: none;
           justify-content: center;
-          background: rgba(9, 9, 12, 0.8);
+          background: rgba(29, 20, 14, 0.82);
           backdrop-filter: blur(6px);
           border-bottom: 1px solid var(--line);
         }
         .day-nav::-webkit-scrollbar { display: none; }
         .day-tab {
           padding: 8px 12px;
-          border-radius: 999px;
+          border-radius: 8px;
           font-size: 0.81rem;
           font-weight: 700;
-          color: #91897d;
+          color: var(--muted);
           text-decoration: none;
           white-space: nowrap;
           transition: all 0.18s;
-          border: 1px solid transparent;
-          background: rgba(255,255,255,0.02);
+          border: 1px solid rgba(245,232,204,0.08);
+          background: rgba(70,81,60,0.12);
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
         }
-        .day-tab:hover { color: #ddd5c7; background: rgba(255,255,255,0.04); }
+        .day-tab:hover { color: var(--cream); background: rgba(198,155,84,0.12); }
         .day-tab.active {
-          color: #14110d;
-          background: linear-gradient(135deg, var(--gold), var(--amber));
-          border-color: transparent;
+          color: var(--ink);
+          background: linear-gradient(180deg, #cfaa66, #8f5a35);
+          border-color: rgba(29, 18, 12, 0.55);
           font-weight: 800;
-          box-shadow: 0 8px 16px rgba(0,0,0,0.35);
+          box-shadow: inset 0 1px 0 rgba(255,245,220,0.28), 0 8px 16px rgba(0,0,0,0.22);
         }
         .day-tab.today:not(.active) {
-          border-color: rgba(216,174,73,0.35);
+          border-color: rgba(198,155,84,0.35);
           color: #d8c190;
         }
         .hours-line {
@@ -445,19 +482,19 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           padding: 9px 16px;
           color: #9d9485;
           font-size: 0.82rem;
-          background: rgba(0,0,0,0.28);
-          border-bottom: 1px solid rgba(216,174,73,0.12);
+          background: rgba(21,14,10,0.38);
+          border-bottom: 1px solid rgba(198,155,84,0.12);
         }
         .hours-line span { color: var(--gold); font-weight: 600; }
         .theme-banner {
           margin: 14px auto 4px;
           max-width: 620px;
-          background: linear-gradient(135deg, rgba(216,174,73,0.18), rgba(185,124,61,0.12));
-          border: 1px solid rgba(216,174,73,0.22);
-          border-radius: 16px;
+          background: linear-gradient(180deg, rgba(44, 29, 20, 0.95), rgba(22, 14, 10, 0.98));
+          border: 1px solid var(--line);
+          border-radius: 12px;
           padding: 22px 20px 20px;
           text-align: center;
-          box-shadow: 0 12px 30px rgba(0,0,0,0.35);
+          box-shadow: 0 14px 30px rgba(0,0,0,0.3), inset 0 0 0 1px rgba(255,255,255,0.03);
         }
         .theme-day {
           color: var(--gold);
@@ -482,7 +519,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         .theme-name {
           font-size: clamp(1.6rem, 7vw, 2rem);
           font-weight: 800;
-          color: #fff;
+          color: var(--cream);
           margin: 8px 0 4px;
         }
         .theme-tagline {
@@ -510,9 +547,9 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         .cocktail-search input {
           flex: 1;
           min-width: 0;
-          border: 1px solid #2a262d;
-          border-radius: 12px;
-          background: rgba(0, 0, 0, 0.35);
+          border: 1px solid rgba(245,232,204,0.14);
+          border-radius: 8px;
+          background: rgba(255,243,217,0.06);
           color: var(--text);
           padding: 11px 12px;
           font-size: 0.9rem;
@@ -530,35 +567,38 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           margin-top: 12px;
         }
         .filter-chip {
-          border: 1px solid #2a262d;
-          border-radius: 999px;
-          background: rgba(255,255,255,0.02);
-          color: #c2b7a9;
+          border: 1px solid rgba(245,232,204,0.12);
+          border-radius: 8px;
+          background: rgba(70,81,60,0.16);
+          color: #d7c7ab;
           padding: 6px 12px;
           font-size: 0.76rem;
           font-weight: 700;
-          letter-spacing: 0.02em;
+          letter-spacing: 0.05em;
           cursor: pointer;
+          text-transform: uppercase;
         }
         .filter-chip:hover {
           border-color: rgba(216,174,73,0.45);
           color: #fff;
         }
         .filter-chip.is-active {
-          border-color: transparent;
-          background: linear-gradient(135deg, var(--gold), var(--amber));
-          color: #14110d;
+          border-color: rgba(29, 18, 12, 0.55);
+          background: linear-gradient(180deg, #cfaa66, #8f5a35);
+          color: var(--ink);
         }
         .filter-reset {
           white-space: nowrap;
-          border: 1px solid rgba(216,174,73,0.35);
-          border-radius: 12px;
-          background: rgba(216,174,73,0.11);
-          color: #f8ecd2;
+          border: 1px solid rgba(198,155,84,0.35);
+          border-radius: 8px;
+          background: rgba(198,155,84,0.11);
+          color: var(--cream);
           padding: 8px 10px;
           font-size: 0.76rem;
           cursor: pointer;
           font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
         }
         .filter-reset:hover {
           background: rgba(216,174,73,0.18);
@@ -581,23 +621,23 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           font-size: 1.02rem;
           color: var(--gold);
           font-weight: 800;
-          letter-spacing: 0.02em;
+          letter-spacing: 0.08em;
           text-transform: uppercase;
         }
         .section-subtitle { color: #9c9486; font-size: 0.84rem; margin: -6px 0 14px 4px; }
         .bottle-card {
-          background: var(--panel);
-          border: 1px solid #2a262d;
-          border-radius: 14px;
+          background: linear-gradient(180deg, rgba(44, 29, 20, 0.94), rgba(26, 18, 12, 0.98));
+          border: 1px solid var(--line);
+          border-radius: 10px;
           padding: 14px;
           margin-bottom: 10px;
-          box-shadow: 0 10px 22px rgba(0,0,0,0.25);
+          box-shadow: 0 10px 22px rgba(0,0,0,0.24), inset 0 0 0 1px rgba(255,255,255,0.03);
           display: flex;
           flex-direction: column;
           gap: 10px;
           transition: border-color 0.2s, transform 0.2s;
         }
-        .bottle-card:hover { border-color: rgba(216,174,73,0.36); transform: translateY(-1px); }
+        .bottle-card:hover { border-color: rgba(245,232,204,0.24); transform: translateY(-1px); }
         .bottle-head {
           display: flex;
           align-items: center;
@@ -605,11 +645,11 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         }
         .bottle-head-copy { min-width: 0; flex: 1; }
         .bottle-note-block {
-          border-top: 1px solid #2a262d;
+          border-top: 1px solid rgba(245,232,204,0.08);
           padding-top: 10px;
         }
         .bottle-note-summary {
-          color: #f8efd6;
+          color: var(--cream);
           font-size: 0.82rem;
           font-weight: 700;
           margin-bottom: 6px;
@@ -622,7 +662,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           gap: 7px;
         }
         .bottle-note-item {
-          color: #9f9688;
+          color: #b8a890;
           font-size: 0.82rem;
           line-height: 1.45;
           display: grid;
@@ -642,18 +682,18 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           display: flex;
           align-items: flex-start;
           gap: 12px;
-          background: var(--panel);
-          border: 1px solid #2a262d;
-          border-radius: 12px;
+          background: linear-gradient(180deg, rgba(44, 29, 20, 0.94), rgba(26, 18, 12, 0.98));
+          border: 1px solid var(--line);
+          border-radius: 10px;
           padding: 14px 14px;
           margin-bottom: 10px;
-          box-shadow: 0 10px 20px rgba(0,0,0,0.25);
+          box-shadow: 0 10px 20px rgba(0,0,0,0.24), inset 0 0 0 1px rgba(255,255,255,0.03);
           transition: border-color 0.2s, transform 0.2s;
         }
-        .deal-card:hover { border-color: rgba(216,174,73,0.36); transform: translateY(-1px); }
+        .deal-card:hover { border-color: rgba(245,232,204,0.24); transform: translateY(-1px); }
         .deal-card.featured {
-          border-color: rgba(216,174,73,0.45);
-          box-shadow: 0 0 18px rgba(216,174,73,0.12);
+          border-color: rgba(198,155,84,0.45);
+          box-shadow: 0 0 18px rgba(198,155,84,0.12);
         }
         .deal-info { min-width: 0; flex: 1; }
         .deal-name-row {
@@ -662,8 +702,8 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           gap: 7px;
           flex-wrap: wrap;
         }
-        .deal-name { font-weight: 700; color: #fff; font-size: 1rem; }
-        .deal-desc { color: #a7a095; font-size: 0.85rem; margin-top: 2px; }
+        .deal-name { font-weight: 700; color: var(--cream); font-size: 1rem; }
+        .deal-desc { color: #b7a890; font-size: 0.85rem; margin-top: 2px; }
         .deal-detail {
           color: #9f9688;
           font-size: 0.82rem;
@@ -686,7 +726,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         }
         .badge {
           display: inline-block;
-          background: linear-gradient(135deg, rgba(216,174,73,0.18), rgba(185,124,61,0.16));
+          background: linear-gradient(180deg, rgba(198,155,84,0.2), rgba(139,82,48,0.18));
           color: var(--gold);
           font-size: 0.62rem;
           font-weight: 700;
@@ -696,21 +736,21 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           letter-spacing: 0.04em;
         }
         .flight-card {
-          background: linear-gradient(135deg, rgba(216,174,73,0.12), rgba(185,124,61,0.07));
-          border: 1px solid rgba(216,174,73,0.22);
-          border-radius: 14px;
+          background: linear-gradient(180deg, rgba(44, 29, 20, 0.95), rgba(22, 14, 10, 0.98));
+          border: 1px solid var(--line);
+          border-radius: 10px;
           padding: 18px 18px 16px;
-          box-shadow: 0 10px 24px rgba(0,0,0,0.26);
+          box-shadow: 0 10px 24px rgba(0,0,0,0.24), inset 0 0 0 1px rgba(255,255,255,0.03);
         }
-        .flight-theme { font-size: 1.17rem; font-weight: 800; color: #fff; margin-bottom: 4px; }
+        .flight-theme { font-size: 1.17rem; font-weight: 800; color: var(--cream); margin-bottom: 4px; }
         .flight-desc { color: #9d9485; font-size: 0.88rem; margin-bottom: 8px; }
         .flight-price {
           display: inline-block;
-          background: linear-gradient(135deg, var(--gold), var(--amber));
-          color: #14110d;
+          background: linear-gradient(180deg, #cfaa66, #8f5a35);
+          color: var(--ink);
           font-weight: 800;
           padding: 4px 14px;
-          border-radius: 20px;
+          border-radius: 8px;
           font-size: 0.95rem;
           margin-bottom: 16px;
         }
@@ -719,16 +759,16 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           display: flex;
           gap: 12px;
           align-items: flex-start;
-          background: rgba(0,0,0,0.25);
-          border-radius: 10px;
+          background: rgba(255,243,217,0.05);
+          border-radius: 8px;
           padding: 12px 12px 12px 14px;
-          border: 1px solid rgba(255,255,255,0.05);
+          border: 1px solid rgba(245,232,204,0.08);
         }
         .pour-number {
           width: 26px;
           height: 26px;
-          background: linear-gradient(135deg, var(--gold), var(--amber));
-          color: #14110d;
+          background: linear-gradient(180deg, #cfaa66, #8f5a35);
+          color: var(--ink);
           border-radius: 50%;
           display: flex;
           align-items: center;
@@ -738,14 +778,14 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           flex-shrink: 0;
         }
         .pour-info { flex: 1; min-width: 0; }
-        .pour-name { font-weight: 700; color: #fff; }
+        .pour-name { font-weight: 700; color: var(--cream); }
         .pour-origin { color: var(--gold); font-size: 0.82rem; }
         .pour-notes { color: #9d9485; font-size: 0.82rem; margin-top: 3px; font-style: italic; }
         .pour-size { color: #82796c; font-size: 0.75rem; margin-top: 2px; }
         .teaser-card {
-          background: linear-gradient(135deg, rgba(216,174,73,0.06), rgba(185,124,61,0.04));
-          border: 1px solid rgba(216,174,73,0.15);
-          border-radius: 12px;
+          background: linear-gradient(180deg, rgba(44, 29, 20, 0.9), rgba(22, 14, 10, 0.95));
+          border: 1px solid var(--line);
+          border-radius: 10px;
           padding: 14px 16px;
           margin-bottom: 10px;
           text-align: center;
@@ -762,7 +802,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         .teaser-title {
           font-size: 1.03rem;
           font-weight: 800;
-          color: #fff;
+          color: var(--cream);
         }
         .teaser-tagline {
           color: var(--gold);
@@ -781,34 +821,37 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         .teaser-link:hover { text-decoration: underline; }
         .warning-card {
           text-align: center;
-          background: rgba(234, 179, 8, 0.09);
-          border: 1px solid rgba(234,179,8,0.25);
-          border-radius: 14px;
+          background: rgba(198,155,84,0.09);
+          border: 1px solid rgba(198,155,84,0.25);
+          border-radius: 10px;
           padding: 16px;
-          color: #f2d06b;
+          color: #ead7aa;
           box-shadow: 0 8px 24px rgba(0,0,0,0.2);
         }
         .warning-card p { margin-bottom: 10px; line-height: 1.5; }
         .empty-card {
           text-align: center;
-          background: var(--panel);
-          border: 1px solid #2a262d;
-          border-radius: 14px;
+          background: linear-gradient(180deg, rgba(44, 29, 20, 0.95), rgba(22, 14, 10, 0.98));
+          border: 1px solid var(--line);
+          border-radius: 10px;
           padding: 32px 20px;
           box-shadow: 0 10px 24px rgba(0,0,0,0.2);
         }
-        .empty-card p { color: #a39887; line-height: 1.5; }
+        .empty-card p { color: var(--muted); line-height: 1.5; }
         .spirit-link {
           display: inline-block;
           margin-top: 16px;
-          color: #14110d;
-          background: linear-gradient(135deg, var(--gold), var(--amber));
+          color: var(--ink);
+          background: linear-gradient(180deg, #cfaa66, #8f5a35);
           padding: 10px 22px;
-          border-radius: 10px;
+          border-radius: 8px;
           text-decoration: none;
           font-weight: 700;
           font-size: 0.9rem;
           box-shadow: 0 8px 18px rgba(0,0,0,0.28);
+          border: 1px solid rgba(29, 18, 12, 0.55);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
         }
         .spirit-link:hover { filter: brightness(1.05); }
         .spirit-cta {
@@ -816,26 +859,74 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           text-align: center;
           margin: 24px 0 8px;
           padding: 14px 20px;
-          background: linear-gradient(135deg, var(--gold), var(--amber));
-          color: #14110d;
+          background: linear-gradient(180deg, #cfaa66, #8f5a35);
+          color: var(--ink);
           font-weight: 800;
           font-size: 0.95rem;
-          border-radius: 12px;
+          border-radius: 8px;
           text-decoration: none;
-          letter-spacing: 0.02em;
+          letter-spacing: 0.05em;
           box-shadow: 0 10px 24px rgba(0,0,0,0.3);
+          border: 1px solid rgba(29, 18, 12, 0.55);
+          text-transform: uppercase;
         }
         .spirit-cta:hover { filter: brightness(1.03); }
+        .hp-search-wrap { margin-bottom: 14px; }
+        .hp-search-wrap input {
+          width: 100%;
+          border: 1px solid rgba(245,232,204,0.14);
+          border-radius: 8px;
+          background: rgba(255,243,217,0.06);
+          color: var(--text);
+          padding: 11px 12px;
+          font-size: 0.9rem;
+          outline: none;
+          transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .hp-search-wrap input:focus {
+          border-color: rgba(216,174,73,0.5);
+          box-shadow: 0 0 0 3px rgba(216,174,73,0.18);
+        }
+        .hp-cat-group { margin-bottom: 6px; }
+        .hp-cat-label {
+          color: var(--gold);
+          font-size: 0.78rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          padding: 10px 4px 5px;
+          border-bottom: 1px solid rgba(216,174,73,0.18);
+        }
+        .hp-cat-count { color: #82796c; font-weight: 400; }
+        .hp-spirit-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 4px;
+          border-bottom: 1px solid rgba(255,255,255,0.04);
+          font-size: 0.88rem;
+        }
+        .hp-spirit-name { flex: 1; color: var(--text); min-width: 0; }
+        .hp-spirit-prices {
+          white-space: nowrap;
+          text-align: right;
+          font-size: 0.85rem;
+        }
+        .hp-spirit-prices s { color: #82796c; margin-right: 6px; }
+        .hp-spirit-prices strong { color: var(--gold); font-weight: 800; }
+        .hp-spirit-row.hp-hidden { display: none; }
         .footer {
           text-align: center;
           padding: 24px 20px 32px;
         }
         .back-link {
           display: inline-block;
-          color: #938a7b;
+          color: var(--muted);
           text-decoration: none;
           font-size: 0.9rem;
           font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
         }
         .back-link:hover { color: var(--gold); }
       </style>
@@ -866,6 +957,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         ${noSpecialsMessage}
         ${flightSection}
         ${bottlesSection}
+        ${halfPriceSection}
 
         ${tomorrowTeaser || flightTeaser ? `
         <div class="section">
@@ -956,6 +1048,31 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
 
           applyFilters();
           setSectionFilter('all');
+
+          // Half-price spirit search
+          var hpSearch = document.getElementById('hp-guest-search');
+          var hpRows = document.querySelectorAll('.hp-spirit-row');
+          var hpGroups = document.querySelectorAll('[data-hp-cat-group]');
+          var hpNoResults = document.getElementById('hp-no-results');
+          if (hpSearch) {
+            hpSearch.addEventListener('input', function() {
+              var q = (hpSearch.value || '').toLowerCase().trim();
+              var total = 0;
+              hpRows.forEach(function(row) {
+                var name = row.getAttribute('data-hp-search') || '';
+                var match = !q || name.indexOf(q) !== -1;
+                row.classList.toggle('hp-hidden', !match);
+                if (match) total++;
+              });
+              hpGroups.forEach(function(g) {
+                var visible = g.querySelectorAll('.hp-spirit-row:not(.hp-hidden)');
+                g.style.display = visible.length ? '' : 'none';
+                var countEl = g.querySelector('.hp-cat-count');
+                if (countEl) countEl.textContent = '(' + visible.length + ')';
+              });
+              if (hpNoResults) hpNoResults.style.display = total > 0 ? 'none' : 'block';
+            });
+          }
         })();
       </script>
     </body>

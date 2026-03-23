@@ -1,6 +1,55 @@
-const { sendHTML, parseBody, redirect, unauthorized, isAdmin, fallbackLocations, getLocations } = require('../helpers');
+const { sendHTML, parseBody, redirect, getFlashMsg, fallbackLocations } = require('../helpers');
 const { authenticate, createSession, destroySession, requireAuth } = require('../auth');
 const { loginPage } = require('../views/adminLayout');
+const { locationsList, locationEditor } = require('../views/adminLocationViews');
+
+const WEEK_DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+
+function to12h(time24) {
+  // "16:00" -> "4:00 PM"
+  if (!time24) return '';
+  const [hStr, mStr] = time24.split(':');
+  let h = parseInt(hStr, 10);
+  const m = mStr || '00';
+  if (!Number.isFinite(h)) return '';
+  const period = h >= 12 ? 'PM' : 'AM';
+  if (h === 0) h = 12;
+  else if (h > 12) h -= 12;
+  return `${h}:${m} ${period}`;
+}
+
+function buildHoursFromForm(body) {
+  const hours = {};
+  for (const day of WEEK_DAYS) {
+    if (body[`hours_${day}_closed`] === 'on') {
+      hours[day] = 'Closed';
+    } else {
+      const open = to12h(body[`hours_${day}_open`]);
+      const close = to12h(body[`hours_${day}_close`]);
+      if (open && close) {
+        hours[day] = `${open} - ${close}`;
+      } else if (open) {
+        hours[day] = open;
+      }
+      // If both empty, omit the key (preserve existing or leave unset)
+    }
+  }
+  return hours;
+}
+
+function buildLinksFromForm(body) {
+  const links = [];
+  const maxLinks = parseInt(body.linkCount, 10) || 0;
+  // Scan up to maxLinks + a buffer for safety
+  for (let i = 0; i < maxLinks + 20; i++) {
+    const label = (body[`link_label_${i}`] || '').trim();
+    const url = (body[`link_url_${i}`] || '').trim();
+    if (label && url) {
+      links.push({ label, url });
+    }
+  }
+  return links;
+}
 
 async function handleAdmin(req, res, pathname, prisma) {
   // ─── Login ───
@@ -13,7 +62,7 @@ async function handleAdmin(req, res, pathname, prisma) {
         return true;
       }
       createSession(res, result.user);
-      redirect(res, '/admin/specials');
+      redirect(res, '/admin/locations');
       return true;
     }
     sendHTML(res, 200, loginPage());
@@ -27,17 +76,16 @@ async function handleAdmin(req, res, pathname, prisma) {
     return true;
   }
 
-  // ─── Existing admin routes (Basic Auth) ───
+  // ─── Redirect /admin to /admin/locations ───
   if (pathname === '/admin') {
-    if (!isAdmin(req)) return unauthorized(res) || true;
-    const locs = await getLocations(prisma);
-    const list = locs.map(l => `<li><a href="/admin/location/${l.slug}">${l.name}</a></li>`).join('');
-    sendHTML(res, 200, `<h1>Admin: Locations</h1><p><a href="/admin/seed">Seed default locations</a></p><ul>${list}</ul>`);
+    redirect(res, '/admin/locations');
     return true;
   }
 
+  // ─── Seed (preserve existing) ───
   if (pathname === '/admin/seed') {
-    if (!isAdmin(req)) return unauthorized(res) || true;
+    const user = requireAuth(req, res);
+    if (!user) { redirect(res, '/admin/login'); return true; }
     if (!prisma) { sendHTML(res, 500, '<p>DB not available</p>'); return true; }
     for (const l of fallbackLocations) {
       await prisma.location.upsert({
@@ -54,21 +102,45 @@ async function handleAdmin(req, res, pathname, prisma) {
         }
       });
     }
-    sendHTML(res, 200, '<p>Seed complete</p><p><a href="/admin">Back to Admin</a></p>');
+    redirect(res, '/admin/locations?msg=saved');
     return true;
   }
 
+  // ─── Locations List ───
+  if (pathname === '/admin/locations') {
+    const user = requireAuth(req, res);
+    if (!user) { redirect(res, '/admin/login'); return true; }
+    const flashMsg = getFlashMsg(req.url);
+    const locs = prisma
+      ? await prisma.location.findMany({ orderBy: { name: 'asc' } }).catch(() => [])
+      : [];
+    sendHTML(res, 200, locationsList(locs, user, flashMsg));
+    return true;
+  }
+
+  // ─── Redirect old /admin/location/:slug -> /admin/locations/:slug ───
   if (pathname.startsWith('/admin/location/')) {
-    if (!isAdmin(req)) return unauthorized(res) || true;
     const slug = pathname.split('/').pop();
-    let loc = null;
-    if (prisma) {
-      loc = await prisma.location.findUnique({ where: { slug } }).catch(() => null);
-    }
-    if (!loc) { sendHTML(res, 404, '<h1>Not found</h1>'); return true; }
+    redirect(res, `/admin/locations/${slug}`);
+    return true;
+  }
+
+  // ─── Location Editor ───
+  const locMatch = pathname.match(/^\/admin\/locations\/([a-z0-9-]+)$/);
+  if (locMatch) {
+    const slug = locMatch[1];
+    const user = requireAuth(req, res);
+    if (!user) { redirect(res, '/admin/login'); return true; }
+
+    if (!prisma) { sendHTML(res, 500, '<p>DB not available</p>'); return true; }
+    const loc = await prisma.location.findUnique({ where: { slug } }).catch(() => null);
+    if (!loc) { sendHTML(res, 404, '<h1>Location not found</h1>'); return true; }
 
     if (req.method === 'POST') {
       const body = await parseBody(req);
+      const hours = buildHoursFromForm(body);
+      const links = buildLinksFromForm(body);
+
       await prisma.location.update({
         where: { slug },
         data: {
@@ -82,41 +154,17 @@ async function handleAdmin(req, res, pathname, prisma) {
           specialText: body.specialText || null,
           menuUrl: body.menuUrl || null,
           features: (body.features || '').split(',').map(s => s.trim()).filter(Boolean),
-          hours: (() => { try { return JSON.parse(body.hours || '{}'); } catch { return loc.hours; } })(),
-          links: (() => { try { return JSON.parse(body.links || '[]'); } catch { return loc.links; } })(),
+          hours,
+          links,
+          isActive: body.isActive === 'on',
         }
       });
-      sendHTML(res, 200, `<p>Saved</p><p><a href="/admin/location/${slug}">Back</a> | <a href="/${slug}">View</a></p>`);
+      redirect(res, `/admin/locations/${slug}?msg=saved`);
       return true;
     }
 
-    const form = `
-      <h1>Edit ${loc.name}</h1>
-      <form method="POST">
-        <label>Name <input name="name" value="${loc.name}" /></label><br/>
-        <label>Slug <input name="slug" value="${loc.slug}" disabled /></label><br/>
-        <label>Address <input name="address" value="${loc.address || ''}" /></label><br/>
-        <label>City <input name="city" value="${loc.city}" /></label><br/>
-        <label>State <input name="state" value="${loc.state}" /></label><br/>
-        <label>Zip <input name="zipCode" value="${loc.zipCode || ''}" /></label><br/>
-        <label>Email <input name="email" value="${loc.email || ''}" /></label><br/>
-        <label>Phone <input name="phone" value="${loc.phone || ''}" /></label><br/>
-        <label>Special Text <input name="specialText" value="${loc.specialText || ''}" /></label><br/>
-        <label>Menu URL <input name="menuUrl" value="${loc.menuUrl || ''}" /></label><br/>
-        <label>Features (comma-separated)<br/>
-          <input name="features" value="${(loc.features || []).join(', ')}" />
-        </label><br/>
-        <label>Link Buttons (JSON array of {label,url})<br/>
-          <textarea name="links" rows="10" cols="80">${JSON.stringify(loc.links || [], null, 2)}</textarea>
-        </label><br/>
-        <label>Hours (JSON)<br/>
-          <textarea name="hours" rows="8" cols="60">${JSON.stringify(loc.hours || {}, null, 2)}</textarea>
-        </label><br/>
-        <button type="submit">Save</button>
-      </form>
-      <p><a href="/admin">Back to list</a></p>
-    `;
-    sendHTML(res, 200, form);
+    const flashMsg = getFlashMsg(req.url);
+    sendHTML(res, 200, locationEditor(loc, user, flashMsg));
     return true;
   }
 

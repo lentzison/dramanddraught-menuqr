@@ -1,3 +1,5 @@
+const { vintageThemeCss } = require('./publicTheme');
+
 function generateHomepage(locs) {
   return `
     <!DOCTYPE html>
@@ -7,39 +9,21 @@ function generateHomepage(locs) {
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>Dram & Draught - Locations in North Carolina</title>
       <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        :root {
-          --panel: #17141c;
-          --line: rgba(216, 174, 73, 0.25);
-          --muted: #b0a99c;
-          --gold: #d9b25f;
-          --amber: #b97c3d;
-        }
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(8px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        body {
-          font-family: "Palatino Linotype", "Bodoni MT", "Trebuchet MS", Georgia, serif;
-          color: #efe7d4;
-          background:
-            radial-gradient(1100px 520px at 16% -8%, rgba(216, 174, 73, 0.23), transparent 60%),
-            radial-gradient(900px 520px at 100% 0%, rgba(185, 124, 61, 0.22), transparent 56%),
-            linear-gradient(180deg, #09090c 0%, #0c0c0d 42%, #080808 100%);
-          min-height: 100vh;
-        }
+        ${vintageThemeCss()}
         .hero {
           position: relative;
           overflow: hidden;
-          color: #eee;
+          color: var(--cream);
           text-align: center;
-          padding: 60px 20px 46px;
-          border-radius: 0 0 34px 34px;
+          padding: 62px 20px 48px;
+          border-radius: 0 0 26px 26px;
           border: 1px solid var(--line);
           border-top: 0;
-          border-bottom-color: rgba(255,255,255,0.08);
-          box-shadow: 0 10px 40px rgba(0,0,0,0.45);
-          background: linear-gradient(170deg, rgba(18,17,21,0.95), rgba(7,7,8,0.94));
+          border-bottom-color: rgba(255, 233, 194, 0.12);
+          box-shadow: 0 18px 48px var(--shadow), inset 0 0 0 1px rgba(255, 245, 227, 0.04);
+          background:
+            linear-gradient(180deg, rgba(63, 41, 28, 0.97), rgba(28, 19, 13, 0.98)),
+            radial-gradient(circle at top, rgba(198, 155, 84, 0.12), transparent 42%);
           margin: 0 auto;
           max-width: 980px;
           animation: fadeIn .45s ease-out;
@@ -48,8 +32,10 @@ function generateHomepage(locs) {
           content: '';
           position: absolute;
           inset: 0;
-          background: repeating-linear-gradient(130deg, rgba(255,255,255,0.05), rgba(255,255,255,0.05) 1px, transparent 1px, transparent 8px);
-          opacity: 0.16;
+          background:
+            repeating-linear-gradient(90deg, rgba(255, 250, 240, 0.03), rgba(255, 250, 240, 0.03) 1px, transparent 1px, transparent 8px),
+            repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.06), rgba(0, 0, 0, 0.06) 1px, transparent 1px, transparent 10px);
+          opacity: 0.28;
           pointer-events: none;
         }
         .hero::after {
@@ -57,21 +43,21 @@ function generateHomepage(locs) {
           position: absolute;
           inset: 0;
           background:
-            radial-gradient(520px 220px at 70% 12%, rgba(255,255,255,0.06), transparent 45%),
-            radial-gradient(430px 180px at 18% 74%, rgba(216,174,73,0.12), transparent 50%);
-          opacity: 0.7;
+            radial-gradient(520px 220px at 70% 12%, rgba(255, 244, 219, 0.08), transparent 45%),
+            radial-gradient(430px 180px at 18% 74%, rgba(70, 81, 60, 0.12), transparent 50%);
+          opacity: 0.9;
           pointer-events: none;
-          mix-blend-mode: screen;
         }
         .hero h1 {
           position: relative;
           font-size: clamp(2.2rem, 8vw, 3.4rem);
           margin-bottom: 10px;
-          letter-spacing: 0.06em;
+          letter-spacing: 0.1em;
           text-transform: uppercase;
-          background: linear-gradient(135deg, #f3d7a5, var(--gold), var(--amber));
+          background: linear-gradient(180deg, #f7ead0, #d3ac6d 68%, #9f663d 100%);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
+          text-shadow: 0 1px 0 rgba(0,0,0,0.25);
         }
         .hero-title { position: relative; }
         .divider {
@@ -86,40 +72,42 @@ function generateHomepage(locs) {
         .badge {
           position: relative;
           display: inline-block;
-          color: #e9cf92;
+          color: var(--cream);
           border: 1px solid var(--line);
-          padding: 6px 12px;
-          border-radius: 999px;
-          letter-spacing: 0.12em;
+          padding: 7px 13px;
+          border-radius: 6px;
+          letter-spacing: 0.16em;
           font-weight: 700;
-          font-size: 0.8em;
-          background: rgba(212, 175, 55, 0.08);
+          font-size: 0.76em;
+          text-transform: uppercase;
+          background: linear-gradient(180deg, rgba(70, 81, 60, 0.34), rgba(30, 22, 15, 0.2));
           margin-top: 8px;
           margin-bottom: 12px;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
         }
         .rl-card {
           position: relative;
-          background: var(--panel);
+          background: linear-gradient(180deg, rgba(56, 38, 25, 0.88), rgba(30, 20, 14, 0.9));
           border: 1px solid var(--line);
-          border-radius: 14px;
-          padding: 16px;
+          border-radius: 12px;
+          padding: 18px 18px 16px;
           max-width: 900px;
           margin: 0 auto;
-          color: #d7d3c9;
+          color: #e3d2b3;
           line-height: 1.65;
-          box-shadow: 0 8px 22px rgba(0,0,0,0.35);
+          box-shadow: 0 12px 30px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(255,255,255,0.03);
           animation: fadeIn .45s ease-out .08s both;
         }
         .rl-card p { margin: 0.4rem 0; }
-        .rl-strong { color: #d9b25f; font-weight: 700; }
+        .rl-strong { color: var(--gold); font-weight: 700; }
         .container {
           max-width: 1200px;
           margin: 0 auto;
-          padding: 40px 20px;
+          padding: 42px 20px 54px;
         }
         .location-controls {
           max-width: 980px;
-          margin: 0 auto 20px;
+          margin: 0 auto 22px;
           text-align: center;
           display: flex;
           justify-content: center;
@@ -128,25 +116,29 @@ function generateHomepage(locs) {
           flex-wrap: wrap;
         }
         .location-controls p {
-          color: #9d9485;
+          color: var(--muted);
           margin-bottom: 0;
           font-size: 0.94rem;
+          letter-spacing: 0.03em;
         }
         .location-controls button {
-          background: #d9b25f;
-          color: #1b1309;
-          border: 0;
-          border-radius: 18px;
-          padding: 8px 16px;
+          background: linear-gradient(180deg, #cfaa66, #8f5a35);
+          color: var(--ink);
+          border: 1px solid rgba(29, 18, 12, 0.55);
+          border-radius: 8px;
+          padding: 10px 16px;
           font-family: inherit;
           font-weight: 700;
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
           cursor: pointer;
-          transition: transform 0.2s ease, filter 0.2s ease;
-          min-height: 38px;
+          transition: transform 0.2s ease, filter 0.2s ease, box-shadow 0.2s ease;
+          min-height: 40px;
+          box-shadow: inset 0 1px 0 rgba(255, 245, 220, 0.28), 0 10px 18px rgba(0,0,0,0.22);
         }
         .location-controls button:hover {
           transform: translateY(-2px);
-          filter: brightness(1.06);
+          filter: brightness(1.04);
         }
         .location-controls button:disabled {
           opacity: 0.55;
@@ -164,20 +156,21 @@ function generateHomepage(locs) {
           position: relative;
           overflow: hidden;
           border: 1px solid var(--line);
-          border-radius: 15px;
+          border-radius: 10px;
           padding: 24px;
-          background: var(--panel);
-          box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+          background: linear-gradient(180deg, rgba(44, 29, 20, 0.94), rgba(26, 18, 12, 0.98));
+          box-shadow: 0 14px 30px rgba(0,0,0,0.28), inset 0 0 0 1px rgba(255,255,255,0.03);
           text-decoration: none;
-          color: #ddd;
+          color: var(--text);
           display: block;
-          transition: transform 0.26s ease, border-color 0.26s ease;
+          transition: transform 0.26s ease, border-color 0.26s ease, box-shadow 0.26s ease;
           animation: fadeIn .45s ease-out;
           min-height: 238px;
         }
         .location-card:hover {
-          transform: translateY(-5px);
-          border-color: rgba(255,255,255,0.35);
+          transform: translateY(-4px);
+          border-color: rgba(245, 232, 204, 0.24);
+          box-shadow: 0 18px 36px rgba(0,0,0,0.32), inset 0 0 0 1px rgba(255,255,255,0.04);
         }
         .location-card::before {
           content: '';
@@ -189,22 +182,30 @@ function generateHomepage(locs) {
           background: linear-gradient(90deg, transparent, var(--gold), transparent);
           opacity: 0.8;
         }
+        .location-card::after {
+          content: '';
+          position: absolute;
+          inset: 10px;
+          border: 1px solid rgba(245, 232, 204, 0.06);
+          border-radius: 6px;
+          pointer-events: none;
+        }
         .location-name {
           font-size: 1.5em;
-          color: #fff;
+          color: var(--cream);
           margin-bottom: 10px;
           font-weight: 600;
           text-transform: uppercase;
-          letter-spacing: 0.02em;
+          letter-spacing: 0.05em;
         }
         .location-meta {
-          color: #7f776d;
+          color: #b79e79;
           margin-bottom: 10px;
           line-height: 1.45;
           font-size: 0.93rem;
         }
         .special-line {
-          color: var(--gold);
+          color: #d9c08a;
           font-size: 0.9em;
           min-height: 1.3em;
           margin-top: 10px;
@@ -212,7 +213,7 @@ function generateHomepage(locs) {
         }
         .location-distance {
           font-size: 0.85rem;
-          color: #b0a99c;
+          color: #c4b194;
           min-height: 1.2rem;
         }
         .view-location {
@@ -220,22 +221,27 @@ function generateHomepage(locs) {
           left: 24px;
           bottom: 24px;
           display: inline-block;
-          color: #14110d;
-          background: linear-gradient(135deg, #d4af37, #b87333);
+          color: var(--ink);
+          background: linear-gradient(180deg, #cfaa66, #8f5a35);
           padding: 10px 20px;
-          border-radius: 20px;
-          font-weight: 500;
+          border-radius: 8px;
+          font-weight: 700;
           text-decoration: none;
+          border: 1px solid rgba(29, 18, 12, 0.55);
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          box-shadow: inset 0 1px 0 rgba(255, 244, 218, 0.28), 0 10px 18px rgba(0,0,0,0.2);
         }
         .empty-copy {
           text-align: center;
           max-width: 720px;
           margin: 22px auto 0;
-          color: #9d9485;
-          border: 1px dashed rgba(255,255,255,0.2);
-          border-radius: 14px;
+          color: var(--muted);
+          border: 1px dashed rgba(245, 232, 204, 0.16);
+          border-radius: 10px;
           padding: 18px 16px;
           line-height: 1.55;
+          background: rgba(27, 18, 12, 0.3);
         }
       </style>
     </head>
@@ -245,7 +251,7 @@ function generateHomepage(locs) {
         <div class="divider"></div>
         <div class="badge">REGISTERED LUBRICATION</div>
         <div class="rl-card">
-          <p>Our first home was a converted service station, back when a sign for 'Registered Lubrication' actually meant you could count on getting quality fluids. We liked the idea, so we kept the name. Only now, instead of motor oil, it's bourbon in your Old Fashioned and cocktails built to keep the night running smooth.</p>
+          <p>Our first location was in an old gas station. Back then, a sign for 'Registered Lubrication' meant you could count on quality products and good service. We liked that idea, so we kept the phrase. These days, it means great cocktails, whiskey how you like it, and service that knows how to take care of people.</p>
           <p class="rl-strong">Same promise of quality, just more fun.</p>
         </div>
       </div>

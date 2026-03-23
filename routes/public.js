@@ -25,6 +25,7 @@ const {
   getOnTap,
   getBarSupportEmails,
   getBarSupportEmailsForLocation,
+  getHalfPriceSpirits,
 } = require('../bartenderDb');
 const { generateDraftPage } = require('../views/draftPage');
 const { generateMenuPage } = require('../views/menuPage');
@@ -299,19 +300,27 @@ async function loadLocationSpecials(prisma, location, dayOfWeek, warningState) {
   let activeSpecials = [];
   let allSpecials = [];
   try {
-    theme = await prisma.dayTheme.findFirst({
+    const locationTheme = await prisma.dayTheme.findFirst({
       where: { dayOfWeek, locationId: location.id, isActive: true },
       include: { specials: { where: { isActive: true }, orderBy: { displayOrder: 'asc' } } },
     });
-    if (!theme) {
-      theme = await prisma.dayTheme.findFirst({
-        where: { dayOfWeek, locationId: null, isActive: true },
-        include: { specials: { where: { isActive: true }, orderBy: { displayOrder: 'asc' } } },
-      });
-    }
+    const defaultTheme = await prisma.dayTheme.findFirst({
+      where: { dayOfWeek, locationId: null, isActive: true },
+      include: { specials: { where: { isActive: true }, orderBy: { displayOrder: 'asc' } } },
+    });
 
+    // Use location theme if it exists, otherwise company default
+    theme = locationTheme || defaultTheme || null;
+
+    // If location theme has no specials of its own, inherit from company default
     if (theme) {
-      allSpecials = theme.specials || [];
+      const themeSpecials = theme.specials || [];
+      const defaultSpecials = defaultTheme ? (defaultTheme.specials || []) : [];
+      allSpecials = themeSpecials.length > 0 ? themeSpecials : defaultSpecials;
+      // Merge halfPriceConfig: prefer location-specific, fall back to default
+      if (locationTheme && defaultTheme && !locationTheme.halfPriceConfig && defaultTheme.halfPriceConfig) {
+        theme = { ...theme, halfPriceConfig: defaultTheme.halfPriceConfig };
+      }
       activeSpecials = allSpecials;
     } else {
       const nextAvailable = await buildNextThemeLookup(prisma, location, dayOfWeek);
@@ -356,6 +365,27 @@ async function loadLocationSpecials(prisma, location, dayOfWeek, warningState) {
   };
 }
 
+async function loadFlightForLocation(prisma, location, month, year, includePours = false) {
+  const query = includePours
+    ? { include: { pours: { orderBy: { displayOrder: 'asc' } } } }
+    : {};
+
+  let flight = null;
+  if (location?.id) {
+    flight = await prisma.flight.findFirst({
+      where: { month, year, locationId: location.id, isActive: true },
+      ...query,
+    });
+  }
+
+  if (flight) return flight;
+
+  return prisma.flight.findFirst({
+    where: { month, year, locationId: null, isActive: true },
+    ...query,
+  });
+}
+
 async function handleSpecials(req, res, prisma, parsedUrl, location) {
   const loc = location;
 
@@ -377,6 +407,7 @@ async function handleSpecials(req, res, prisma, parsedUrl, location) {
   let flight = null;
   let fridayFlight = null;
   let bottles = [];
+  let halfPriceSpirits = [];
 
   if (prisma) {
     const loaded = await loadLocationSpecials(prisma, loc, viewingDay, warnings);
@@ -387,25 +418,14 @@ async function handleSpecials(req, res, prisma, parsedUrl, location) {
 
     if (viewingDay === 'FRIDAY') {
       try {
-        flight = await prisma.flight.findFirst({
-          where: { month, year, locationId: loc.id, isActive: true },
-          include: { pours: { orderBy: { displayOrder: 'asc' } } },
-        });
-        if (!flight) {
-          flight = await prisma.flight.findFirst({
-            where: { month, year, locationId: null, isActive: true },
-            include: { pours: { orderBy: { displayOrder: 'asc' } } },
-          });
-        }
+        flight = await loadFlightForLocation(prisma, loc, month, year, true);
       } catch (err) {
         warnings.flight = true;
         console.warn('DB error loading Friday flight:', err.message);
       }
     } else {
       try {
-        fridayFlight = await prisma.flight.findFirst({
-          where: { month, year, locationId: null, isActive: true },
-        });
+        fridayFlight = await loadFlightForLocation(prisma, loc, month, year, false);
       } catch (err) {
         warnings.flight = true;
         console.warn('DB error loading Friday flight tease:', err.message);
@@ -426,6 +446,17 @@ async function handleSpecials(req, res, prisma, parsedUrl, location) {
         bottles = await buildGuestBottleNotesForCatalog(bottles, true);
       }
     }
+
+    if ((viewingDay === 'WEDNESDAY' || viewingDay === 'THURSDAY') && theme && theme.halfPriceConfig) {
+      try {
+        const loaded = await getHalfPriceSpirits(loc.slug, theme.halfPriceConfig);
+        halfPriceSpirits = loaded.items || [];
+        warnings.halfPrice = !!loaded.error;
+      } catch (err) {
+        warnings.halfPrice = true;
+        console.warn('DB error loading half-price spirits:', err.message);
+      }
+    }
   } else {
     warnings.specials = true;
   }
@@ -436,9 +467,373 @@ async function handleSpecials(req, res, prisma, parsedUrl, location) {
     generateSpecialsPage(loc, theme, specials, flight, bottles, viewingDay, tomorrowTheme, fridayFlight, {
       nextAvailable,
       warnings,
+      halfPriceSpirits,
     }),
   );
   return true;
+}
+
+function generateTrainingPage() {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Daily Specials — Staff Training Guide | Dram &amp; Draught</title>
+  <style>
+    @page { size: letter; margin: 0.5in 0.55in; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; color: #1a1a1a; font-size: 10.5px; line-height: 1.45; background: #fff; }
+    .page { max-width: 7.5in; margin: 0 auto; padding: 16px 0; }
+
+    /* Header */
+    .hdr { text-align: center; border-bottom: 2.5px solid #b8952e; padding-bottom: 10px; margin-bottom: 10px; }
+    .hdr h1 { font-size: 20px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #1a1a1a; }
+    .hdr h1 span { color: #b8952e; }
+    .hdr p { color: #555; font-size: 10px; margin-top: 3px; }
+
+    /* Intro */
+    .intro { background: #f8f5ee; border: 1px solid #e5dcc8; border-radius: 6px; padding: 8px 11px; margin-bottom: 10px; font-size: 10px; color: #333; }
+    .intro strong { color: #1a1a1a; }
+
+    /* Day grid */
+    .days { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-bottom: 10px; }
+    .day { border: 1px solid #ddd; border-radius: 6px; padding: 7px 9px; break-inside: avoid; }
+    .day-hdr { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+    .day-badge { background: #b8952e; color: #fff; font-size: 8px; font-weight: 800; padding: 2px 7px; border-radius: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .day-name { font-weight: 800; font-size: 11.5px; color: #1a1a1a; }
+    .day-theme { color: #b8952e; font-weight: 700; font-size: 10px; }
+    .day ul { padding-left: 14px; margin-top: 3px; }
+    .day li { font-size: 9.5px; color: #333; margin-bottom: 1.5px; }
+    .day li strong { color: #1a1a1a; }
+    .day .note { font-size: 8.5px; color: #777; font-style: italic; margin-top: 3px; }
+
+    .day-featured { border-color: #b8952e; background: rgba(184,149,46,0.04); }
+    .day.day-span { grid-column: span 2; }
+
+    /* QR / How it works */
+    .bottom-row { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-bottom: 8px; }
+    .box { border: 1px solid #ddd; border-radius: 6px; padding: 7px 9px; }
+    .box h3 { font-size: 10.5px; font-weight: 800; color: #1a1a1a; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.03em; }
+    .box ol, .box ul { padding-left: 14px; }
+    .box li { font-size: 9.5px; color: #333; margin-bottom: 2px; }
+    .box li strong { color: #1a1a1a; }
+    .qr-url { font-family: "Courier New", monospace; font-size: 9px; background: #f5f0e5; padding: 2px 5px; border-radius: 3px; color: #b8952e; font-weight: 700; }
+
+    /* Tips */
+    .tips { border: 1.5px solid #b8952e; border-radius: 6px; padding: 7px 9px; background: rgba(184,149,46,0.04); }
+    .tips h3 { font-size: 10.5px; font-weight: 800; color: #b8952e; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.03em; }
+    .tips ul { padding-left: 14px; }
+    .tips li { font-size: 9.5px; color: #333; margin-bottom: 2px; }
+
+    .footer { text-align: center; color: #aaa; font-size: 8px; margin-top: 8px; }
+
+    @media print {
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .page { padding: 0; }
+      .no-print { display: none; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="hdr">
+    <h1>Dram <span>&amp;</span> Draught &mdash; Daily Specials Guide</h1>
+    <p>Staff Training Reference</p>
+  </div>
+
+  <div class="intro">
+    Every day of the week has a unique theme with curated specials. Guests scan a <strong>QR code</strong> on the table tent, menu, or A-frame to see that day's lineup on their phone &mdash; always live, always up to date. <strong>But specials only increase sales if YOU are actively inviting guests in.</strong> Mention upcoming specials to every table: "We have half-price whiskey tomorrow," "Come back Friday for flight night." The QR code is the tool &mdash; <strong>you are the salesperson.</strong>
+  </div>
+
+  <div class="days">
+    <div class="day day-featured">
+      <div class="day-hdr"><span class="day-badge">Mon</span> <span class="day-name">Monday</span></div>
+      <div class="day-theme">Industry Night</div>
+      <ul>
+        <li><strong>For everyone</strong> &mdash; specials we'd enjoy ourselves, especially great for industry folks</li>
+        <li><strong>$8 cocktails:</strong> Daiquiri, Old Fashioned</li>
+        <li><strong>$5 shots:</strong> Fernet/Malort, Snaquiris, Pineapple UpDowns, M&amp;Ms</li>
+        <li><strong>25% off</strong> beer, wine &amp; THC all night</li>
+      </ul>
+      <p class="note">Open to all guests. Make everyone feel like an insider.</p>
+    </div>
+
+    <div class="day">
+      <div class="day-hdr"><span class="day-badge">Tue</span> <span class="day-name">Tuesday</span></div>
+      <div class="day-theme">$9 Classic Cocktails</div>
+      <ul>
+        <li><strong>All classics $9:</strong> Old Fashioned, Negroni, Daiquiri, Manhattan, Mai Tai, and many more</li>
+        <li>Full list organized by spirit (whiskey, gin, rum, tequila, brandy, vodka)</li>
+        <li>Great night to introduce guests to something new at a low-risk price</li>
+      </ul>
+      <p class="note">The QR page shows every classic available. Point guests there when they can't decide.</p>
+    </div>
+
+    <div class="day day-featured">
+      <div class="day-hdr"><span class="day-badge">Wed</span> <span class="day-name">Wednesday</span></div>
+      <div class="day-theme">Whiskey Wednesday</div>
+      <ul>
+        <li><strong>$10 whiskey cocktails:</strong> Old Fashioned, Manhattan, Gold Rush + monthly rotating</li>
+        <li><strong>50% off select whiskey pours</strong> &mdash; curated list per location</li>
+        <li>Guests see the full half-price list with pricing on the QR specials page</li>
+        <li><strong>Show the savings:</strong> Original price struck through, half price highlighted</li>
+      </ul>
+      <p class="note">Guide undecided guests to scan the QR &mdash; the price comparison sells itself.</p>
+    </div>
+
+    <div class="day day-featured">
+      <div class="day-hdr"><span class="day-badge">Thu</span> <span class="day-name">Thursday</span></div>
+      <div class="day-theme">Agave Thursday</div>
+      <ul>
+        <li><strong>$10 agave cocktails:</strong> Margarita, Spicy Margarita, Paloma, Oaxaca Old Fashioned</li>
+        <li><strong>50% off select tequila &amp; mezcal pours</strong></li>
+        <li>Upsell: "Try it with Fortaleza for half off tonight"</li>
+      </ul>
+    </div>
+
+    <div class="day day-featured">
+      <div class="day-hdr"><span class="day-badge">Fri</span> <span class="day-name">Friday</span></div>
+      <div class="day-theme">Flight Night + Features</div>
+      <ul>
+        <li><strong>Monthly whiskey flight</strong> &mdash; 3 curated pours with tasting notes &amp; tasting card</li>
+        <li>Additional flights rotate: cocktail flights, wine flights, and more</li>
+        <li>Special events &amp; featured spirits may also be layered in &mdash; check the page</li>
+        <li>Walk guests through flights &mdash; great conversation starter and easy sell</li>
+      </ul>
+    </div>
+
+    <div class="day">
+      <div class="day-hdr"><span class="day-badge">Sat</span> <span class="day-name">Saturday</span></div>
+      <div class="day-theme">Features &amp; Events</div>
+      <ul>
+        <li>No fixed specials &mdash; full menu available</li>
+        <li>Featured spirits, events, and pop-ups will appear here when scheduled</li>
+        <li>High-traffic night &mdash; know the menu, make personal recommendations</li>
+      </ul>
+    </div>
+
+    <div class="day day-featured day-span">
+      <div class="day-hdr"><span class="day-badge">Sun</span> <span class="day-name">Sunday</span></div>
+      <div class="day-theme">Break Even Bottles</div>
+      <ul>
+        <li><strong>Select bottles sold at cost</strong> &mdash; our gift to our guests</li>
+        <li>1 oz pours so everyone gets a taste &mdash; bottles are managed in the Bartender Dashboard</li>
+        <li>Tasting notes appear automatically on the specials page</li>
+        <li><strong>Know the bottles:</strong> What are they? Where are they from? What do they taste like?</li>
+      </ul>
+      <p class="note">Bottles change weekly. Check the Bartender Dashboard at the start of each Sunday shift.</p>
+    </div>
+  </div>
+
+  <div class="bottom-row">
+    <div class="box">
+      <h3>How the QR Code Works</h3>
+      <ol>
+        <li>Guest scans QR code on table tent, menu, or A-frame</li>
+        <li>Opens the <strong>specials page</strong> for your location</li>
+        <li>Shows <strong>today's specials</strong> automatically (can tap to view other days)</li>
+        <li>Half-price items show original + discounted price</li>
+        <li>Flight details, break-even bottles &mdash; all there</li>
+      </ol>
+      <p style="margin-top:5px; font-size:9px; color:#555">
+        The page updates instantly when admin makes changes &mdash; no app download needed.
+      </p>
+    </div>
+
+    <div class="tips">
+      <h3>The #1 Rule: Invite Them Back</h3>
+      <ul>
+        <li><strong>Every guest should leave knowing about another day's special.</strong> This is what drives repeat visits.</li>
+        <li><strong>Mon/Tue:</strong> "Come back Wednesday &mdash; half-price whiskey, scan the QR to preview the list"</li>
+        <li><strong>Wed:</strong> "If you like tequila, tomorrow is half-price agave night"</li>
+        <li><strong>Thu:</strong> "Friday is flight night &mdash; great way to try something new"</li>
+        <li><strong>Fri/Sat:</strong> "Sunday we sell bottles at cost &mdash; some really special stuff"</li>
+        <li><strong>Sun:</strong> "Monday's industry night &mdash; $8 cocktails, $5 shots, 25% off beer &amp; wine"</li>
+        <li><strong>Half-price nights:</strong> Suggest premium pours &mdash; "$22 pours for $11 is a steal"</li>
+        <li><strong>Check the specials page before every shift.</strong> Know the lineup cold.</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+
+<div class="no-print" style="text-align:center; padding:16px">
+  <button onclick="window.print()" style="background:#b8952e; color:#fff; border:none; padding:12px 32px; border-radius:8px; font-size:14px; font-weight:700; cursor:pointer;">Print / Save as PDF</button>
+</div>
+</body>
+</html>`;
+}
+
+function generateHRTrainingPage() {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bartender Dashboard HR — Manager Training Guide | Dram &amp; Draught</title>
+  <style>
+    @page { size: letter; margin: 0.4in 0.5in; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; color: #1a1a1a; font-size: 11.5px; line-height: 1.5; background: #fff; }
+    .page { max-width: 7.5in; margin: 0 auto; }
+
+    .hdr { text-align: center; padding-bottom: 10px; margin-bottom: 12px; border-bottom: 3px solid #b8952e; }
+    .hdr h1 { font-size: 22px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+    .hdr h1 span { color: #b8952e; }
+    .hdr p { color: #666; font-size: 11px; margin-top: 2px; }
+
+    .callout { background: #faf7f0; border: 1.5px solid #b8952e; border-radius: 5px; padding: 7px 14px; margin-bottom: 12px; text-align: center; }
+    .callout p { font-size: 12px; font-weight: 700; color: #b8952e; }
+
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .span2 { grid-column: span 2; }
+
+    .card { border: 1.5px solid #ddd; border-radius: 6px; padding: 11px 14px; break-inside: avoid; }
+    .card-accent { border-color: #b8952e; background: rgba(184,149,46,0.03); }
+    .card h3 { font-size: 12.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.02em; margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid #e8e0d0; }
+    .card h3 .n { display: inline-flex; align-items: center; justify-content: center; background: #b8952e; color: #fff; width: 19px; height: 19px; border-radius: 50%; font-size: 10px; margin-right: 5px; }
+    .card ol, .card ul { padding-left: 16px; }
+    .card li { font-size: 11px; color: #333; margin-bottom: 3px; }
+    .card li strong { color: #1a1a1a; }
+    .card .hint { font-size: 10px; color: #888; font-style: italic; margin-top: 5px; padding-top: 4px; border-top: 1px dashed #ddd; }
+
+    .doc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; }
+    .doc-item { font-size: 11px; line-height: 1.45; }
+    .doc-item strong { display: block; color: #b8952e; font-size: 10px; text-transform: uppercase; letter-spacing: 0.03em; margin-bottom: 1px; }
+
+    .nt-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; margin-top: 6px; }
+    .nt { background: #f8f5ee; border-radius: 4px; padding: 5px 8px; font-size: 10px; line-height: 1.35; }
+    .nt b { display: block; font-size: 8.5px; text-transform: uppercase; letter-spacing: 0.04em; color: #b8952e; margin-bottom: 1px; }
+
+    .ref-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; }
+    .ref-grid li { font-size: 10.5px; margin-bottom: 2px; }
+
+    @media print {
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .no-print { display: none; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+  <div class="hdr">
+    <h1>Bartender <span>Dashboard</span> &mdash; HR Manager Guide</h1>
+    <p>How to onboard, track, and develop your team &bull; bartender.dramanddraught.com</p>
+  </div>
+
+  <div class="callout">
+    <p>Log in with your manager credentials &bull; All HR tools are under Team in the sidebar</p>
+  </div>
+
+  <div class="grid">
+
+    <div class="card card-accent">
+      <h3><span class="n">1</span> Sending an Employee Invite</h3>
+      <ol>
+        <li>Go to <strong>Team &rarr; Invites</strong>, click <strong>Send Invite</strong></li>
+        <li>Enter name, email, role, and location</li>
+        <li>System loads a <strong>default welcome template</strong></li>
+        <li><strong>Review &amp; edit before sending</strong> &mdash; add start date, who to ask for, parking, dress code, anything specific</li>
+        <li>New hire receives email with <strong>registration link</strong></li>
+      </ol>
+      <p class="hint">Track status: Pending &rarr; Sent &rarr; Viewed &rarr; Completed. Resend if needed.</p>
+    </div>
+
+    <div class="card card-accent">
+      <h3><span class="n">2</span> Onboarding &amp; First Steps</h3>
+      <ol>
+        <li>New hire registers &rarr; appears in <strong>Team &rarr; Onboarding</strong></li>
+        <li>System assigns <strong>onboarding checklist</strong> with tasks &amp; due dates</li>
+        <li>Employee sees their checklist in <strong>My HR Portal</strong></li>
+        <li><strong>Monitor progress</strong> &mdash; completion % shown per hire</li>
+        <li>Follow up on overdue items &mdash; don't let new hires fall behind</li>
+      </ol>
+      <p class="hint">Key items: handbook sign-off, documents (2 forms of ID or passport), emergency contact, training plan, Sling, Toast access, confirm clock-in.</p>
+    </div>
+
+    <div class="card span2 card-accent">
+      <h3><span class="n">3</span> HR Notes &amp; Documentation &mdash; The Most Important Habit</h3>
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items:start;">
+        <div>
+          <ul>
+            <li>Every employee profile has a <strong>Notes</strong> section &mdash; <strong>use it constantly</strong></li>
+            <li><strong>This is your paper trail.</strong> If it's not written down, it didn't happen</li>
+            <li>Notes are timestamped, tied to your name, and permanent</li>
+            <li>Pin critical notes to top &bull; Mark notes <strong>private</strong> (managers only)</li>
+          </ul>
+          <div class="nt-grid">
+            <div class="nt"><b>Recognition</b> Great shift, guest compliment, above &amp; beyond</div>
+            <div class="nt"><b>Coaching</b> Skill feedback, technique, growth areas</div>
+            <div class="nt"><b>Concern</b> Late, called out, sidework missed, policy issue</div>
+            <div class="nt"><b>Performance</b> Consistency, speed, upsells, compliments</div>
+            <div class="nt"><b>Meeting</b> 1-on-1 recap, review follow-up, goal check-in</div>
+            <div class="nt"><b>General</b> Availability, preferences, circumstances</div>
+          </div>
+        </div>
+        <div>
+          <div class="doc-grid" style="grid-template-columns:1fr; gap:6px;">
+            <div class="doc-item"><strong>Something great?</strong> Write a Recognition note now. People repeat what gets noticed. Builds the case for promotions and raises.</div>
+            <div class="doc-item"><strong>Late?</strong> Log as Concern with date, how late, whether they communicated. Patterns = documented patterns you can act on.</div>
+            <div class="doc-item"><strong>Called out?</strong> Did they follow call-out policy? Who did they contact? Track frequency.</div>
+            <div class="doc-item"><strong>Sidework not done?</strong> Be specific: what wasn't done, was it discussed? "Didn't restock well 3" &gt; "lazy."</div>
+            <div class="doc-item"><strong>Coaching conversation?</strong> Document what was discussed and agreed on. If it escalates, you need the trail.</div>
+            <div class="doc-item"><strong>Guest feedback?</strong> Complaints and compliments both matter at review time.</div>
+          </div>
+          <p class="hint" style="margin-top:6px;">If you'd reference it at a review, promotion, or termination &mdash; write it down now.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3><span class="n">4</span> Performance Reviews</h3>
+      <ul>
+        <li>Scheduled automatically: <strong>30-day, 90-day, quarterly, annual</strong></li>
+        <li>Dashboard flags <strong>overdue reviews</strong> &mdash; don't ignore them</li>
+        <li>Captures: strengths, areas to improve, rating, <strong>action items with due dates</strong></li>
+        <li>Employee can see their review and comment</li>
+        <li><strong>HR notes feed into reviews</strong> &mdash; no scrambling to remember</li>
+      </ul>
+      <p class="hint">6 months of notes = 10 min review. No notes = an hour of guessing.</p>
+    </div>
+
+    <div class="card">
+      <h3><span class="n">5</span> Training Plans (Current Process)</h3>
+      <ul>
+        <li>Each new hire gets a <strong>written training plan</strong> from their manager</li>
+        <li>This is a <strong>separate document</strong> &mdash; fill it out, hand it to them</li>
+        <li><strong>Email a copy to Lentz, Carrie, and Katy</strong> so leadership can track</li>
+        <li>Plans must be <strong>specific to the employee</strong> &mdash; not a generic checklist</li>
+        <li>Automated training tracking coming to the dashboard &mdash; for now: paper + email</li>
+      </ul>
+    </div>
+
+    <div class="card span2 card-accent" style="padding: 9px 14px;">
+      <h3 style="margin-bottom:4px; padding-bottom:3px;">Quick Reference</h3>
+      <div class="ref-grid">
+        <ul>
+          <li><strong>Send invite:</strong> Team &rarr; Invites &rarr; Send Invite</li>
+          <li><strong>Track onboarding:</strong> Team &rarr; Onboarding</li>
+          <li><strong>View/edit employee:</strong> Team &rarr; click name</li>
+          <li><strong>Add HR note:</strong> Employee profile &rarr; Notes tab</li>
+        </ul>
+        <ul>
+          <li><strong>Performance reviews:</strong> Employee profile &rarr; Reviews tab</li>
+          <li><strong>Training plans:</strong> Fill out, hand out, email Lentz/Carrie/Katy</li>
+          <li><strong>HR reports:</strong> Team &rarr; Reports</li>
+          <li><strong>Handbook:</strong> Team &rarr; Handbook</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="no-print" style="text-align:center; padding:16px">
+  <button onclick="window.print()" style="background:#b8952e; color:#fff; border:none; padding:12px 32px; border-radius:8px; font-size:14px; font-weight:700; cursor:pointer;">Print / Save as PDF</button>
+  <a href="/training" style="display:inline-block; margin-left:12px; color:#b8952e; font-size:14px; font-weight:600; text-decoration:none;">Specials Training Guide &rarr;</a>
+</div>
+</body>
+</html>`;
 }
 
 async function handleDraft(req, res, prisma, locationSlug) {
@@ -508,6 +903,16 @@ async function handlePublic(req, res, pathname, prisma) {
     return handleFeedback(req, res, prisma);
   }
 
+  // Staff training pages (printable)
+  if (pathname === '/training') {
+    sendHTML(res, 200, generateTrainingPage());
+    return true;
+  }
+  if (pathname === '/training/hr') {
+    sendHTML(res, 200, generateHRTrainingPage());
+    return true;
+  }
+
   // Homepage
   if (pathname === '/') {
     const locs = await getLocations(prisma);
@@ -522,11 +927,6 @@ async function handlePublic(req, res, pathname, prisma) {
     const parsedUrl = url.parse(req.url, true);
     const locs = await getLocations(prisma);
     const location = locs.find((l) => l.slug === slug);
-    const resolvedLocation = maybeResolveLocationByGoogleIdentity(locs, slug);
-    if (resolvedLocation && resolvedLocation.slug !== slug) {
-      redirect(res, `/${resolvedLocation.slug}/specials${parsedUrl.search || ''}`);
-      return true;
-    }
     if (!location) {
       sendHTML(res, 404, '<h1>Location not found</h1><p><a href="/">Back to locations</a></p>');
       return true;
@@ -539,12 +939,6 @@ async function handlePublic(req, res, pathname, prisma) {
   const draftMatch = pathname.match(/^\/([a-z0-9-]+)\/draft$/);
   if (draftMatch) {
     const slug = draftMatch[1];
-    const locs = await getLocations(prisma);
-    const resolvedLocation = maybeResolveLocationByGoogleIdentity(locs, slug);
-    if (resolvedLocation && resolvedLocation.slug !== slug) {
-      redirect(res, `/${resolvedLocation.slug}/draft`);
-      return true;
-    }
     return handleDraft(req, res, prisma, slug);
   }
 
@@ -552,12 +946,6 @@ async function handlePublic(req, res, pathname, prisma) {
   const menuMatch = pathname.match(/^\/([a-z0-9-]+)\/menu$/);
   if (menuMatch) {
     const slug = menuMatch[1];
-    const locs = await getLocations(prisma);
-    const resolvedLocation = maybeResolveLocationByGoogleIdentity(locs, slug);
-    if (resolvedLocation && resolvedLocation.slug !== slug) {
-      redirect(res, `/${resolvedLocation.slug}/menu`);
-      return true;
-    }
     return handleMenu(req, res, prisma, slug);
   }
 
@@ -567,12 +955,6 @@ async function handlePublic(req, res, pathname, prisma) {
     if (slug.includes('/')) return false;
 
     const locs = await getLocations(prisma);
-    const resolvedLocation = maybeResolveLocationByGoogleIdentity(locs, slug);
-    if (resolvedLocation && resolvedLocation.slug !== slug) {
-      redirect(res, `/${resolvedLocation.slug}`);
-      return true;
-    }
-
     const location = locs.find((l) => l.slug === slug);
     if (location) {
       sendHTML(res, 200, generateLocationPage(location, locs));

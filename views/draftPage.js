@@ -1,4 +1,5 @@
 const { getOpenState } = require('../helpers');
+const { vintageThemeCss } = require('./publicTheme');
 
 function escHTML(str) {
   return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -84,33 +85,10 @@ function generateDraftPage(location, taps = [], hasError = false) {
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <meta name="theme-color" content="#8b5230">
         <title>On Draft - Dram & Draught ${escHTML(location.name)}</title>
         <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        :root {
-          --bg-a: #09090c;
-          --bg-b: #19151d;
-          --panel: #17141c;
-          --line: rgba(216, 174, 73, 0.25);
-          --text: #efe7d4;
-          --muted: #b0a99c;
-          --gold: #d9b25f;
-          --amber: #b97c3d;
-        }
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(8px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        body {
-          font-family: "Palatino Linotype", "Bodoni MT", "Trebuchet MS", Georgia, serif;
-          color: var(--text);
-          background:
-            radial-gradient(1100px 520px at 15% -8%, rgba(216, 174, 73, 0.2), transparent 60%),
-            radial-gradient(900px 520px at 100% 0%, rgba(185, 124, 61, 0.2), transparent 56%),
-            linear-gradient(180deg, var(--bg-a), #09090c 42%, #080808 100%);
-          min-height: 100vh;
-          animation: fadeIn .45s ease-out;
-        }
+        ${vintageThemeCss()}
         .header {
           text-align: center;
           padding: 30px 20px 0;
@@ -118,16 +96,16 @@ function generateDraftPage(location, taps = [], hasError = false) {
         .brand {
           font-size: clamp(1.7rem, 7vw, 2.2rem);
           font-weight: 800;
-          letter-spacing: 0.09em;
+          letter-spacing: 0.12em;
           text-transform: uppercase;
-          background: linear-gradient(135deg, #f3d7a5, var(--gold), var(--amber));
+          background: linear-gradient(180deg, #f7ead0, #d3ac6d 68%, #9f663d 100%);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
         }
         .location-name {
           color: var(--muted);
           text-transform: uppercase;
-          letter-spacing: 0.1em;
+          letter-spacing: 0.16em;
           margin-top: 6px;
           font-size: 0.9rem;
         }
@@ -135,38 +113,41 @@ function generateDraftPage(location, taps = [], hasError = false) {
           margin: 14px auto 0;
           max-width: 680px;
           border: 1px solid var(--line);
-          border-radius: 18px;
+          border-radius: 12px;
           padding: 16px 14px 14px;
           text-align: center;
-          background: linear-gradient(170deg, rgba(23, 20, 28, 0.95), rgba(12, 11, 12, 0.9));
-          box-shadow: 0 14px 34px rgba(0, 0, 0, 0.5);
+          background: linear-gradient(180deg, rgba(44, 29, 20, 0.95), rgba(22, 14, 10, 0.98));
+          box-shadow: 0 14px 30px rgba(0, 0, 0, 0.3), inset 0 0 0 1px rgba(255,255,255,0.03);
         }
         .page-title {
           font-size: 1.6rem;
           font-weight: 800;
-          color: #fff;
+          color: var(--cream);
         }
         .page-subtitle {
-          color: #d9b25f;
+          color: var(--gold);
           font-size: 0.9rem;
           margin-top: 2px;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
         }
         .status-line {
           display: inline-flex;
           align-items: center;
           gap: 8px;
           margin-top: 10px;
-          border: 1px solid #2a2a2c;
-          border-radius: 999px;
+          border: 1px solid rgba(245, 232, 204, 0.14);
+          border-radius: 8px;
           padding: 6px 12px;
           font-size: 0.78rem;
           text-transform: uppercase;
           font-weight: 700;
-          letter-spacing: 0.04em;
+          letter-spacing: 0.08em;
+          background: rgba(34, 24, 17, 0.45);
         }
-        .status-open { color: #22c55e; border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.11); }
-        .status-closed { color: #f59e0b; border-color: rgba(245,158,11,0.4); background: rgba(245,158,11,0.11); }
-        .status-unknown { color: #9ca3af; border-color: rgba(156,163,175,0.4); background: rgba(156,163,175,0.11); }
+        .status-open { color: #b9d3a6; border-color: rgba(115, 140, 95, 0.45); background: rgba(70,81,60,0.2); }
+        .status-closed { color: #e2bd74; border-color: rgba(198,155,84,0.36); background: rgba(198,155,84,0.12); }
+        .status-unknown { color: #cbc1af; border-color: rgba(205,182,147,0.24); background: rgba(205,182,147,0.08); }
         .container {
           max-width: 680px;
           margin: 0 auto;
@@ -187,14 +168,14 @@ function generateDraftPage(location, taps = [], hasError = false) {
           font-size: 1.05rem;
           color: var(--gold);
           font-weight: 800;
-          letter-spacing: 0.02em;
+          letter-spacing: 0.08em;
           text-transform: uppercase;
         }
         .section-count {
           color: var(--muted);
           font-size: 0.76rem;
           border: 1px solid rgba(255,255,255,0.12);
-          border-radius: 999px;
+          border-radius: 8px;
           padding: 3px 10px;
           font-weight: 600;
         }
@@ -203,21 +184,21 @@ function generateDraftPage(location, taps = [], hasError = false) {
           grid-template-columns: auto 1fr auto;
           gap: 12px 14px;
           align-items: center;
-          background: var(--panel);
-          border: 1px solid #2a262d;
-          border-radius: 12px;
+          background: linear-gradient(180deg, rgba(44, 29, 20, 0.94), rgba(26, 18, 12, 0.98));
+          border: 1px solid var(--line);
+          border-radius: 10px;
           padding: 14px;
           margin-bottom: 10px;
           transition: transform 0.18s ease, border-color 0.18s ease;
-          box-shadow: 0 10px 24px rgba(0,0,0,0.25);
+          box-shadow: 0 10px 24px rgba(0,0,0,0.24), inset 0 0 0 1px rgba(255,255,255,0.03);
         }
-        .tap-card:hover { transform: translateY(-1px); border-color: rgba(216,174,73,0.32); }
+        .tap-card:hover { transform: translateY(-1px); border-color: rgba(245,232,204,0.24); }
         .tap-card.empty { opacity: 0.6; }
         .tap-number {
           width: 34px;
           height: 34px;
-          background: linear-gradient(135deg, var(--gold), var(--amber));
-          color: #14110d;
+          background: linear-gradient(180deg, #cfaa66, #8f5a35);
+          color: var(--ink);
           border-radius: 50%;
           display: flex;
           align-items: center;
@@ -227,7 +208,7 @@ function generateDraftPage(location, taps = [], hasError = false) {
           flex-shrink: 0;
         }
         .tap-info { min-width: 0; }
-        .tap-name { font-weight: 800; color: #fff; font-size: 1rem; }
+        .tap-name { font-weight: 800; color: var(--cream); font-size: 1rem; }
         .tap-name.muted { color: #777; font-style: italic; }
         .tap-line-name { color: #8d8578; font-size: 0.8rem; margin-top: 2px; }
         .tap-brewery { color: #d7bc75; font-size: 0.86rem; margin-top: 2px; }
@@ -238,7 +219,7 @@ function generateDraftPage(location, taps = [], hasError = false) {
           flex-wrap: wrap;
           margin-top: 5px;
         }
-        .tap-style { color: #a7a093; font-size: 0.82rem; }
+        .tap-style { color: #b7a890; font-size: 0.82rem; }
         .abv-badge, .ibu-badge {
           display: inline-block;
           background: rgba(216,174,73,0.15);
@@ -271,20 +252,20 @@ function generateDraftPage(location, taps = [], hasError = false) {
         }
         .empty-card {
           text-align: center;
-          background: var(--panel);
-          border: 1px solid #2a262d;
-          border-radius: 14px;
+          background: linear-gradient(180deg, rgba(44, 29, 20, 0.95), rgba(22, 14, 10, 0.98));
+          border: 1px solid var(--line);
+          border-radius: 10px;
           padding: 32px 20px;
           box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
         }
-        .empty-card p { color: #a39887; line-height: 1.5; }
+        .empty-card p { color: var(--muted); line-height: 1.5; }
         .warning-card {
           text-align: center;
-          background: rgba(234, 179, 8, 0.09);
-          border: 1px solid rgba(234,179,8,0.24);
-          border-radius: 14px;
+          background: rgba(198,155,84,0.09);
+          border: 1px solid rgba(198,155,84,0.24);
+          border-radius: 10px;
           padding: 16px;
-          color: #f2d06b;
+          color: #ead7aa;
           margin-bottom: 10px;
           box-shadow: 0 8px 24px rgba(0,0,0,0.2);
         }
@@ -292,13 +273,16 @@ function generateDraftPage(location, taps = [], hasError = false) {
         .spirit-link, .spirit-cta {
           display: inline-block;
           margin-top: 16px;
-          color: #14110d;
-          background: linear-gradient(135deg, var(--gold), var(--amber));
+          color: var(--ink);
+          background: linear-gradient(180deg, #cfaa66, #8f5a35);
           padding: 10px 22px;
-          border-radius: 10px;
+          border-radius: 8px;
           text-decoration: none;
           font-weight: 700;
           font-size: 0.9rem;
+          border: 1px solid rgba(29, 18, 12, 0.55);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
         }
         .spirit-link:hover, .spirit-cta:hover { filter: brightness(1.05); }
         .spirit-cta {
@@ -307,8 +291,7 @@ function generateDraftPage(location, taps = [], hasError = false) {
           text-align: center;
           padding: 13px 20px;
           font-size: 0.95rem;
-          letter-spacing: 0.02em;
-          border: 1px solid rgba(255,255,255,0.2);
+          letter-spacing: 0.05em;
         }
         .footer {
           text-align: center;
@@ -316,10 +299,12 @@ function generateDraftPage(location, taps = [], hasError = false) {
         }
         .back-link {
           display: inline-block;
-          color: #938a7b;
+          color: var(--muted);
           text-decoration: none;
           font-size: 0.9rem;
           font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
         }
         .back-link:hover { color: var(--gold); }
       </style>

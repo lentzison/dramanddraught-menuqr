@@ -1,6 +1,7 @@
 const { getLinkButtons, getOpenState } = require('../helpers');
+const { vintageThemeCss } = require('./publicTheme');
 
-function generateLocationPage(location) {
+function generateLocationPage(location, allLocations = []) {
   const quickLinks = [
     { label: "Today's Specials", url: `/${location.slug}/specials` },
     { label: 'On Draft', url: `/${location.slug}/draft` },
@@ -10,12 +11,37 @@ function generateLocationPage(location) {
     arr.findIndex((entry) => entry.url === link.url && entry.label === link.label) === index
   );
   const reviewEmail = String(location.email || 'cheers@dramanddraught.com').trim();
+  const nearbyLocationCandidates = Array.isArray(allLocations)
+    ? allLocations
+      .map((loc) => {
+        if (!loc || String(loc.slug || '').trim() === String(location.slug || '').trim()) return null;
+        const lat = Number(loc.googleCoordinates && loc.googleCoordinates.lat);
+        const lng = Number(loc.googleCoordinates && loc.googleCoordinates.lng);
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+        return {
+          slug: String(loc.slug || '').trim(),
+          name: String(loc.name || '').trim(),
+          lat,
+          lng,
+        };
+      })
+      .filter(Boolean)
+    : [];
+
   const reviewConfig = {
     locationName: location.name || 'Dram & Draught',
     locationEmail: reviewEmail || 'cheers@dramanddraught.com',
     googleReviewUrl: String(location.googleReviewUrl || '').trim(),
     feedbackEndpoint: '/api/feedback',
     locationSlug: location.slug || '',
+    locationResolution: {
+      enabled: String(location.slug || '').toLowerCase() === 'durham' && nearbyLocationCandidates.some(c => c.slug === 'winston-salem'),
+      currentSlug: String(location.slug || '').trim(),
+      maxDistanceMiles: 15,
+      candidates: String(location.slug || '').toLowerCase() === 'durham'
+        ? nearbyLocationCandidates.filter(c => c.slug === 'winston-salem')
+        : [],
+    },
   };
 
   const openState = getOpenState(location);
@@ -27,47 +53,24 @@ function generateLocationPage(location) {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <meta name="theme-color" content="#d4af37">
+      <meta name="theme-color" content="#8b5230">
       <title>Dram & Draught ${location.name} - Whiskey Bar & Cocktails</title>
       <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        :root {
-          --bg-a: #09090c;
-          --bg-b: #19151d;
-          --panel: #16131a;
-          --line: rgba(216, 174, 73, 0.25);
-          --text: #efe7d4;
-          --muted: #b0a99c;
-          --gold: #d9b25f;
-          --amber: #b97c3d;
-        }
-        body {
-          font-family: "Palatino Linotype", "Bodoni MT", "Trebuchet MS", Georgia, serif;
-          background:
-            radial-gradient(1200px 620px at 15% -8%, rgba(216, 174, 73, 0.2), transparent 60%),
-            radial-gradient(1000px 520px at 100% 0%, rgba(185, 124, 61, 0.24), transparent 55%),
-            linear-gradient(180deg, var(--bg-a) 0%, #0a0a0b 44%, #080809 100%);
-          color: var(--text);
-          min-height: 100vh;
-          animation: fadeIn 0.45s ease-out;
-        }
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(8px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
+        ${vintageThemeCss()}
         .hero {
           position: relative;
           overflow: hidden;
           padding: 32px 18px 30px;
           text-align: center;
-          border-radius: 0 0 30px 30px;
+          border-radius: 0 0 24px 24px;
           border: 1px solid var(--line);
           border-top: 0;
           margin: 0 auto;
-          max-width: 900px;
+          max-width: 920px;
           background:
-            linear-gradient(170deg, rgba(22, 20, 24, 0.94), rgba(12, 11, 12, 0.9));
-          box-shadow: 0 16px 60px rgba(0,0,0,0.55);
+            linear-gradient(180deg, rgba(64, 42, 28, 0.97), rgba(29, 19, 13, 0.98)),
+            radial-gradient(circle at top, rgba(198, 155, 84, 0.12), transparent 42%);
+          box-shadow: 0 18px 54px var(--shadow), inset 0 0 0 1px rgba(255,255,255,0.04);
           min-height: 360px;
         }
         .hero::before {
@@ -75,14 +78,9 @@ function generateLocationPage(location) {
           position: absolute;
           inset: 0;
           background:
-            repeating-linear-gradient(
-              130deg,
-              rgba(255,255,255,0.05),
-              rgba(255,255,255,0.05) 1px,
-              transparent 1px,
-              transparent 6px
-            );
-          opacity: 0.2;
+            repeating-linear-gradient(90deg, rgba(255,255,255,0.03), rgba(255,255,255,0.03) 1px, transparent 1px, transparent 8px),
+            repeating-linear-gradient(0deg, rgba(0,0,0,0.06), rgba(0,0,0,0.06) 1px, transparent 1px, transparent 10px);
+          opacity: 0.28;
           pointer-events: none;
         }
         .hero::after {
@@ -90,43 +88,41 @@ function generateLocationPage(location) {
           position: absolute;
           inset: 0;
           background:
-            radial-gradient(520px 220px at 70% 12%, rgba(255,255,255,0.06), transparent 45%),
-            radial-gradient(430px 180px at 18% 74%, rgba(216, 174, 73, 0.12), transparent 50%);
+            radial-gradient(520px 220px at 70% 12%, rgba(255,244,219,0.08), transparent 45%),
+            radial-gradient(430px 180px at 18% 74%, rgba(70,81,60,0.12), transparent 50%);
           pointer-events: none;
-          mix-blend-mode: screen;
-          opacity: 0.7;
+          opacity: 0.9;
         }
         .hero h1 {
           position: relative;
-          color: #fff;
           font-size: clamp(2.1rem, 9vw, 3.4rem);
-          letter-spacing: 0.06em;
+          letter-spacing: 0.1em;
           margin-bottom: 10px;
-          background: linear-gradient(135deg, #f3d7a5, var(--gold), var(--amber));
+          background: linear-gradient(180deg, #f7ead0, #d3ac6d 68%, #9f663d 100%);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           text-transform: uppercase;
         }
         .hero-title { position: relative; }
-        .hero-subtitle { position: relative; font-size: clamp(1.1rem, 4vw, 1.55rem); color: #f8efe2; text-transform: uppercase; letter-spacing: 0.13em; font-weight: 700; }
+        .hero-subtitle { position: relative; font-size: clamp(1.08rem, 4vw, 1.45rem); color: var(--cream); text-transform: uppercase; letter-spacing: 0.18em; font-weight: 700; }
         .divider { position: relative; width: 160px; height: 2px; margin: 14px auto; background: linear-gradient(90deg, transparent, var(--gold), transparent); opacity: 0.9; border-radius: 2px; }
         .badge {
           display: inline-block;
-          color: var(--gold);
+          color: var(--cream);
           border: 1px solid var(--line);
-          padding: 6px 14px;
-          border-radius: 999px;
-          letter-spacing: 0.14em;
+          padding: 7px 14px;
+          border-radius: 6px;
+          letter-spacing: 0.16em;
           font-weight: 700;
-          font-size: 0.74rem;
+          font-size: 0.72rem;
           text-transform: uppercase;
-          background: rgba(214, 175, 71, 0.08);
+          background: linear-gradient(180deg, rgba(70,81,60,0.34), rgba(30,22,15,0.2));
           margin: 4px auto 10px;
           display: inline-flex;
           align-items: center;
           justify-content: center;
           gap: 8px;
-          text-transform: none;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
         }
         .container { position: relative; max-width: 720px; margin: 0 auto; padding: 28px 22px 30px; }
         .status-line {
@@ -134,18 +130,19 @@ function generateLocationPage(location) {
           align-items: center;
           gap: 8px;
           margin-top: 12px;
-          border: 1px solid #2a2a2c;
-          border-radius: 999px;
+          border: 1px solid rgba(245, 232, 204, 0.14);
+          border-radius: 8px;
           padding: 7px 14px;
           font-size: 0.84rem;
           font-weight: 700;
-          letter-spacing: 0.05em;
+          letter-spacing: 0.08em;
           text-transform: uppercase;
-          box-shadow: inset 0 0 0 1px rgba(255,255,255,0.05);
+          box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
+          background: rgba(34, 24, 17, 0.45);
         }
-        .status-open { color: #22c55e; border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.11); }
-        .status-closed { color: #f59e0b; border-color: rgba(245,158,11,0.4); background: rgba(245,158,11,0.11); }
-        .status-unknown { color: #9ca3af; border-color: rgba(156,163,175,0.4); background: rgba(156,163,175,0.11); }
+        .status-open { color: #b9d3a6; border-color: rgba(115, 140, 95, 0.45); background: rgba(70,81,60,0.2); }
+        .status-closed { color: #e2bd74; border-color: rgba(198,155,84,0.36); background: rgba(198,155,84,0.12); }
+        .status-unknown { color: #cbc1af; border-color: rgba(205,182,147,0.24); background: rgba(205,182,147,0.08); }
         .rl-desc {
           color: var(--muted);
           max-width: 780px;
@@ -153,18 +150,18 @@ function generateLocationPage(location) {
           line-height: 1.65;
         }
         .rl-card {
-          background: var(--panel);
+          background: linear-gradient(180deg, rgba(56, 38, 25, 0.88), rgba(30, 20, 14, 0.9));
           border: 1px solid var(--line);
-          border-radius: 14px;
-          padding: 18px 16px;
+          border-radius: 12px;
+          padding: 18px 18px 16px;
           max-width: 780px;
           margin: 14px auto 0;
-          color: #d7d3c9;
+          color: #e3d2b3;
           line-height: 1.65;
-          box-shadow: 0 12px 30px rgba(0,0,0,0.4);
+          box-shadow: 0 12px 30px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(255,255,255,0.03);
         }
         .rl-card p { margin: 0.45rem 0; }
-        .rl-strong { color: #e2c884; font-weight: 800; }
+        .rl-strong { color: var(--gold); font-weight: 800; }
         .linktree { max-width: 680px; margin: 0 auto; padding-top: 10px; }
         .link-btn {
           display: flex;
@@ -173,25 +170,27 @@ function generateLocationPage(location) {
           gap: 12px;
           text-decoration: none;
           text-align: center;
-          color: #19150c;
-          background: linear-gradient(135deg,#d9b25f,#bb7e41 70%, #9e5f31);
+          color: var(--ink);
+          background: linear-gradient(180deg, #cfaa66, #8f5a35);
           padding: 16px 22px;
-          border-radius: 14px;
+          border-radius: 10px;
           font-weight: 800;
           margin: 12px 0;
-          box-shadow: 0 10px 24px rgba(0,0,0,0.45);
+          box-shadow: inset 0 1px 0 rgba(255, 245, 220, 0.28), 0 12px 24px rgba(0,0,0,0.32);
           transition: transform .2s ease, filter .2s ease, box-shadow .2s ease;
           min-height: 56px;
-          border: 1px solid rgba(255,255,255,0.14);
+          border: 1px solid rgba(29, 18, 12, 0.55);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
         }
         .link-btn:hover { transform: translateY(-2px) scale(1.01); filter: saturate(1.08); box-shadow: 0 12px 28px rgba(0,0,0,0.6); }
         .link-btn:focus-visible { outline: 2px solid #f8e7a8; outline-offset: 2px; }
         .chip {
-          background: rgba(26, 27, 32, 0.75);
-          color: #d5d2c4;
+          background: rgba(70,81,60,0.22);
+          color: #dfd0b3;
           border: 1px solid var(--line);
           padding: 6px 11px;
-          border-radius: 999px;
+          border-radius: 8px;
           font-size: .85rem;
         }
         .chip a { color: inherit; text-decoration: none; }
@@ -203,20 +202,21 @@ function generateLocationPage(location) {
           max-width: 680px;
           margin: 20px auto 2px;
           border: 1px solid var(--line);
-          border-radius: 16px;
-          background: rgba(12, 11, 12, 0.85);
+          border-radius: 12px;
+          background: linear-gradient(180deg, rgba(44, 29, 20, 0.95), rgba(22, 14, 10, 0.98));
           padding: 18px 16px 16px;
           text-align: center;
+          box-shadow: 0 14px 28px rgba(0,0,0,0.28), inset 0 0 0 1px rgba(255,255,255,0.03);
         }
         .review-cta h3 {
-          color: #eed6a3;
-          letter-spacing: 0.08em;
+          color: var(--gold);
+          letter-spacing: 0.12em;
           text-transform: uppercase;
           margin-bottom: 8px;
           font-size: 0.92rem;
         }
         .review-copy {
-          color: #b0a99c;
+          color: var(--muted);
           margin-bottom: 12px;
           line-height: 1.4;
           font-size: 0.93rem;
@@ -253,31 +253,35 @@ function generateLocationPage(location) {
         .feedback-form textarea,
         .feedback-form button {
           width: 100%;
-          border-radius: 10px;
-          border: 1px solid #2f2d30;
+          border-radius: 8px;
+          border: 1px solid rgba(245, 232, 204, 0.14);
           font-family: inherit;
           font-size: 0.95rem;
           box-sizing: border-box;
         }
         .feedback-form input,
         .feedback-form textarea {
-          background: #101014;
-          color: #e8dfcd;
+          background: rgba(255, 243, 217, 0.06);
+          color: var(--cream);
           padding: 10px 12px;
           margin-bottom: 8px;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
         }
         .feedback-form textarea {
           min-height: 120px;
           resize: vertical;
         }
         .feedback-form button {
-          background: linear-gradient(135deg,#d9b25f,#bb7e41 70%, #9e5f31);
-          color: #19150c;
-          border: 1px solid rgba(255,255,255,0.14);
+          background: linear-gradient(180deg, #cfaa66, #8f5a35);
+          color: var(--ink);
+          border: 1px solid rgba(29, 18, 12, 0.55);
           padding: 12px;
           font-weight: 800;
           min-height: 48px;
           cursor: pointer;
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          box-shadow: inset 0 1px 0 rgba(255, 245, 220, 0.28), 0 10px 18px rgba(0,0,0,0.24);
         }
         .feedback-form button:disabled {
           opacity: 0.65;
@@ -286,9 +290,9 @@ function generateLocationPage(location) {
         .feedback-form label {
           display: block;
           text-align: left;
-          color: #d0c5b2;
+          color: #ddcaae;
           font-size: 0.84rem;
-          letter-spacing: 0.05em;
+          letter-spacing: 0.08em;
           margin: 0 0 6px;
           text-transform: uppercase;
         }
@@ -302,7 +306,7 @@ function generateLocationPage(location) {
           appearance: none;
           border: 0;
           background: transparent;
-          color: #4f4a3f;
+          color: #6f5d46;
           font-size: 2rem;
           cursor: pointer;
           line-height: 1;
@@ -317,7 +321,7 @@ function generateLocationPage(location) {
           color: #d9b25f;
         }
         .review-hint {
-          color: #9d9485;
+          color: var(--muted);
           font-size: 0.9rem;
           min-height: 1.4rem;
         }
@@ -342,7 +346,7 @@ function generateLocationPage(location) {
         </div>
         `}
         <div class="rl-card">
-          <p>Our first home was a converted service station, back when a sign for "Registered Lubrication" actually meant you could count on getting quality fluids. We liked the idea, so we kept the name. Only now, instead of motor oil, it's bourbon in your Old Fashioned and cocktails built to keep the night running smooth.</p>
+          <p>Our first location was in an old gas station. Back then, a sign for "Registered Lubrication" meant you could count on quality products and good service. We liked that idea, so we kept the phrase. These days, it means great cocktails, whiskey how you like it, and service that knows how to take care of people.</p>
           <p class="rl-strong">Same promise of quality, just more fun.</p>
         </div>
       </div>
@@ -382,6 +386,7 @@ function generateLocationPage(location) {
       <script>
         (function() {
           const config = ${JSON.stringify(reviewConfig)};
+          const locationResolution = config.locationResolution || {};
           const stars = Array.from(document.querySelectorAll('.review-star'));
           const hint = document.getElementById('review-hint');
           const feedbackForm = document.getElementById('feedback-form');
@@ -391,7 +396,89 @@ function generateLocationPage(location) {
           const feedbackNewsletterInput = document.getElementById('feedback-newsletter-optin');
           const feedbackRatingInput = document.getElementById('feedback-rating');
           const feedbackSubmitButton = document.getElementById('feedback-submit');
+
+          function milesBetween(lat1, lng1, lat2, lng2) {
+            const radius = 3958.8;
+            const dLat = ((lat2 - lat1) * Math.PI) / 180;
+            const dLng = ((lng2 - lng1) * Math.PI) / 180;
+            const lat1Rad = (lat1 * Math.PI) / 180;
+            const lat2Rad = (lat2 * Math.PI) / 180;
+            const a =
+              Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos(lat1Rad) * Math.cos(lat2Rad) * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return radius * c;
+          }
+
+          function getStorageValue(key, fallback) {
+            try {
+              const value = window.localStorage.getItem(key);
+              return value == null ? fallback : value;
+            } catch {
+              return fallback;
+            }
+          }
+
+          function setStorageValue(key, value) {
+            try {
+              window.localStorage.setItem(key, value);
+            } catch {
+              // ignore
+            }
+          }
+
+          function tryResolveNearbyLocation() {
+            if (!locationResolution || locationResolution.enabled === false) return;
+            if (!navigator.geolocation) return;
+            const candidates = Array.isArray(locationResolution.candidates) ? locationResolution.candidates : [];
+            if (candidates.length === 0) return;
+            const currentSlug = String(locationResolution.currentSlug || '').toLowerCase();
+            if (!currentSlug) return;
+            const maxDistance = Number(locationResolution.maxDistanceMiles);
+            if (!Number.isFinite(maxDistance) || maxDistance <= 0) return;
+            const skip = /([?&])skipLocationRedirect=1(&|$)/.test(window.location.search);
+            if (skip) return;
+            const storageKey = 'dd_location_redirect_' + currentSlug;
+            const now = Date.now();
+            const last = Number(getStorageValue(storageKey, '0'));
+            if (Number.isFinite(last) && last > now - (1000 * 60 * 60 * 6)) return;
+
+            navigator.geolocation.getCurrentPosition(
+              (position) => {
+                const coords = position && position.coords ? position.coords : null;
+                if (!coords) return;
+                const userLat = Number(coords.latitude);
+                const userLng = Number(coords.longitude);
+                if (!Number.isFinite(userLat) || !Number.isFinite(userLng)) return;
+
+                let nearest = null;
+                for (const candidate of candidates) {
+                  if (!candidate || !candidate.slug) continue;
+                  const distance = milesBetween(userLat, userLng, Number(candidate.lat), Number(candidate.lng));
+                  if (!Number.isFinite(distance)) continue;
+                  if (!nearest || distance < nearest.distance) {
+                    nearest = {
+                      slug: String(candidate.slug),
+                      name: String(candidate.name || candidate.slug),
+                      distance,
+                    };
+                  }
+                }
+                if (!nearest || !nearest.slug) return;
+                if (nearest.slug.toLowerCase() === currentSlug) return;
+                if (!Number.isFinite(nearest.distance) || nearest.distance > maxDistance) return;
+
+                setStorageValue(storageKey, String(now));
+                const nextPath = '/' + nearest.slug;
+                window.location.href = nextPath;
+              },
+              () => {},
+              { enableHighAccuracy: true, timeout: 8000, maximumAge: 300000 },
+            );
+          }
+
           if (!stars.length || !hint) return;
+          tryResolveNearbyLocation();
 
           function highlight(rating) {
             stars.forEach((btn) => {

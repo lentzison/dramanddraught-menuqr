@@ -199,7 +199,11 @@ function sendHTML(res, statusCode, html) {
     try { res.end(); } catch {}
     return;
   }
-  res.writeHead(statusCode, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.writeHead(statusCode, {
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'no-store, no-cache, must-revalidate',
+    'Pragma': 'no-cache',
+  });
   res.end(html);
 }
 
@@ -1734,22 +1738,60 @@ async function enhanceBottleNotes(rawBottle) {
   const cacheKey = pickCacheKeyForBottleNotes(rawBottle);
   if (!cacheKey) return null;
 
+  // 1. Check in-memory cache (fast path)
   const cached = openAiBottleNotesCache.get(cacheKey);
   if (cached && cached.expires > Date.now()) return cached.value;
 
+  // 2. Check DB cache (survives restarts)
+  try {
+    const prisma = require('./db');
+    const dbCached = await prisma.bottleNotesCache.findUnique({ where: { cacheKey } });
+    if (dbCached && dbCached.notesJson) {
+      const parsed = JSON.parse(dbCached.notesJson);
+      if (parsed && parsed.notes) {
+        openAiBottleNotesCache.set(cacheKey, { value: parsed, expires: Date.now() + OPENAI_CACHE_MS });
+        return parsed;
+      }
+    }
+  } catch (err) {
+    // DB cache miss or error — continue to AI
+  }
+
+  // 3. Call AI
   const ai = await fetchAiBottleNotes(rawBottle);
   if (ai && ai.notes) {
+    // Save to both caches
+    openAiBottleNotesCache.set(cacheKey, { value: ai, expires: Date.now() + OPENAI_CACHE_MS });
+    try {
+      const prisma = require('./db');
+      await prisma.bottleNotesCache.upsert({
+        where: { cacheKey },
+        update: { notesJson: JSON.stringify(ai) },
+        create: { cacheKey, notesJson: JSON.stringify(ai) },
+      });
+    } catch (err) {
+      // DB write failed — in-memory cache still works
+    }
     return ai;
   }
 
+  // 4. Fallback: parse existing notes from source
   const parsedNotes = parseBottleNoteSections(rawBottle && rawBottle.notes);
   if (parsedNotes.length > 0 && hasSubstantiveParsedNotes(parsedNotes)) {
-    return {
-      summary: 'Tasting notes',
-      notes: parsedNotes,
-    };
+    const value = { summary: 'Tasting notes', notes: parsedNotes };
+    openAiBottleNotesCache.set(cacheKey, { value, expires: Date.now() + OPENAI_CACHE_MS });
+    try {
+      const prisma = require('./db');
+      await prisma.bottleNotesCache.upsert({
+        where: { cacheKey },
+        update: { notesJson: JSON.stringify(value) },
+        create: { cacheKey, notesJson: JSON.stringify(value) },
+      });
+    } catch (err) { /* ignore */ }
+    return value;
   }
 
+  // 5. Heuristic fallback
   const fallback = buildFallbackBottleNotes(rawBottle);
   const finalValue = fallback || null;
 
@@ -1969,6 +2011,13 @@ const fallbackLocations = [
   }
 ];
 
+function getFlashMsg(reqUrl) {
+  try {
+    const u = new URL(reqUrl, 'http://localhost');
+    return u.searchParams.get('msg') || '';
+  } catch { return ''; }
+}
+
 async function getLocations(prisma) {
   if (prisma) {
     try {
@@ -2003,7 +2052,7 @@ async function getLocations(prisma) {
 module.exports = {
   sendHTML, sendJSON, redirect, getDefaultLinks, getIcon, getLinkButtons,
   getEasternDate, getOpenState, getTodayHours, getDayLabel,
-  parseBody, unauthorized, isAdmin, fallbackLocations, getLocations,
+  parseBody, unauthorized, isAdmin, fallbackLocations, getLocations, getFlashMsg,
   parseBottleNoteSections,
   buildGuestBottleNotesForCatalog,
   enhanceBottleNotes,

@@ -73,6 +73,8 @@ model DayTheme {
   description String?
   isActive    Boolean    @default(true)
 
+  halfPriceConfig Json?    // Selection rules for half-price spirits (Wed/Thu)
+
   location    Location?  @relation(fields: [locationId], references: [id], onDelete: Cascade)
   specials    DailySpecial[]
 
@@ -216,6 +218,16 @@ model Event {
   updatedAt   DateTime @updatedAt
 
   @@index([locationId, startDate])
+}
+
+model BottleNotesCache {
+  id        String   @id @default(uuid())
+  cacheKey  String   @unique
+  notesJson String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([cacheKey])
 }
 
 model GuestFeedback {

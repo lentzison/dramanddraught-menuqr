@@ -129,15 +129,15 @@ async function getBreakEvenBottles(locationSlug) {
     if (locResult.rows.length === 0) return { items: [], error: `Active location not found: ${locationName}` };
     const locationId = locResult.rows[0].id;
 
-    // Get active bottles for the current week (weekStartDate <= now, and within last 7 days)
+    // Get active bottles for upcoming Sunday (today through +7 days only)
     const result = await db.query(`
       SELECT "productName", "bottleSize", cost, "sellPrice", notes, "weekStartDate"
       FROM "BreakEvenBottle"
       WHERE "locationId" = $1
         AND status = 'ACTIVE'
-        AND "weekStartDate" <= NOW()
-        AND "weekStartDate" > NOW() - INTERVAL '7 days'
-      ORDER BY "weekStartDate" DESC, "productName" ASC
+        AND "weekStartDate" >= CURRENT_DATE
+        AND "weekStartDate" <= CURRENT_DATE + INTERVAL '7 days'
+      ORDER BY "weekStartDate" ASC, "productName" ASC
     `, [locationId]);
 
     return {
@@ -203,6 +203,172 @@ async function getOnTap(locationSlug) {
   }
 }
 
+async function getSpiritCategories() {
+  try {
+    const db = getPool();
+    const [catResult, styleResult] = await Promise.all([
+      db.query('SELECT name FROM "SpiritCategoryRef" ORDER BY name ASC'),
+      db.query('SELECT DISTINCT style FROM "SpiritDetail" WHERE style IS NOT NULL AND style != \'\' ORDER BY style ASC'),
+    ]);
+    return {
+      categories: catResult.rows.map(r => r.name),
+      styles: styleResult.rows.map(r => r.style),
+    };
+  } catch (err) {
+    console.warn('Error fetching spirit categories:', err.message);
+    return { categories: [], styles: [] };
+  }
+}
+
+async function getExternalLocationId(db, locationSlug) {
+  const locationName = SLUG_TO_LOCATION_NAME[normalizeLocationSlug(locationSlug)];
+  if (!locationName) return null;
+  const locResult = await db.query(
+    'SELECT id FROM "Location" WHERE name = $1 AND "isActive" = true LIMIT 1',
+    [locationName],
+  );
+  if (locResult.rows.length === 0) return null;
+  const locationId = locResult.rows[0].id;
+  const lemResult = await db.query(
+    'SELECT "externalLocationId" FROM "LocationExternalMapping" WHERE "locationId" = $1 AND source = \'dram_pricing\' LIMIT 1',
+    [locationId],
+  );
+  return lemResult.rows[0] ? lemResult.rows[0].externalLocationId : null;
+}
+
+async function getSpiritCatalog(locationSlug, filters = {}) {
+  try {
+    const db = getPool();
+    const extLocId = await getExternalLocationId(db, locationSlug);
+    if (extLocId == null) return [];
+
+    const conditions = [
+      'sp."isActive" = true',
+      'slp."isActive" = true',
+      'slp."locationExternalId" = $1',
+    ];
+    const params = [extLocId];
+    let paramIdx = 2;
+
+    if (filters.category) {
+      conditions.push(`sp."primaryCategory" = $${paramIdx}`);
+      params.push(filters.category);
+      paramIdx++;
+    }
+    if (filters.priceMin != null) {
+      conditions.push(`slp."oneOzPrice" >= $${paramIdx}`);
+      params.push(filters.priceMin);
+      paramIdx++;
+    }
+    if (filters.priceMax != null) {
+      conditions.push(`slp."oneOzPrice" <= $${paramIdx}`);
+      params.push(filters.priceMax);
+      paramIdx++;
+    }
+    if (filters.style) {
+      conditions.push(`sd.style = $${paramIdx}`);
+      params.push(filters.style);
+      paramIdx++;
+    }
+
+    const result = await db.query(`
+      SELECT
+        sp."productId", sp.name, sp."primaryCategory",
+        sd.style, sd.region,
+        slp."oneOzPrice", slp."twoOzPrice",
+        sp."imageUrl"
+      FROM "SpiritProduct" sp
+      JOIN "SpiritDetail" sd ON sd."productId" = sp."productId"
+      JOIN "SpiritLocationPrice" slp ON slp."productId" = sp."productId"
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY sp."primaryCategory" ASC, sp.name ASC
+    `, params);
+
+    return result.rows.map(r => ({
+      productId: r.productId,
+      name: r.name,
+      primaryCategory: r.primaryCategory,
+      style: r.style || null,
+      region: r.region || null,
+      oneOzPrice: r.oneOzPrice ? parseFloat(r.oneOzPrice) : null,
+      twoOzPrice: r.twoOzPrice ? parseFloat(r.twoOzPrice) : null,
+      imageUrl: r.imageUrl || null,
+    }));
+  } catch (err) {
+    console.warn('Error fetching spirit catalog:', err.message);
+    return [];
+  }
+}
+
+async function getHalfPriceSpirits(locationSlug, config) {
+  try {
+    if (!config) return { items: [], error: null };
+    const db = getPool();
+    const extLocId = await getExternalLocationId(db, locationSlug);
+    if (extLocId == null) return { items: [], error: `Could not resolve location: ${locationSlug}` };
+
+    const baseConditions = [
+      'sp."isActive" = true',
+      'slp."isActive" = true',
+      'slp."locationExternalId" = $1',
+    ];
+    const params = [extLocId];
+    let paramIdx = 2;
+
+    // Picks are the source of truth for what guests see
+    const hasPicks = config.picks && config.picks.length > 0;
+    if (!hasPicks) {
+      return { items: [], error: null };
+    }
+
+    const picksParamRef = `$${paramIdx}::int[]`;
+    params.push(config.picks.map(Number));
+    paramIdx++;
+
+    // Build excludes clause
+    let excludeClause = '';
+    if (config.excludes && config.excludes.length > 0) {
+      excludeClause = ` AND sp."productId" != ALL($${paramIdx}::int[])`;
+      params.push(config.excludes.map(Number));
+      paramIdx++;
+    }
+
+    const selectionClause = `sp."productId" = ANY(${picksParamRef})`;
+
+    const result = await db.query(`
+      SELECT
+        sp."productId", sp.name, sp."primaryCategory",
+        sd.style, sd.region,
+        slp."oneOzPrice", slp."twoOzPrice", slp."oneHalfOzPrice",
+        sp."imageUrl"
+      FROM "SpiritProduct" sp
+      JOIN "SpiritDetail" sd ON sd."productId" = sp."productId"
+      JOIN "SpiritLocationPrice" slp ON slp."productId" = sp."productId"
+      WHERE ${baseConditions.join(' AND ')}
+        AND ${selectionClause}${excludeClause}
+      ORDER BY sp."primaryCategory" ASC, sp.name ASC
+    `, params);
+
+    return {
+      items: result.rows.map(r => ({
+        productId: r.productId,
+        name: r.name,
+        primaryCategory: r.primaryCategory,
+        style: r.style || null,
+        region: r.region || null,
+        oneOzPrice: r.oneOzPrice ? parseFloat(r.oneOzPrice) : null,
+        twoOzPrice: r.twoOzPrice ? parseFloat(r.twoOzPrice) : null,
+        oneHalfOzPrice: r.oneHalfOzPrice ? parseFloat(r.oneHalfOzPrice) : null,
+        imageUrl: r.imageUrl || null,
+      })),
+      error: null,
+    };
+  } catch (err) {
+    console.error('Error fetching half-price spirits:', err.message);
+    return { items: [], error: err.message };
+  }
+}
+
 module.exports = {
   findUserByEmail,
   getUserRoles,
@@ -211,4 +377,7 @@ module.exports = {
   getOnTap,
   getBarSupportEmails,
   getBarSupportEmailsForLocation,
+  getSpiritCategories,
+  getSpiritCatalog,
+  getHalfPriceSpirits,
 };

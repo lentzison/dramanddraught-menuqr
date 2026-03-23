@@ -1,12 +1,35 @@
-function adminLayout(title, content, user) {
+const FLASH_LABELS = {
+  saved: 'Changes saved.',
+  created: 'Created successfully.',
+  deleted: 'Deleted successfully.',
+  reordered: 'Order updated.',
+  error: 'Something went wrong.',
+};
+
+function adminLayout(title, content, user, options = {}) {
   const userName = user ? (user.firstName || user.email || 'Admin') : '';
+  const pathname = options.pathname || '';
+  const flashMsg = options.flashMsg || '';
+
+  function navClass(href) {
+    if (!pathname) return '';
+    if (pathname === href) return ' class="active"';
+    if (href !== '/admin/locations' && pathname.startsWith(href + '/')) return ' class="active"';
+    if (href === '/admin/locations' && pathname.startsWith('/admin/locations')) return ' class="active"';
+    return '';
+  }
+
+  const flashHtml = flashMsg
+    ? `<div class="alert ${flashMsg === 'error' ? 'alert-error' : 'alert-success'}">${FLASH_LABELS[flashMsg] || flashMsg}</div>`
+    : '';
+
   return `
     <!DOCTYPE html>
     <html lang="en">
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>${title} - Dram & Draught Admin</title>
+      <title>${title} - Dram &amp; Draught Admin</title>
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -103,7 +126,8 @@ function adminLayout(title, content, user) {
           margin-top: 12px;
         }
         form input[type="text"], form input[type="number"], form input[type="email"],
-        form input[type="password"], form textarea, form select {
+        form input[type="password"], form input[type="url"], form input[type="tel"],
+        form input[type="time"], form textarea, form select {
           width: 100%;
           padding: 10px 12px;
           background: #111;
@@ -132,12 +156,13 @@ function adminLayout(title, content, user) {
         }
         .special-item {
           display: grid;
-          grid-template-columns: 28px 90px minmax(0, 1fr) 340px;
+          grid-template-columns: 28px minmax(0, 1fr) auto;
           gap: 12px;
           padding: 10px;
           background: #111;
           border-radius: 8px;
           margin-bottom: 8px;
+          align-items: center;
         }
         .special-item.dragging { opacity: 0.6; }
         .special-item .drag-handle {
@@ -160,41 +185,78 @@ function adminLayout(title, content, user) {
         .special-item .desc { color: #888; font-size: 0.85rem; }
         .special-main { min-width: 0; }
         .special-main .name { margin-bottom: 4px; }
-        .special-meta { display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
-        .special-order-row { display: flex; align-items: center; gap: 8px; }
-        .order-label { min-height: 24px; display: flex; align-items: center; }
+        .special-meta { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+        .special-thumb { width: 40px; height: 40px; border-radius: 6px; object-fit: cover; border: 1px solid #333; }
         .inline-form { display: flex; gap: 4px; align-items: center; }
         .inline-form select,
         .inline-form input[type="number"] { width: auto; min-width: 80px; }
         .inline-form input[type="number"] { background: #0f0f0f; }
-        .order-jump input[type="number"] { min-width: 60px; }
         .btn-disabled { opacity: 0.45; cursor: not-allowed; }
         .tag { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 600; }
         .tag-active { background: rgba(34,197,94,0.2); color: #4ade80; }
         .tag-inactive { background: rgba(239,68,68,0.2); color: #f87171; }
         .empty-state { text-align: center; color: #666; padding: 40px; }
+        .edit-form-inline {
+          background: #1a1a1a;
+          border-left: 3px solid #d4af37;
+          border-radius: 0 8px 8px 0;
+          padding: 16px;
+          margin: 0 0 10px 40px;
+        }
+        .add-special-box {
+          border: 2px dashed rgba(212,175,55,0.3);
+          border-radius: 12px;
+          padding: 20px;
+          margin-bottom: 20px;
+        }
+        .image-preview { max-width: 120px; max-height: 80px; border-radius: 6px; margin-top: 6px; border: 1px solid #333; }
+        .hours-row {
+          display: grid;
+          grid-template-columns: 90px 1fr auto 1fr auto;
+          gap: 8px;
+          align-items: center;
+          padding: 6px 0;
+          border-bottom: 1px solid #1f1f1f;
+        }
+        .hours-row:last-child { border-bottom: none; }
+        .hours-row .day-label { font-weight: 600; color: #ccc; font-size: 0.9rem; }
+        .hours-row .to-label { color: #666; text-align: center; font-size: 0.85rem; }
+        .hours-row input[type="time"] { width: 100%; }
+        .hours-row label { margin: 0; display: flex; align-items: center; gap: 6px; font-size: 0.8rem; }
+        .hours-row label input[type="checkbox"] { width: auto; margin: 0; }
+        .link-row {
+          display: grid;
+          grid-template-columns: 1fr 2fr auto;
+          gap: 8px;
+          align-items: center;
+          margin-bottom: 8px;
+        }
+        .link-row input { margin: 0; }
         @media (max-width: 768px) {
           .grid-7 { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
           .form-row { flex-direction: column; }
-          .special-item { grid-template-columns: 1fr; }
-          .special-item .drag-handle,
-          .special-item .special-select { display: none; }
+          .special-item { grid-template-columns: minmax(0, 1fr) auto; }
+          .special-item .drag-handle { display: none; }
           .special-meta { align-items: flex-start; }
+          .edit-form-inline { margin-left: 0; }
           .admin-nav { gap: 8px; }
+          .hours-row { grid-template-columns: 70px 1fr auto 1fr auto; gap: 4px; }
+          .link-row { grid-template-columns: 1fr; }
         }
       </style>
     </head>
     <body>
       <nav class="admin-nav">
-        <span class="brand">D&D Admin</span>
-        <a href="/admin/specials">Daily Specials</a>
-        <a href="/admin/flights">Flights</a>
-        <a href="/admin/bottles">Bottles</a>
-        <a href="/admin/feedback">Feedback</a>
+        <span class="brand">D&amp;D Admin</span>
+        <a href="/admin/locations"${navClass('/admin/locations')}>Locations</a>
+        <a href="/admin/specials"${navClass('/admin/specials')}>Daily Specials</a>
+        <a href="/admin/flights"${navClass('/admin/flights')}>Flights</a>
+        <a href="/admin/feedback"${navClass('/admin/feedback')}>Feedback</a>
         <span class="nav-spacer"></span>
         ${user ? `<span class="nav-user">${userName}</span><a href="/admin/logout">Logout</a>` : ''}
       </nav>
       <div class="admin-content">
+        ${flashHtml}
         ${content}
       </div>
     </body>
@@ -209,7 +271,7 @@ function loginPage(error) {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Login - Dram & Draught Admin</title>
+      <title>Login - Dram &amp; Draught Admin</title>
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -280,8 +342,8 @@ function loginPage(error) {
     </head>
     <body>
       <div class="login-box">
-        <h1>Dram & Draught</h1>
-        <p class="subtitle">Specials Admin</p>
+        <h1>Dram &amp; Draught</h1>
+        <p class="subtitle">Admin</p>
         ${error ? `<div class="error">${error}</div>` : ''}
         <form method="POST" action="/admin/login">
           <label>Email</label>

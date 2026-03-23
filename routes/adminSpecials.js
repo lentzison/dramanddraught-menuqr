@@ -1,7 +1,8 @@
-const { sendHTML, parseBody, redirect, generateCocktailImage } = require('../helpers');
+const { sendHTML, parseBody, redirect, generateCocktailImage, getFlashMsg } = require('../helpers');
 const { requireAuth } = require('../auth');
 const { specialsDashboard, dayThemeEditor, flightsList, flightEditor, bottlesList, bottleEditor, DAYS } = require('../views/adminSpecialsViews');
 const { adminLayout } = require('../views/adminLayout');
+const { getSpiritCategories, getSpiritCatalog, getHalfPriceSpirits } = require('../bartenderDb');
 const OP_IMAGE_REGEN_TOKEN = process.env.OP_SPECIAL_IMAGE_REGEN_TOKEN || 'menuqr-special-image-regenerate';
 
 function normalizeText(value) {
@@ -299,6 +300,89 @@ async function generateImageSet(prisma, specials, force = false) {
   return { attempted, generated, skipped: source.length - attempted };
 }
 
+function parseAdminRequestUrl(req) {
+  return new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+}
+
+function parseFlightMonth(value, fallback) {
+  const parsed = parseInt(value, 10);
+  if (Number.isFinite(parsed) && parsed >= 1 && parsed <= 12) return parsed;
+  return fallback;
+}
+
+function parseFlightYear(value, fallback) {
+  const parsed = parseInt(value, 10);
+  if (Number.isFinite(parsed) && parsed >= 2020 && parsed <= 2100) return parsed;
+  return fallback;
+}
+
+function getLocationBySlug(locations, slug) {
+  const normalized = normalizeText(slug).toLowerCase();
+  if (!normalized) return null;
+  return (locations || []).find((location) => String(location.slug || '').trim().toLowerCase() === normalized) || null;
+}
+
+function buildFlightPoursFromBody(body) {
+  return [0, 1, 2]
+    .filter((i) => normalizeText(body[`pour${i}_name`]))
+    .map((i) => ({
+      spiritName: normalizeText(body[`pour${i}_name`]),
+      pourSize: normalizeText(body[`pour${i}_size`]) || null,
+      description: normalizeText(body[`pour${i}_desc`]) || null,
+      tastingNotes: normalizeText(body[`pour${i}_notes`]) || null,
+      displayOrder: i,
+    }));
+}
+
+async function loadFlightAdminContext(prisma, month, year) {
+  const [locations, relatedFlights] = await Promise.all([
+    prisma.location.findMany({
+      where: { isActive: true },
+      orderBy: { name: 'asc' },
+    }),
+    prisma.flight.findMany({
+      where: { month, year },
+      include: {
+        pours: { orderBy: { displayOrder: 'asc' } },
+        location: true,
+      },
+      orderBy: [{ locationId: 'asc' }, { updatedAt: 'desc' }],
+    }),
+  ]);
+
+  return { locations, relatedFlights };
+}
+
+async function findFlightForScope(prisma, month, year, locationId, excludeId = null) {
+  return prisma.flight.findFirst({
+    where: {
+      month,
+      year,
+      locationId,
+      ...(excludeId ? { NOT: { id: excludeId } } : {}),
+    },
+    include: {
+      pours: { orderBy: { displayOrder: 'asc' } },
+      location: true,
+    },
+  });
+}
+
+async function buildFlightDeleteRedirect(prisma, month, year, deletedLocationId = null) {
+  const remaining = await prisma.flight.findMany({
+    where: { month, year },
+    include: { location: true },
+    orderBy: [{ locationId: 'asc' }, { updatedAt: 'desc' }],
+  });
+
+  const companyDefault = remaining.find((entry) => !entry.locationId) || null;
+  const matchingLocation = deletedLocationId
+    ? remaining.find((entry) => entry.locationId === deletedLocationId) || null
+    : null;
+  const nextTarget = companyDefault || matchingLocation || remaining[0] || null;
+  return nextTarget ? `/admin/flights/${nextTarget.id}?msg=deleted` : '/admin/flights?msg=deleted';
+}
+
 async function handleAdminSpecials(req, res, pathname, prisma) {
   if (pathname === '/admin/specials/regenerate-images') {
     const body = await parseBody(req);
@@ -404,6 +488,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
           'Guest Feedback',
           `<h1>Guest Feedback</h1>${filterControls}${renderFeedbackRows(rows)}`,
           user,
+          { pathname: '/admin/feedback' },
         ),
       );
       return true;
@@ -414,13 +499,30 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
     }
   }
 
+  // ─── Half-Price Preview API ───
+  if (pathname === '/admin/specials/half-price-preview' && req.method === 'POST') {
+    try {
+      const body = await parseBody(req);
+      const config = JSON.parse(body.config || '{}');
+      const locationSlug = body.locationSlug || 'greensboro';
+      const result = await getHalfPriceSpirits(locationSlug, config);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ count: result.items.length, names: result.items.slice(0, 20).map(s => s.name), error: result.error }));
+    } catch (err) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ count: 0, names: [], error: err.message }));
+    }
+    return true;
+  }
+
   // ─── Daily Specials Dashboard ───
   if (pathname === '/admin/specials') {
+    const flashMsg = getFlashMsg(req.url);
     const themes = await prisma.dayTheme.findMany({
       where: { locationId: null },
       include: { specials: { where: { isActive: true }, orderBy: { displayOrder: 'asc' } } },
     });
-    sendHTML(res, 200, specialsDashboard(themes, user));
+    sendHTML(res, 200, specialsDashboard(themes, user, flashMsg));
     return true;
   }
 
@@ -463,14 +565,41 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
             data: { dayOfWeek: day, locationId: locationId, name: body.name, tagline: body.tagline || null, description: body.description || null, isActive: body.isActive === 'on' },
           });
         }
-        redirect(res, pathname);
+        redirect(res, pathname + '?msg=saved');
+        return true;
+      }
+
+      if (action === 'saveHalfPrice') {
+        const config = JSON.parse(body.halfPriceConfig || '{}');
+        const existing = await prisma.dayTheme.findFirst({ where: { dayOfWeek: day, locationId: locationId } });
+        if (existing) {
+          await prisma.dayTheme.update({
+            where: { id: existing.id },
+            data: { halfPriceConfig: config },
+          });
+        } else if (locationId) {
+          // Auto-create location override theme for half-price config
+          const defaultTheme = await prisma.dayTheme.findFirst({ where: { dayOfWeek: day, locationId: null } });
+          await prisma.dayTheme.create({
+            data: {
+              dayOfWeek: day,
+              locationId: locationId,
+              name: defaultTheme ? defaultTheme.name : day,
+              tagline: defaultTheme ? defaultTheme.tagline : null,
+              description: defaultTheme ? defaultTheme.description : null,
+              isActive: defaultTheme ? defaultTheme.isActive : true,
+              halfPriceConfig: config,
+            },
+          });
+        }
+        redirect(res, pathname + '?msg=saved');
         return true;
       }
 
       if (action === 'deleteTheme') {
         const existing = await prisma.dayTheme.findFirst({ where: { dayOfWeek: day, locationId: locationId } });
         if (existing) await prisma.dayTheme.delete({ where: { id: existing.id } });
-        redirect(res, '/admin/specials');
+        redirect(res, '/admin/specials?msg=deleted');
         return true;
       }
 
@@ -482,7 +611,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
         if (currentTheme && currentTheme.specials && currentTheme.specials.length) {
           await generateImageSet(prisma, currentTheme.specials, body.forceImageRegeneration === 'on');
         }
-        redirect(res, pathname);
+        redirect(res, pathname + '?msg=saved');
         return true;
       }
 
@@ -514,7 +643,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
           });
           await normalizeSpecialDisplayOrder(prisma, theme.id);
         }
-        redirect(res, pathname);
+        redirect(res, pathname + '?msg=created');
         return true;
       }
 
@@ -537,7 +666,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
         }).catch(() => {});
         const updated = await prisma.dailySpecial.findUnique({ where: { id: body.specialId }});
         if (updated && updated.dayThemeId) await normalizeSpecialDisplayOrder(prisma, updated.dayThemeId);
-        redirect(res, pathname);
+        redirect(res, pathname + '?msg=saved');
         return true;
       }
 
@@ -550,7 +679,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
           });
           await normalizeSpecialDisplayOrder(prisma, special.dayThemeId);
         }
-        redirect(res, pathname);
+        redirect(res, pathname + '?msg=saved');
         return true;
       }
 
@@ -574,7 +703,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
             },
           });
         }
-        redirect(res, pathname);
+        redirect(res, pathname + '?msg=saved');
         return true;
       }
 
@@ -605,7 +734,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
           if (updates.length) await prisma.$transaction(updates);
         }
 
-        redirect(res, pathname);
+        redirect(res, pathname + '?msg=reordered');
         return true;
       }
 
@@ -642,7 +771,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
             await normalizeSpecialDisplayOrder(prisma, theme.id);
           }
         }
-        redirect(res, pathname);
+        redirect(res, pathname + '?msg=reordered');
         return true;
       }
 
@@ -656,7 +785,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
         if (Number.isInteger(requested) && requested >= 0) {
           await reorderSpecialToPosition(prisma, theme.id, body.specialId, requested);
         }
-        redirect(res, pathname);
+        redirect(res, pathname + '?msg=reordered');
         return true;
       }
 
@@ -666,18 +795,41 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
         if (current && current.dayThemeId) {
           await normalizeSpecialDisplayOrder(prisma, current.dayThemeId);
         }
-        redirect(res, pathname);
+        redirect(res, pathname + '?msg=deleted');
         return true;
       }
     }
 
     // GET: show editor
     // For location override, use a compound unique that allows null
+    const flashMsg = getFlashMsg(req.url);
     const theme = await prisma.dayTheme.findFirst({
       where: { dayOfWeek: day, locationId: locationId },
       include: { specials: { orderBy: { displayOrder: 'asc' } } },
     });
     const categoryOptions = getAllCategories(theme ? theme.specials : []);
+
+    let spiritCatalog = [];
+    let spiritCategories = { categories: [], styles: [] };
+    // For location overrides on half-price days, build a synthetic theme with halfPriceConfig
+    // from the company default if no location-specific theme exists yet
+    let halfPriceTheme = theme;
+    if ((day === 'WEDNESDAY' || day === 'THURSDAY') && locationSlug) {
+      try {
+        [spiritCategories, spiritCatalog] = await Promise.all([
+          getSpiritCategories(),
+          getSpiritCatalog(locationSlug),
+        ]);
+      } catch (err) {
+        console.warn('Error loading spirit catalog for admin:', err.message);
+      }
+      if (!halfPriceTheme) {
+        const defaultTheme = await prisma.dayTheme.findFirst({ where: { dayOfWeek: day, locationId: null } });
+        if (defaultTheme) {
+          halfPriceTheme = { halfPriceConfig: defaultTheme.halfPriceConfig || {} };
+        }
+      }
+    }
 
     sendHTML(res, 200, dayThemeEditor(
       day,
@@ -687,48 +839,159 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       locationSlug,
       user,
       null,
-      categoryOptions
+      categoryOptions,
+      flashMsg,
+      spiritCatalog,
+      spiritCategories,
+      halfPriceTheme
     ));
     return true;
   }
 
   // ─── Flights List ───
   if (pathname === '/admin/flights') {
-    const flights = await prisma.flight.findMany({
-      include: { pours: true },
-      orderBy: [{ year: 'desc' }, { month: 'desc' }],
-    });
-    sendHTML(res, 200, flightsList(flights, user));
+    const flashMsg = getFlashMsg(req.url);
+    const [flights, locations] = await Promise.all([
+      prisma.flight.findMany({
+        include: { pours: true, location: true },
+        orderBy: [{ year: 'desc' }, { month: 'desc' }, { locationId: 'asc' }],
+      }),
+      prisma.location.findMany({
+        where: { isActive: true },
+        orderBy: { name: 'asc' },
+      }),
+    ]);
+    sendHTML(res, 200, flightsList(flights, locations, user, flashMsg));
     return true;
   }
 
   // ─── New Flight ───
   if (pathname === '/admin/flights/new') {
+    const parsed = parseAdminRequestUrl(req);
+    const now = new Date();
+    const copyFromId = normalizeText(parsed.searchParams.get('copyFrom'));
+    const explicitMonth = parsed.searchParams.get('month');
+    const explicitYear = parsed.searchParams.get('year');
+    const explicitLocationSlug = normalizeText(parsed.searchParams.get('location')).toLowerCase();
+
     if (req.method === 'POST') {
       const body = await parseBody(req);
+      const month = parseFlightMonth(body.month, now.getMonth() + 1);
+      const year = parseFlightYear(body.year, now.getFullYear());
+      const locationSlug = normalizeText(body.locationSlug).toLowerCase();
+      const locations = await prisma.location.findMany({
+        where: { isActive: true },
+        orderBy: { name: 'asc' },
+      });
+      const location = locationSlug ? getLocationBySlug(locations, locationSlug) : null;
+
+      if (locationSlug && !location) {
+        const { relatedFlights } = await loadFlightAdminContext(prisma, month, year);
+        const draft = {
+          month,
+          year,
+          theme: normalizeText(body.theme),
+          description: normalizeText(body.description) || null,
+          price: normalizeText(body.price) || null,
+          isActive: body.isActive === 'on',
+          pours: buildFlightPoursFromBody(body),
+        };
+        sendHTML(res, 400, flightEditor(draft, true, user, {
+          type: 'error',
+          text: 'Choose a valid location or use Company Default.',
+        }, '', {
+          locations,
+          relatedFlights,
+          selectedLocationSlug: '',
+        }));
+        return true;
+      }
+
+      const existing = await findFlightForScope(prisma, month, year, location ? location.id : null);
+      if (existing) {
+        redirect(res, `/admin/flights/${existing.id}?msg=exists`);
+        return true;
+      }
+
+      const pours = buildFlightPoursFromBody(body);
       const flight = await prisma.flight.create({
         data: {
-          month: parseInt(body.month),
-          year: parseInt(body.year),
-          theme: body.theme,
-          description: body.description || null,
-          price: body.price || null,
+          locationId: location ? location.id : null,
+          month,
+          year,
+          theme: normalizeText(body.theme),
+          description: normalizeText(body.description) || null,
+          price: normalizeText(body.price) || null,
           isActive: body.isActive === 'on',
-          pours: {
-            create: [0, 1, 2].filter(i => body[`pour${i}_name`]).map((i) => ({
-              spiritName: body[`pour${i}_name`],
-              pourSize: body[`pour${i}_size`] || null,
-              description: body[`pour${i}_desc`] || null,
-              tastingNotes: body[`pour${i}_notes`] || null,
-              displayOrder: i,
-            }))
-          }
-        }
+          ...(pours.length ? { pours: { create: pours } } : {}),
+        },
       });
-      redirect(res, `/admin/flights/${flight.id}`);
+      redirect(res, `/admin/flights/${flight.id}?msg=created`);
       return true;
     }
-    sendHTML(res, 200, flightEditor(null, true, user));
+
+    const copySourcePromise = copyFromId
+      ? prisma.flight.findUnique({
+          where: { id: copyFromId },
+          include: {
+            pours: { orderBy: { displayOrder: 'asc' } },
+            location: true,
+          },
+        })
+      : Promise.resolve(null);
+    const copySource = await copySourcePromise;
+    const month = parseFlightMonth(explicitMonth, copySource ? copySource.month : now.getMonth() + 1);
+    const year = parseFlightYear(explicitYear, copySource ? copySource.year : now.getFullYear());
+    const { locations, relatedFlights } = await loadFlightAdminContext(prisma, month, year);
+    const location = explicitLocationSlug ? getLocationBySlug(locations, explicitLocationSlug) : null;
+
+    if (explicitLocationSlug && !location) {
+      sendHTML(res, 404, '<h1>Location not found</h1>');
+      return true;
+    }
+
+    const hasExplicitTarget = parsed.searchParams.has('month') || parsed.searchParams.has('year') || parsed.searchParams.has('location');
+    if (hasExplicitTarget) {
+      const existing = await findFlightForScope(prisma, month, year, location ? location.id : null);
+      if (existing) {
+        redirect(res, `/admin/flights/${existing.id}`);
+        return true;
+      }
+    }
+
+    const seedFlight = copySource
+      ? {
+          month,
+          year,
+          theme: copySource.theme,
+          description: copySource.description,
+          price: copySource.price,
+          isActive: copySource.isActive,
+          locationId: location ? location.id : null,
+          location: location || null,
+          pours: copySource.pours.map((pour) => ({
+            spiritName: pour.spiritName,
+            pourSize: pour.pourSize,
+            description: pour.description,
+            tastingNotes: pour.tastingNotes,
+            displayOrder: pour.displayOrder,
+          })),
+        }
+      : {
+          month,
+          year,
+          isActive: true,
+          locationId: location ? location.id : null,
+          location: location || null,
+          pours: [],
+        };
+
+    sendHTML(res, 200, flightEditor(seedFlight, true, user, null, '', {
+      locations,
+      relatedFlights,
+      selectedLocationSlug: location ? location.slug : '',
+      copySource,
+    }));
     return true;
   }
 
@@ -738,59 +1001,92 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
     const flightId = flightMatch[1];
     const flight = await prisma.flight.findUnique({
       where: { id: flightId },
-      include: { pours: { orderBy: { displayOrder: 'asc' } } },
+      include: {
+        pours: { orderBy: { displayOrder: 'asc' } },
+        location: true,
+      },
     });
     if (!flight) { sendHTML(res, 404, '<h1>Flight not found</h1>'); return true; }
+
+    const { locations, relatedFlights } = await loadFlightAdminContext(prisma, flight.month, flight.year);
 
     if (req.method === 'POST') {
       const body = await parseBody(req);
       if (body._action === 'delete') {
         await prisma.flight.delete({ where: { id: flightId } });
-        redirect(res, '/admin/flights');
+        const redirectTarget = await buildFlightDeleteRedirect(prisma, flight.month, flight.year, flight.locationId);
+        redirect(res, redirectTarget);
         return true;
       }
-      // Update flight
+
+      const month = parseFlightMonth(body.month, flight.month);
+      const year = parseFlightYear(body.year, flight.year);
+      const conflict = await findFlightForScope(prisma, month, year, flight.locationId, flightId);
+      if (conflict) {
+        const conflictContext = (month === flight.month && year === flight.year)
+          ? { locations, relatedFlights }
+          : await loadFlightAdminContext(prisma, month, year);
+        const draftFlight = {
+          ...flight,
+          month,
+          year,
+          theme: normalizeText(body.theme),
+          description: normalizeText(body.description) || null,
+          price: normalizeText(body.price) || null,
+          isActive: body.isActive === 'on',
+          pours: buildFlightPoursFromBody(body),
+        };
+        sendHTML(res, 409, flightEditor(draftFlight, false, user, {
+          type: 'error',
+          text: 'A flight already exists for this month and scope. Open that version from the tabs above instead.',
+        }, '', {
+          ...conflictContext,
+          selectedLocationSlug: flight.location ? flight.location.slug : '',
+        }));
+        return true;
+      }
+
+      const pours = buildFlightPoursFromBody(body);
       await prisma.flight.update({
         where: { id: flightId },
         data: {
-          month: parseInt(body.month),
-          year: parseInt(body.year),
-          theme: body.theme,
-          description: body.description || null,
-          price: body.price || null,
+          month,
+          year,
+          theme: normalizeText(body.theme),
+          description: normalizeText(body.description) || null,
+          price: normalizeText(body.price) || null,
           isActive: body.isActive === 'on',
         }
       });
-      // Replace pours
       await prisma.flightPour.deleteMany({ where: { flightId } });
-      for (let i = 0; i < 3; i++) {
-        if (body[`pour${i}_name`]) {
-          await prisma.flightPour.create({
-            data: {
-              flightId,
-              spiritName: body[`pour${i}_name`],
-              pourSize: body[`pour${i}_size`] || null,
-              description: body[`pour${i}_desc`] || null,
-              tastingNotes: body[`pour${i}_notes`] || null,
-              displayOrder: i,
-            }
-          });
-        }
+      for (const pour of pours) {
+        await prisma.flightPour.create({
+          data: {
+            flightId,
+            ...pour,
+          }
+        });
       }
-      redirect(res, pathname);
+      redirect(res, `/admin/flights/${flightId}?msg=saved`);
       return true;
     }
 
-    sendHTML(res, 200, flightEditor(flight, false, user));
+    const flashMsg = getFlashMsg(req.url);
+    sendHTML(res, 200, flightEditor(flight, false, user, null, flashMsg, {
+      locations,
+      relatedFlights,
+      selectedLocationSlug: flight.location ? flight.location.slug : '',
+    }));
     return true;
   }
 
   // ─── Bottles List ───
   if (pathname === '/admin/bottles') {
+    const flashMsg = getFlashMsg(req.url);
     const bottles = await prisma.featuredBottle.findMany({
       orderBy: [{ year: 'desc' }, { month: 'desc' }, { displayOrder: 'asc' }],
     });
-    sendHTML(res, 200, bottlesList(bottles, user));
+    sendHTML(res, 200, bottlesList(bottles, user, flashMsg));
     return true;
   }
 
@@ -811,10 +1107,10 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
           isActive: body.isActive === 'on',
         }
       });
-      redirect(res, `/admin/bottles/${bottle.id}`);
+      redirect(res, `/admin/bottles/${bottle.id}?msg=created`);
       return true;
     }
-    sendHTML(res, 200, bottleEditor(null, true, user));
+    sendHTML(res, 200, bottleEditor(null, true, user, null, ''));
     return true;
   }
 
@@ -829,7 +1125,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       const body = await parseBody(req);
       if (body._action === 'delete') {
         await prisma.featuredBottle.delete({ where: { id: bottleId } });
-        redirect(res, '/admin/bottles');
+        redirect(res, '/admin/bottles?msg=deleted');
         return true;
       }
       await prisma.featuredBottle.update({
@@ -846,11 +1142,12 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
           isActive: body.isActive === 'on',
         }
       });
-      redirect(res, pathname);
+      redirect(res, pathname + '?msg=saved');
       return true;
     }
 
-    sendHTML(res, 200, bottleEditor(bottle, false, user));
+    const flashMsg = getFlashMsg(req.url);
+    sendHTML(res, 200, bottleEditor(bottle, false, user, null, flashMsg));
     return true;
   }
 

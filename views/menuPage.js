@@ -33,7 +33,7 @@ function generateMenuPage(location, menuCategories = [], hasError = false) {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <meta name="theme-color" content="#8b5230">
+      <meta name="theme-color" content="#0f1012">
       <title>Menu - ${escHTML(location.name)} - Dram & Draught</title>
       <style>
         ${vintageThemeCss()}
@@ -46,7 +46,7 @@ function generateMenuPage(location, menuCategories = [], hasError = false) {
           font-weight: 800;
           letter-spacing: 0.12em;
           text-transform: uppercase;
-          background: linear-gradient(180deg, #f7ead0, #d3ac6d 68%, #9f663d 100%);
+          background: linear-gradient(180deg, #ffffff, #d0d4da 68%, #737a84 100%);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
         }
@@ -64,7 +64,7 @@ function generateMenuPage(location, menuCategories = [], hasError = false) {
           padding: 16px 16px 18px;
           border: 1px solid var(--line);
           border-radius: 12px;
-          background: linear-gradient(180deg, rgba(44, 29, 20, 0.95), rgba(22, 14, 10, 0.98));
+          background: linear-gradient(180deg, rgba(20, 21, 24, 0.95), rgba(9, 9, 10, 0.98));
           box-shadow: 0 14px 30px rgba(0, 0, 0, 0.3), inset 0 0 0 1px rgba(255,255,255,0.03);
         }
         .menu-hero p {
@@ -77,7 +77,7 @@ function generateMenuPage(location, menuCategories = [], hasError = false) {
           align-items: center;
           gap: 8px;
           margin-top: 10px;
-          border: 1px solid rgba(245, 232, 204, 0.14);
+          border: 1px solid rgba(255, 255, 255, 0.14);
           border-radius: 8px;
           padding: 6px 12px;
           font-size: 0.78rem;
@@ -86,9 +86,9 @@ function generateMenuPage(location, menuCategories = [], hasError = false) {
           letter-spacing: 0.08em;
           background: rgba(34, 24, 17, 0.45);
         }
-        .status-open { color: #b9d3a6; border-color: rgba(115, 140, 95, 0.45); background: rgba(70,81,60,0.2); }
-        .status-closed { color: #e2bd74; border-color: rgba(198,155,84,0.36); background: rgba(198,155,84,0.12); }
-        .status-unknown { color: #cbc1af; border-color: rgba(205,182,147,0.24); background: rgba(205,182,147,0.08); }
+        .status-open { color: var(--cream); border-color: rgba(255,255,255,0.24); background: rgba(255,255,255,0.08); }
+        .status-closed { color: #cdced1; border-color: rgba(255,255,255,0.16); background: rgba(255,255,255,0.05); }
+        .status-unknown { color: var(--muted); border-color: rgba(255,255,255,0.12); background: rgba(255,255,255,0.03); }
         .container {
           max-width: 680px;
           margin: 0 auto;
@@ -119,7 +119,7 @@ function generateMenuPage(location, menuCategories = [], hasError = false) {
         }
         .menu-note .muted-inline { color: #91897d; }
         .menu-item {
-          background: linear-gradient(180deg, rgba(44, 29, 20, 0.94), rgba(26, 18, 12, 0.98));
+          background: linear-gradient(180deg, rgba(20, 21, 24, 0.94), rgba(9, 9, 10, 0.98));
           border: 1px solid var(--line);
           border-radius: 10px;
           padding: 13px 14px;
@@ -161,7 +161,7 @@ function generateMenuPage(location, menuCategories = [], hasError = false) {
         }
         .empty-card {
           text-align: center;
-          background: linear-gradient(180deg, rgba(44, 29, 20, 0.95), rgba(22, 14, 10, 0.98));
+          background: linear-gradient(180deg, rgba(20, 21, 24, 0.95), rgba(9, 9, 10, 0.98));
           border: 1px solid var(--line);
           border-radius: 10px;
           padding: 34px 20px;
@@ -173,13 +173,13 @@ function generateMenuPage(location, menuCategories = [], hasError = false) {
           display: inline-block;
           margin-top: 16px;
           color: var(--ink);
-          background: linear-gradient(180deg, #cfaa66, #8f5a35);
+          background: linear-gradient(180deg, #ffffff, #bcc1c8 64%, #727983);
           padding: 10px 22px;
           border-radius: 8px;
           text-decoration: none;
           font-weight: 700;
           font-size: 0.9rem;
-          border: 1px solid rgba(29, 18, 12, 0.55);
+          border: 1px solid rgba(255, 255, 255, 0.12);
           text-transform: uppercase;
           letter-spacing: 0.05em;
         }
@@ -193,7 +193,7 @@ function generateMenuPage(location, menuCategories = [], hasError = false) {
         .action-link {
           display: inline-block;
           color: var(--cream);
-          background: rgba(70,81,60,0.16);
+          background: rgba(255,255,255,0.05);
           border: 1px solid var(--line);
           padding: 10px 14px;
           border-radius: 8px;
@@ -205,7 +205,7 @@ function generateMenuPage(location, menuCategories = [], hasError = false) {
           text-transform: uppercase;
           letter-spacing: 0.05em;
         }
-        .action-link:hover { transform: translateY(-2px); background: rgba(198,155,84,0.12); border-color: rgba(245,232,204,0.24); }
+        .action-link:hover { transform: translateY(-2px); background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.24); }
         .footer {
           text-align: center;
           padding: 24px 20px 34px;

@@ -412,8 +412,8 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         ${vintageThemeCss()}
         .header {
           background:
-            linear-gradient(180deg, rgba(54,36,24,0.96), rgba(22,14,10,0.98)),
-            radial-gradient(circle at 30% 0%, rgba(198,155,84,0.12), transparent 40%);
+            linear-gradient(180deg, rgba(24,25,28,0.96), rgba(7,7,8,0.98)),
+            radial-gradient(circle at 30% 0%, rgba(255,255,255,0.08), transparent 40%);
           text-align: center;
           padding: 28px 20px 10px;
           border-bottom: 1px solid var(--line);
@@ -422,7 +422,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           font-size: clamp(1.8rem, 7vw, 2.3rem);
           font-weight: 800;
           line-height: 1;
-          background: linear-gradient(180deg, #f7ead0, #d3ac6d 68%, #9f663d 100%);
+          background: linear-gradient(180deg, #ffffff, #d0d4da 68%, #737a84 100%);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           letter-spacing: 0.14em;
@@ -446,7 +446,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           -webkit-overflow-scrolling: touch;
           scrollbar-width: none;
           justify-content: center;
-          background: rgba(29, 20, 14, 0.82);
+          background: rgba(12, 13, 15, 0.84);
           backdrop-filter: blur(6px);
           border-bottom: 1px solid var(--line);
         }
@@ -460,36 +460,36 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           text-decoration: none;
           white-space: nowrap;
           transition: all 0.18s;
-          border: 1px solid rgba(245,232,204,0.08);
-          background: rgba(70,81,60,0.12);
+          border: 1px solid rgba(255,255,255,0.08);
+          background: rgba(255,255,255,0.05);
           text-transform: uppercase;
           letter-spacing: 0.04em;
         }
-        .day-tab:hover { color: var(--cream); background: rgba(198,155,84,0.12); }
+        .day-tab:hover { color: var(--cream); background: rgba(255,255,255,0.08); }
         .day-tab.active {
           color: var(--ink);
-          background: linear-gradient(180deg, #cfaa66, #8f5a35);
-          border-color: rgba(29, 18, 12, 0.55);
+          background: linear-gradient(180deg, #ffffff, #bcc1c8 64%, #727983);
+          border-color: rgba(255,255,255,0.12);
           font-weight: 800;
-          box-shadow: inset 0 1px 0 rgba(255,245,220,0.28), 0 8px 16px rgba(0,0,0,0.22);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.38), 0 8px 16px rgba(0,0,0,0.22);
         }
         .day-tab.today:not(.active) {
-          border-color: rgba(198,155,84,0.35);
-          color: #d8c190;
+          border-color: rgba(255,255,255,0.2);
+          color: #d3d6db;
         }
         .hours-line {
           text-align: center;
           padding: 9px 16px;
-          color: #9d9485;
+          color: var(--muted);
           font-size: 0.82rem;
-          background: rgba(21,14,10,0.38);
-          border-bottom: 1px solid rgba(198,155,84,0.12);
+          background: rgba(255,255,255,0.03);
+          border-bottom: 1px solid rgba(255,255,255,0.12);
         }
         .hours-line span { color: var(--gold); font-weight: 600; }
         .theme-banner {
           margin: 14px auto 4px;
           max-width: 620px;
-          background: linear-gradient(180deg, rgba(44, 29, 20, 0.95), rgba(22, 14, 10, 0.98));
+          background: linear-gradient(180deg, rgba(20, 21, 24, 0.95), rgba(9, 9, 10, 0.98));
           border: 1px solid var(--line);
           border-radius: 12px;
           padding: 22px 20px 20px;
@@ -505,8 +505,8 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         }
         .today-badge {
           display: inline-block;
-          background: rgba(216,174,73,0.2);
-          color: #14100b;
+          background: rgba(255,255,255,0.14);
+          color: var(--ink);
           font-size: 0.65rem;
           padding: 2px 8px;
           border-radius: 999px;
@@ -528,7 +528,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           font-size: 0.98rem;
         }
         .theme-desc {
-          color: #9d9485;
+          color: var(--muted);
           font-size: 0.92rem;
           margin-top: 8px;
           max-width: 500px;
@@ -557,8 +557,8 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           transition: border-color 0.2s, box-shadow 0.2s;
         }
         .cocktail-search input:focus {
-          border-color: rgba(216,174,73,0.5);
-          box-shadow: 0 0 0 3px rgba(216,174,73,0.18);
+          border-color: rgba(255,255,255,0.28);
+          box-shadow: 0 0 0 3px rgba(255,255,255,0.12);
         }
         .filter-chips {
           display: flex;
@@ -567,10 +567,10 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           margin-top: 12px;
         }
         .filter-chip {
-          border: 1px solid rgba(245,232,204,0.12);
+          border: 1px solid rgba(255,255,255,0.12);
           border-radius: 8px;
-          background: rgba(70,81,60,0.16);
-          color: #d7c7ab;
+          background: rgba(255,255,255,0.05);
+          color: #d8dbe0;
           padding: 6px 12px;
           font-size: 0.76rem;
           font-weight: 700;
@@ -579,19 +579,19 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           text-transform: uppercase;
         }
         .filter-chip:hover {
-          border-color: rgba(216,174,73,0.45);
+          border-color: rgba(255,255,255,0.24);
           color: #fff;
         }
         .filter-chip.is-active {
-          border-color: rgba(29, 18, 12, 0.55);
-          background: linear-gradient(180deg, #cfaa66, #8f5a35);
+          border-color: rgba(255,255,255,0.12);
+          background: linear-gradient(180deg, #ffffff, #bcc1c8 64%, #727983);
           color: var(--ink);
         }
         .filter-reset {
           white-space: nowrap;
-          border: 1px solid rgba(198,155,84,0.35);
+          border: 1px solid rgba(255,255,255,0.18);
           border-radius: 8px;
-          background: rgba(198,155,84,0.11);
+          background: rgba(255,255,255,0.05);
           color: var(--cream);
           padding: 8px 10px;
           font-size: 0.76rem;
@@ -601,7 +601,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           letter-spacing: 0.05em;
         }
         .filter-reset:hover {
-          background: rgba(216,174,73,0.18);
+          background: rgba(255,255,255,0.08);
         }
         .filter-reset:disabled {
           opacity: 0.45;
@@ -626,7 +626,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         }
         .section-subtitle { color: #9c9486; font-size: 0.84rem; margin: -6px 0 14px 4px; }
         .bottle-card {
-          background: linear-gradient(180deg, rgba(44, 29, 20, 0.94), rgba(26, 18, 12, 0.98));
+          background: linear-gradient(180deg, rgba(20, 21, 24, 0.94), rgba(9, 9, 10, 0.98));
           border: 1px solid var(--line);
           border-radius: 10px;
           padding: 14px;
@@ -682,7 +682,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           display: flex;
           align-items: flex-start;
           gap: 12px;
-          background: linear-gradient(180deg, rgba(44, 29, 20, 0.94), rgba(26, 18, 12, 0.98));
+          background: linear-gradient(180deg, rgba(20, 21, 24, 0.94), rgba(9, 9, 10, 0.98));
           border: 1px solid var(--line);
           border-radius: 10px;
           padding: 14px 14px;
@@ -692,8 +692,8 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         }
         .deal-card:hover { border-color: rgba(245,232,204,0.24); transform: translateY(-1px); }
         .deal-card.featured {
-          border-color: rgba(198,155,84,0.45);
-          box-shadow: 0 0 18px rgba(198,155,84,0.12);
+          border-color: rgba(255,255,255,0.24);
+          box-shadow: 0 0 18px rgba(255,255,255,0.08);
         }
         .deal-info { min-width: 0; flex: 1; }
         .deal-name-row {
@@ -703,16 +703,16 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           flex-wrap: wrap;
         }
         .deal-name { font-weight: 700; color: var(--cream); font-size: 1rem; }
-        .deal-desc { color: #b7a890; font-size: 0.85rem; margin-top: 2px; }
+        .deal-desc { color: #b8bcc2; font-size: 0.85rem; margin-top: 2px; }
         .deal-detail {
-          color: #9f9688;
+          color: #9fa4ab;
           font-size: 0.82rem;
           margin-top: 6px;
           font-style: italic;
           line-height: 1.5;
         }
         .deal-time {
-          color: #be7f42;
+          color: #d6d9de;
           font-size: 0.82rem;
           margin-top: 4px;
         }
@@ -726,7 +726,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         }
         .badge {
           display: inline-block;
-          background: linear-gradient(180deg, rgba(198,155,84,0.2), rgba(139,82,48,0.18));
+          background: linear-gradient(180deg, rgba(255,255,255,0.14), rgba(111,118,127,0.18));
           color: var(--gold);
           font-size: 0.62rem;
           font-weight: 700;
@@ -736,17 +736,17 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           letter-spacing: 0.04em;
         }
         .flight-card {
-          background: linear-gradient(180deg, rgba(44, 29, 20, 0.95), rgba(22, 14, 10, 0.98));
+          background: linear-gradient(180deg, rgba(20, 21, 24, 0.95), rgba(9, 9, 10, 0.98));
           border: 1px solid var(--line);
           border-radius: 10px;
           padding: 18px 18px 16px;
           box-shadow: 0 10px 24px rgba(0,0,0,0.24), inset 0 0 0 1px rgba(255,255,255,0.03);
         }
         .flight-theme { font-size: 1.17rem; font-weight: 800; color: var(--cream); margin-bottom: 4px; }
-        .flight-desc { color: #9d9485; font-size: 0.88rem; margin-bottom: 8px; }
+        .flight-desc { color: var(--muted); font-size: 0.88rem; margin-bottom: 8px; }
         .flight-price {
           display: inline-block;
-          background: linear-gradient(180deg, #cfaa66, #8f5a35);
+          background: linear-gradient(180deg, #ffffff, #bcc1c8 64%, #727983);
           color: var(--ink);
           font-weight: 800;
           padding: 4px 14px;
@@ -759,15 +759,15 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           display: flex;
           gap: 12px;
           align-items: flex-start;
-          background: rgba(255,243,217,0.05);
+          background: rgba(255,255,255,0.05);
           border-radius: 8px;
           padding: 12px 12px 12px 14px;
-          border: 1px solid rgba(245,232,204,0.08);
+          border: 1px solid rgba(255,255,255,0.08);
         }
         .pour-number {
           width: 26px;
           height: 26px;
-          background: linear-gradient(180deg, #cfaa66, #8f5a35);
+          background: linear-gradient(180deg, #ffffff, #bcc1c8 64%, #727983);
           color: var(--ink);
           border-radius: 50%;
           display: flex;
@@ -780,10 +780,10 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         .pour-info { flex: 1; min-width: 0; }
         .pour-name { font-weight: 700; color: var(--cream); }
         .pour-origin { color: var(--gold); font-size: 0.82rem; }
-        .pour-notes { color: #9d9485; font-size: 0.82rem; margin-top: 3px; font-style: italic; }
-        .pour-size { color: #82796c; font-size: 0.75rem; margin-top: 2px; }
+        .pour-notes { color: var(--muted); font-size: 0.82rem; margin-top: 3px; font-style: italic; }
+        .pour-size { color: #8d9299; font-size: 0.75rem; margin-top: 2px; }
         .teaser-card {
-          background: linear-gradient(180deg, rgba(44, 29, 20, 0.9), rgba(22, 14, 10, 0.95));
+          background: linear-gradient(180deg, rgba(20, 21, 24, 0.9), rgba(9, 9, 10, 0.95));
           border: 1px solid var(--line);
           border-radius: 10px;
           padding: 14px 16px;
@@ -795,7 +795,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           font-size: 0.72rem;
           text-transform: uppercase;
           letter-spacing: 0.12em;
-          color: #8f877a;
+          color: #9b9fa5;
           font-weight: 700;
           margin-bottom: 4px;
         }
@@ -813,7 +813,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         .teaser-link {
           display: inline-block;
           margin-top: 8px;
-          color: #eadbb4;
+          color: #e5e7eb;
           font-size: 0.82rem;
           font-weight: 600;
           text-decoration: none;
@@ -821,17 +821,17 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         .teaser-link:hover { text-decoration: underline; }
         .warning-card {
           text-align: center;
-          background: rgba(198,155,84,0.09);
-          border: 1px solid rgba(198,155,84,0.25);
+          background: rgba(255,255,255,0.06);
+          border: 1px solid rgba(255,255,255,0.16);
           border-radius: 10px;
           padding: 16px;
-          color: #ead7aa;
+          color: #f0f1f3;
           box-shadow: 0 8px 24px rgba(0,0,0,0.2);
         }
         .warning-card p { margin-bottom: 10px; line-height: 1.5; }
         .empty-card {
           text-align: center;
-          background: linear-gradient(180deg, rgba(44, 29, 20, 0.95), rgba(22, 14, 10, 0.98));
+          background: linear-gradient(180deg, rgba(20, 21, 24, 0.95), rgba(9, 9, 10, 0.98));
           border: 1px solid var(--line);
           border-radius: 10px;
           padding: 32px 20px;
@@ -842,14 +842,14 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           display: inline-block;
           margin-top: 16px;
           color: var(--ink);
-          background: linear-gradient(180deg, #cfaa66, #8f5a35);
+          background: linear-gradient(180deg, #ffffff, #bcc1c8 64%, #727983);
           padding: 10px 22px;
           border-radius: 8px;
           text-decoration: none;
           font-weight: 700;
           font-size: 0.9rem;
           box-shadow: 0 8px 18px rgba(0,0,0,0.28);
-          border: 1px solid rgba(29, 18, 12, 0.55);
+          border: 1px solid rgba(255,255,255,0.12);
           text-transform: uppercase;
           letter-spacing: 0.05em;
         }
@@ -859,7 +859,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           text-align: center;
           margin: 24px 0 8px;
           padding: 14px 20px;
-          background: linear-gradient(180deg, #cfaa66, #8f5a35);
+          background: linear-gradient(180deg, #ffffff, #bcc1c8 64%, #727983);
           color: var(--ink);
           font-weight: 800;
           font-size: 0.95rem;
@@ -867,16 +867,16 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           text-decoration: none;
           letter-spacing: 0.05em;
           box-shadow: 0 10px 24px rgba(0,0,0,0.3);
-          border: 1px solid rgba(29, 18, 12, 0.55);
+          border: 1px solid rgba(255,255,255,0.12);
           text-transform: uppercase;
         }
         .spirit-cta:hover { filter: brightness(1.03); }
         .hp-search-wrap { margin-bottom: 14px; }
         .hp-search-wrap input {
           width: 100%;
-          border: 1px solid rgba(245,232,204,0.14);
+          border: 1px solid rgba(255,255,255,0.14);
           border-radius: 8px;
-          background: rgba(255,243,217,0.06);
+          background: rgba(255,255,255,0.05);
           color: var(--text);
           padding: 11px 12px;
           font-size: 0.9rem;
@@ -884,8 +884,8 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           transition: border-color 0.2s, box-shadow 0.2s;
         }
         .hp-search-wrap input:focus {
-          border-color: rgba(216,174,73,0.5);
-          box-shadow: 0 0 0 3px rgba(216,174,73,0.18);
+          border-color: rgba(255,255,255,0.28);
+          box-shadow: 0 0 0 3px rgba(255,255,255,0.12);
         }
         .hp-cat-group { margin-bottom: 6px; }
         .hp-cat-label {
@@ -895,9 +895,9 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           text-transform: uppercase;
           letter-spacing: 0.06em;
           padding: 10px 4px 5px;
-          border-bottom: 1px solid rgba(216,174,73,0.18);
+          border-bottom: 1px solid rgba(255,255,255,0.18);
         }
-        .hp-cat-count { color: #82796c; font-weight: 400; }
+        .hp-cat-count { color: #8d9299; font-weight: 400; }
         .hp-spirit-row {
           display: flex;
           align-items: center;
@@ -912,7 +912,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           text-align: right;
           font-size: 0.85rem;
         }
-        .hp-spirit-prices s { color: #82796c; margin-right: 6px; }
+        .hp-spirit-prices s { color: #8d9299; margin-right: 6px; }
         .hp-spirit-prices strong { color: var(--gold); font-weight: 800; }
         .hp-spirit-row.hp-hidden { display: none; }
         .footer {

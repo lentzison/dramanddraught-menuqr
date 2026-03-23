@@ -85,7 +85,7 @@ function generateDraftPage(location, taps = [], hasError = false) {
       <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <meta name="theme-color" content="#8b5230">
+        <meta name="theme-color" content="#0f1012">
         <title>On Draft - Dram & Draught ${escHTML(location.name)}</title>
         <style>
         ${vintageThemeCss()}
@@ -98,7 +98,7 @@ function generateDraftPage(location, taps = [], hasError = false) {
           font-weight: 800;
           letter-spacing: 0.12em;
           text-transform: uppercase;
-          background: linear-gradient(180deg, #f7ead0, #d3ac6d 68%, #9f663d 100%);
+          background: linear-gradient(180deg, #ffffff, #d0d4da 68%, #737a84 100%);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
         }
@@ -116,7 +116,7 @@ function generateDraftPage(location, taps = [], hasError = false) {
           border-radius: 12px;
           padding: 16px 14px 14px;
           text-align: center;
-          background: linear-gradient(180deg, rgba(44, 29, 20, 0.95), rgba(22, 14, 10, 0.98));
+          background: linear-gradient(180deg, rgba(20, 21, 24, 0.95), rgba(9, 9, 10, 0.98));
           box-shadow: 0 14px 30px rgba(0, 0, 0, 0.3), inset 0 0 0 1px rgba(255,255,255,0.03);
         }
         .page-title {
@@ -136,7 +136,7 @@ function generateDraftPage(location, taps = [], hasError = false) {
           align-items: center;
           gap: 8px;
           margin-top: 10px;
-          border: 1px solid rgba(245, 232, 204, 0.14);
+          border: 1px solid rgba(255, 255, 255, 0.14);
           border-radius: 8px;
           padding: 6px 12px;
           font-size: 0.78rem;
@@ -145,9 +145,9 @@ function generateDraftPage(location, taps = [], hasError = false) {
           letter-spacing: 0.08em;
           background: rgba(34, 24, 17, 0.45);
         }
-        .status-open { color: #b9d3a6; border-color: rgba(115, 140, 95, 0.45); background: rgba(70,81,60,0.2); }
-        .status-closed { color: #e2bd74; border-color: rgba(198,155,84,0.36); background: rgba(198,155,84,0.12); }
-        .status-unknown { color: #cbc1af; border-color: rgba(205,182,147,0.24); background: rgba(205,182,147,0.08); }
+        .status-open { color: var(--cream); border-color: rgba(255,255,255,0.24); background: rgba(255,255,255,0.08); }
+        .status-closed { color: #cdced1; border-color: rgba(255,255,255,0.16); background: rgba(255,255,255,0.05); }
+        .status-unknown { color: var(--muted); border-color: rgba(255,255,255,0.12); background: rgba(255,255,255,0.03); }
         .container {
           max-width: 680px;
           margin: 0 auto;
@@ -184,7 +184,7 @@ function generateDraftPage(location, taps = [], hasError = false) {
           grid-template-columns: auto 1fr auto;
           gap: 12px 14px;
           align-items: center;
-          background: linear-gradient(180deg, rgba(44, 29, 20, 0.94), rgba(26, 18, 12, 0.98));
+          background: linear-gradient(180deg, rgba(20, 21, 24, 0.94), rgba(9, 9, 10, 0.98));
           border: 1px solid var(--line);
           border-radius: 10px;
           padding: 14px;
@@ -197,7 +197,7 @@ function generateDraftPage(location, taps = [], hasError = false) {
         .tap-number {
           width: 34px;
           height: 34px;
-          background: linear-gradient(180deg, #cfaa66, #8f5a35);
+          background: linear-gradient(180deg, #ffffff, #bcc1c8 64%, #727983);
           color: var(--ink);
           border-radius: 50%;
           display: flex;
@@ -219,10 +219,10 @@ function generateDraftPage(location, taps = [], hasError = false) {
           flex-wrap: wrap;
           margin-top: 5px;
         }
-        .tap-style { color: #b7a890; font-size: 0.82rem; }
+        .tap-style { color: #b8bcc2; font-size: 0.82rem; }
         .abv-badge, .ibu-badge {
           display: inline-block;
-          background: rgba(216,174,73,0.15);
+          background: rgba(255,255,255,0.08);
           color: var(--gold);
           font-size: 0.72rem;
           font-weight: 700;
@@ -230,8 +230,8 @@ function generateDraftPage(location, taps = [], hasError = false) {
           border-radius: 6px;
         }
         .ibu-badge {
-          background: rgba(185,124,61,0.2);
-          color: var(--amber);
+          background: rgba(111,118,127,0.18);
+          color: #dde0e5;
         }
         .tap-notes {
           color: #8d8678;
@@ -252,7 +252,7 @@ function generateDraftPage(location, taps = [], hasError = false) {
         }
         .empty-card {
           text-align: center;
-          background: linear-gradient(180deg, rgba(44, 29, 20, 0.95), rgba(22, 14, 10, 0.98));
+          background: linear-gradient(180deg, rgba(20, 21, 24, 0.95), rgba(9, 9, 10, 0.98));
           border: 1px solid var(--line);
           border-radius: 10px;
           padding: 32px 20px;
@@ -261,11 +261,11 @@ function generateDraftPage(location, taps = [], hasError = false) {
         .empty-card p { color: var(--muted); line-height: 1.5; }
         .warning-card {
           text-align: center;
-          background: rgba(198,155,84,0.09);
-          border: 1px solid rgba(198,155,84,0.24);
+          background: rgba(255,255,255,0.06);
+          border: 1px solid rgba(255,255,255,0.16);
           border-radius: 10px;
           padding: 16px;
-          color: #ead7aa;
+          color: #f0f1f3;
           margin-bottom: 10px;
           box-shadow: 0 8px 24px rgba(0,0,0,0.2);
         }
@@ -274,13 +274,13 @@ function generateDraftPage(location, taps = [], hasError = false) {
           display: inline-block;
           margin-top: 16px;
           color: var(--ink);
-          background: linear-gradient(180deg, #cfaa66, #8f5a35);
+          background: linear-gradient(180deg, #ffffff, #bcc1c8 64%, #727983);
           padding: 10px 22px;
           border-radius: 8px;
           text-decoration: none;
           font-weight: 700;
           font-size: 0.9rem;
-          border: 1px solid rgba(29, 18, 12, 0.55);
+          border: 1px solid rgba(255, 255, 255, 0.12);
           text-transform: uppercase;
           letter-spacing: 0.05em;
         }

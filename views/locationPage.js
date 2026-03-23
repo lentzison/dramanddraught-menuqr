@@ -53,7 +53,7 @@ function generateLocationPage(location, allLocations = []) {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <meta name="theme-color" content="#8b5230">
+      <meta name="theme-color" content="#0f1012">
       <title>Dram & Draught ${location.name} - Whiskey Bar & Cocktails</title>
       <style>
         ${vintageThemeCss()}
@@ -68,8 +68,8 @@ function generateLocationPage(location, allLocations = []) {
           margin: 0 auto;
           max-width: 920px;
           background:
-            linear-gradient(180deg, rgba(64, 42, 28, 0.97), rgba(29, 19, 13, 0.98)),
-            radial-gradient(circle at top, rgba(198, 155, 84, 0.12), transparent 42%);
+            linear-gradient(180deg, rgba(24, 25, 28, 0.97), rgba(7, 7, 8, 0.98)),
+            radial-gradient(circle at top, rgba(255, 255, 255, 0.08), transparent 42%);
           box-shadow: 0 18px 54px var(--shadow), inset 0 0 0 1px rgba(255,255,255,0.04);
           min-height: 360px;
         }
@@ -88,8 +88,8 @@ function generateLocationPage(location, allLocations = []) {
           position: absolute;
           inset: 0;
           background:
-            radial-gradient(520px 220px at 70% 12%, rgba(255,244,219,0.08), transparent 45%),
-            radial-gradient(430px 180px at 18% 74%, rgba(70,81,60,0.12), transparent 50%);
+            radial-gradient(520px 220px at 70% 12%, rgba(255,255,255,0.08), transparent 45%),
+            radial-gradient(430px 180px at 18% 74%, rgba(111,118,127,0.12), transparent 50%);
           pointer-events: none;
           opacity: 0.9;
         }
@@ -98,7 +98,7 @@ function generateLocationPage(location, allLocations = []) {
           font-size: clamp(2.1rem, 9vw, 3.4rem);
           letter-spacing: 0.1em;
           margin-bottom: 10px;
-          background: linear-gradient(180deg, #f7ead0, #d3ac6d 68%, #9f663d 100%);
+          background: linear-gradient(180deg, #ffffff, #d0d4da 68%, #737a84 100%);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           text-transform: uppercase;
@@ -116,7 +116,7 @@ function generateLocationPage(location, allLocations = []) {
           font-weight: 700;
           font-size: 0.72rem;
           text-transform: uppercase;
-          background: linear-gradient(180deg, rgba(70,81,60,0.34), rgba(30,22,15,0.2));
+          background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(18,19,21,0.26));
           margin: 4px auto 10px;
           display: inline-flex;
           align-items: center;
@@ -130,7 +130,7 @@ function generateLocationPage(location, allLocations = []) {
           align-items: center;
           gap: 8px;
           margin-top: 12px;
-          border: 1px solid rgba(245, 232, 204, 0.14);
+          border: 1px solid rgba(255, 255, 255, 0.14);
           border-radius: 8px;
           padding: 7px 14px;
           font-size: 0.84rem;
@@ -138,11 +138,11 @@ function generateLocationPage(location, allLocations = []) {
           letter-spacing: 0.08em;
           text-transform: uppercase;
           box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
-          background: rgba(34, 24, 17, 0.45);
+          background: rgba(255, 255, 255, 0.04);
         }
-        .status-open { color: #b9d3a6; border-color: rgba(115, 140, 95, 0.45); background: rgba(70,81,60,0.2); }
-        .status-closed { color: #e2bd74; border-color: rgba(198,155,84,0.36); background: rgba(198,155,84,0.12); }
-        .status-unknown { color: #cbc1af; border-color: rgba(205,182,147,0.24); background: rgba(205,182,147,0.08); }
+        .status-open { color: var(--cream); border-color: rgba(255,255,255,0.24); background: rgba(255,255,255,0.08); }
+        .status-closed { color: #cdced1; border-color: rgba(255,255,255,0.16); background: rgba(255,255,255,0.05); }
+        .status-unknown { color: var(--muted); border-color: rgba(255,255,255,0.12); background: rgba(255,255,255,0.03); }
         .rl-desc {
           color: var(--muted);
           max-width: 780px;
@@ -150,13 +150,13 @@ function generateLocationPage(location, allLocations = []) {
           line-height: 1.65;
         }
         .rl-card {
-          background: linear-gradient(180deg, rgba(56, 38, 25, 0.88), rgba(30, 20, 14, 0.9));
+          background: linear-gradient(180deg, rgba(19, 20, 23, 0.88), rgba(9, 9, 10, 0.92));
           border: 1px solid var(--line);
           border-radius: 12px;
           padding: 18px 18px 16px;
           max-width: 780px;
           margin: 14px auto 0;
-          color: #e3d2b3;
+          color: #dedbd7;
           line-height: 1.65;
           box-shadow: 0 12px 30px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(255,255,255,0.03);
         }
@@ -171,23 +171,23 @@ function generateLocationPage(location, allLocations = []) {
           text-decoration: none;
           text-align: center;
           color: var(--ink);
-          background: linear-gradient(180deg, #cfaa66, #8f5a35);
+          background: linear-gradient(180deg, #ffffff, #bcc1c8 64%, #727983);
           padding: 16px 22px;
           border-radius: 10px;
           font-weight: 800;
           margin: 12px 0;
-          box-shadow: inset 0 1px 0 rgba(255, 245, 220, 0.28), 0 12px 24px rgba(0,0,0,0.32);
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38), 0 12px 24px rgba(0,0,0,0.32);
           transition: transform .2s ease, filter .2s ease, box-shadow .2s ease;
           min-height: 56px;
-          border: 1px solid rgba(29, 18, 12, 0.55);
+          border: 1px solid rgba(255, 255, 255, 0.12);
           text-transform: uppercase;
           letter-spacing: 0.05em;
         }
         .link-btn:hover { transform: translateY(-2px) scale(1.01); filter: saturate(1.08); box-shadow: 0 12px 28px rgba(0,0,0,0.6); }
         .link-btn:focus-visible { outline: 2px solid #f8e7a8; outline-offset: 2px; }
         .chip {
-          background: rgba(70,81,60,0.22);
-          color: #dfd0b3;
+          background: rgba(255,255,255,0.05);
+          color: #d7d9dd;
           border: 1px solid var(--line);
           padding: 6px 11px;
           border-radius: 8px;
@@ -203,7 +203,7 @@ function generateLocationPage(location, allLocations = []) {
           margin: 20px auto 2px;
           border: 1px solid var(--line);
           border-radius: 12px;
-          background: linear-gradient(180deg, rgba(44, 29, 20, 0.95), rgba(22, 14, 10, 0.98));
+          background: linear-gradient(180deg, rgba(20, 21, 24, 0.95), rgba(9, 9, 10, 0.98));
           padding: 18px 16px 16px;
           text-align: center;
           box-shadow: 0 14px 28px rgba(0,0,0,0.28), inset 0 0 0 1px rgba(255,255,255,0.03);
@@ -226,7 +226,7 @@ function generateLocationPage(location, allLocations = []) {
           align-items: flex-start;
           gap: 10px;
           margin: 8px 0 12px;
-          color: #d0c5b2;
+          color: #c9ccd2;
           font-size: 0.83rem;
           line-height: 1.3;
           text-align: left;
@@ -254,14 +254,14 @@ function generateLocationPage(location, allLocations = []) {
         .feedback-form button {
           width: 100%;
           border-radius: 8px;
-          border: 1px solid rgba(245, 232, 204, 0.14);
+          border: 1px solid rgba(255, 255, 255, 0.14);
           font-family: inherit;
           font-size: 0.95rem;
           box-sizing: border-box;
         }
         .feedback-form input,
         .feedback-form textarea {
-          background: rgba(255, 243, 217, 0.06);
+          background: rgba(255, 255, 255, 0.05);
           color: var(--cream);
           padding: 10px 12px;
           margin-bottom: 8px;
@@ -272,16 +272,16 @@ function generateLocationPage(location, allLocations = []) {
           resize: vertical;
         }
         .feedback-form button {
-          background: linear-gradient(180deg, #cfaa66, #8f5a35);
+          background: linear-gradient(180deg, #ffffff, #bcc1c8 64%, #727983);
           color: var(--ink);
-          border: 1px solid rgba(29, 18, 12, 0.55);
+          border: 1px solid rgba(255, 255, 255, 0.12);
           padding: 12px;
           font-weight: 800;
           min-height: 48px;
           cursor: pointer;
           text-transform: uppercase;
           letter-spacing: 0.06em;
-          box-shadow: inset 0 1px 0 rgba(255, 245, 220, 0.28), 0 10px 18px rgba(0,0,0,0.24);
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38), 0 10px 18px rgba(0,0,0,0.24);
         }
         .feedback-form button:disabled {
           opacity: 0.65;
@@ -290,7 +290,7 @@ function generateLocationPage(location, allLocations = []) {
         .feedback-form label {
           display: block;
           text-align: left;
-          color: #ddcaae;
+          color: #d3d5d9;
           font-size: 0.84rem;
           letter-spacing: 0.08em;
           margin: 0 0 6px;
@@ -306,7 +306,7 @@ function generateLocationPage(location, allLocations = []) {
           appearance: none;
           border: 0;
           background: transparent;
-          color: #6f5d46;
+          color: #666b73;
           font-size: 2rem;
           cursor: pointer;
           line-height: 1;
@@ -314,11 +314,11 @@ function generateLocationPage(location, allLocations = []) {
         }
         .review-star:hover,
         .review-star:focus-visible {
-          color: #d9b25f;
+          color: #ffffff;
           transform: translateY(-1px) scale(1.08);
         }
         .review-star[aria-pressed="true"] {
-          color: #d9b25f;
+          color: #ffffff;
         }
         .review-hint {
           color: var(--muted);

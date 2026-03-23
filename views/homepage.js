@@ -19,11 +19,11 @@ function generateHomepage(locs) {
           border-radius: 0 0 26px 26px;
           border: 1px solid var(--line);
           border-top: 0;
-          border-bottom-color: rgba(255, 233, 194, 0.12);
-          box-shadow: 0 18px 48px var(--shadow), inset 0 0 0 1px rgba(255, 245, 227, 0.04);
+          border-bottom-color: rgba(255, 255, 255, 0.12);
+          box-shadow: 0 18px 48px var(--shadow), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
           background:
-            linear-gradient(180deg, rgba(63, 41, 28, 0.97), rgba(28, 19, 13, 0.98)),
-            radial-gradient(circle at top, rgba(198, 155, 84, 0.12), transparent 42%);
+            linear-gradient(180deg, rgba(24, 25, 28, 0.97), rgba(7, 7, 8, 0.98)),
+            radial-gradient(circle at top, rgba(255, 255, 255, 0.08), transparent 42%);
           margin: 0 auto;
           max-width: 980px;
           animation: fadeIn .45s ease-out;
@@ -43,8 +43,8 @@ function generateHomepage(locs) {
           position: absolute;
           inset: 0;
           background:
-            radial-gradient(520px 220px at 70% 12%, rgba(255, 244, 219, 0.08), transparent 45%),
-            radial-gradient(430px 180px at 18% 74%, rgba(70, 81, 60, 0.12), transparent 50%);
+            radial-gradient(520px 220px at 70% 12%, rgba(255, 255, 255, 0.08), transparent 45%),
+            radial-gradient(430px 180px at 18% 74%, rgba(111, 118, 127, 0.12), transparent 50%);
           opacity: 0.9;
           pointer-events: none;
         }
@@ -54,7 +54,7 @@ function generateHomepage(locs) {
           margin-bottom: 10px;
           letter-spacing: 0.1em;
           text-transform: uppercase;
-          background: linear-gradient(180deg, #f7ead0, #d3ac6d 68%, #9f663d 100%);
+          background: linear-gradient(180deg, #ffffff, #d0d4da 68%, #737a84 100%);
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;
           text-shadow: 0 1px 0 rgba(0,0,0,0.25);
@@ -80,20 +80,20 @@ function generateHomepage(locs) {
           font-weight: 700;
           font-size: 0.76em;
           text-transform: uppercase;
-          background: linear-gradient(180deg, rgba(70, 81, 60, 0.34), rgba(30, 22, 15, 0.2));
+          background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(18, 19, 21, 0.26));
           margin-top: 8px;
           margin-bottom: 12px;
           box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
         }
         .rl-card {
           position: relative;
-          background: linear-gradient(180deg, rgba(56, 38, 25, 0.88), rgba(30, 20, 14, 0.9));
+          background: linear-gradient(180deg, rgba(19, 20, 23, 0.88), rgba(9, 9, 10, 0.92));
           border: 1px solid var(--line);
           border-radius: 12px;
           padding: 18px 18px 16px;
           max-width: 900px;
           margin: 0 auto;
-          color: #e3d2b3;
+          color: #dedbd7;
           line-height: 1.65;
           box-shadow: 0 12px 30px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(255,255,255,0.03);
           animation: fadeIn .45s ease-out .08s both;
@@ -122,9 +122,9 @@ function generateHomepage(locs) {
           letter-spacing: 0.03em;
         }
         .location-controls button {
-          background: linear-gradient(180deg, #cfaa66, #8f5a35);
+          background: linear-gradient(180deg, #ffffff, #bcc1c8 64%, #727983);
           color: var(--ink);
-          border: 1px solid rgba(29, 18, 12, 0.55);
+          border: 1px solid rgba(255, 255, 255, 0.12);
           border-radius: 8px;
           padding: 10px 16px;
           font-family: inherit;
@@ -134,7 +134,7 @@ function generateHomepage(locs) {
           cursor: pointer;
           transition: transform 0.2s ease, filter 0.2s ease, box-shadow 0.2s ease;
           min-height: 40px;
-          box-shadow: inset 0 1px 0 rgba(255, 245, 220, 0.28), 0 10px 18px rgba(0,0,0,0.22);
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38), 0 10px 18px rgba(0,0,0,0.22);
         }
         .location-controls button:hover {
           transform: translateY(-2px);
@@ -158,7 +158,7 @@ function generateHomepage(locs) {
           border: 1px solid var(--line);
           border-radius: 10px;
           padding: 24px;
-          background: linear-gradient(180deg, rgba(44, 29, 20, 0.94), rgba(26, 18, 12, 0.98));
+          background: linear-gradient(180deg, rgba(20, 21, 24, 0.94), rgba(9, 9, 10, 0.98));
           box-shadow: 0 14px 30px rgba(0,0,0,0.28), inset 0 0 0 1px rgba(255,255,255,0.03);
           text-decoration: none;
           color: var(--text);
@@ -169,7 +169,7 @@ function generateHomepage(locs) {
         }
         .location-card:hover {
           transform: translateY(-4px);
-          border-color: rgba(245, 232, 204, 0.24);
+          border-color: rgba(255, 255, 255, 0.24);
           box-shadow: 0 18px 36px rgba(0,0,0,0.32), inset 0 0 0 1px rgba(255,255,255,0.04);
         }
         .location-card::before {
@@ -186,7 +186,7 @@ function generateHomepage(locs) {
           content: '';
           position: absolute;
           inset: 10px;
-          border: 1px solid rgba(245, 232, 204, 0.06);
+          border: 1px solid rgba(255, 255, 255, 0.06);
           border-radius: 6px;
           pointer-events: none;
         }
@@ -199,13 +199,13 @@ function generateHomepage(locs) {
           letter-spacing: 0.05em;
         }
         .location-meta {
-          color: #b79e79;
+          color: #b3afb0;
           margin-bottom: 10px;
           line-height: 1.45;
           font-size: 0.93rem;
         }
         .special-line {
-          color: #d9c08a;
+          color: #d8dbe0;
           font-size: 0.9em;
           min-height: 1.3em;
           margin-top: 10px;
@@ -213,7 +213,7 @@ function generateHomepage(locs) {
         }
         .location-distance {
           font-size: 0.85rem;
-          color: #c4b194;
+          color: #b9bec5;
           min-height: 1.2rem;
         }
         .view-location {
@@ -222,26 +222,26 @@ function generateHomepage(locs) {
           bottom: 24px;
           display: inline-block;
           color: var(--ink);
-          background: linear-gradient(180deg, #cfaa66, #8f5a35);
+          background: linear-gradient(180deg, #ffffff, #bcc1c8 64%, #727983);
           padding: 10px 20px;
           border-radius: 8px;
           font-weight: 700;
           text-decoration: none;
-          border: 1px solid rgba(29, 18, 12, 0.55);
+          border: 1px solid rgba(255, 255, 255, 0.12);
           text-transform: uppercase;
           letter-spacing: 0.04em;
-          box-shadow: inset 0 1px 0 rgba(255, 244, 218, 0.28), 0 10px 18px rgba(0,0,0,0.2);
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38), 0 10px 18px rgba(0,0,0,0.2);
         }
         .empty-copy {
           text-align: center;
           max-width: 720px;
           margin: 22px auto 0;
           color: var(--muted);
-          border: 1px dashed rgba(245, 232, 204, 0.16);
+          border: 1px dashed rgba(255, 255, 255, 0.16);
           border-radius: 10px;
           padding: 18px 16px;
           line-height: 1.55;
-          background: rgba(27, 18, 12, 0.3);
+          background: rgba(255, 255, 255, 0.03);
         }
       </style>
     </head>

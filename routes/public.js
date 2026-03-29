@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const url = require('url');
 const {
   sendHTML,
@@ -31,6 +33,7 @@ const { generateDraftPage } = require('../views/draftPage');
 const { generateMenuPage } = require('../views/menuPage');
 
 const DAYS_ORDER = Array.isArray(importDaysOrder) && importDaysOrder.length > 0 ? importDaysOrder : ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
+const BRAND_LOGO_PATH = path.join(__dirname, '..', 'assets', 'dram-draught-logo-white.png');
 
 function getEasternDayFallback() {
   const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
@@ -889,6 +892,32 @@ async function handleMenu(req, res, prisma, locationSlug) {
 }
 
 async function handlePublic(req, res, pathname, prisma) {
+  if (pathname === '/assets/dram-draught-logo-white.png') {
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      sendHTML(res, 405, '<h1>Method Not Allowed</h1>');
+      return true;
+    }
+
+    try {
+      const image = fs.readFileSync(BRAND_LOGO_PATH);
+      res.writeHead(200, {
+        'Content-Type': 'image/png',
+        'Content-Length': image.length,
+        'Cache-Control': 'public, max-age=604800, immutable',
+      });
+      if (req.method === 'HEAD') {
+        res.end();
+      } else {
+        res.end(image);
+      }
+      return true;
+    } catch (error) {
+      console.error('Error serving brand logo:', error);
+      sendHTML(res, 404, '<h1>Asset not found</h1>');
+      return true;
+    }
+  }
+
   if (pathname === '/api/ai-status') {
     if (req.method !== 'GET') {
       sendJSON(res, 405, { ok: false, error: 'Method Not Allowed' });

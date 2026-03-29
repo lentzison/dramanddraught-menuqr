@@ -1,5 +1,7 @@
 const { vintageThemeCss } = require('./publicTheme');
 
+const { brandMarkCss, renderBrandMark } = require('./brandMark');
+
 const DAYS_ORDER = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
 const DAY_SHORT = { MONDAY: 'Mon', TUESDAY: 'Tue', WEDNESDAY: 'Wed', THURSDAY: 'Thu', FRIDAY: 'Fri', SATURDAY: 'Sat', SUNDAY: 'Sun' };
 const DAY_LABELS = { MONDAY: 'Monday', TUESDAY: 'Tuesday', WEDNESDAY: 'Wednesday', THURSDAY: 'Thursday', FRIDAY: 'Friday', SATURDAY: 'Saturday', SUNDAY: 'Sunday' };
@@ -410,45 +412,61 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
       <title>${theme ? escHTML(theme.name) : dayLabel + ' Specials'} - Dram & Draught ${escHTML(location.name)}</title>
       <style>
         ${vintageThemeCss()}
+        ${brandMarkCss()}
         .header {
+          text-align: center;
+          padding: 30px 24px 24px;
+          max-width: 900px;
+          margin: 0 auto;
+          position: relative;
+          overflow: hidden;
           background:
             linear-gradient(180deg, rgba(24,25,28,0.96), rgba(7,7,8,0.98)),
             radial-gradient(circle at 30% 0%, rgba(255,255,255,0.08), transparent 40%);
-          text-align: center;
-          padding: 28px 20px 10px;
-          border-bottom: 1px solid var(--line);
+          border: 1px solid var(--line);
+          border-top: 0;
+          border-radius: 0 0 28px 28px;
+          box-shadow: 0 22px 58px var(--shadow), inset 0 0 0 1px rgba(255,255,255,0.04);
+        }
+        .header::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background:
+            repeating-linear-gradient(90deg, rgba(255,255,255,0.03), rgba(255,255,255,0.03) 1px, transparent 1px, transparent 8px),
+            repeating-linear-gradient(0deg, rgba(0,0,0,0.06), rgba(0,0,0,0.06) 1px, transparent 1px, transparent 10px);
+          opacity: 0.24;
+          pointer-events: none;
         }
         .brand {
-          font-size: clamp(1.8rem, 7vw, 2.3rem);
-          font-weight: 800;
-          line-height: 1;
-          background: linear-gradient(180deg, #ffffff, #d0d4da 68%, #737a84 100%);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          letter-spacing: 0.14em;
-          text-transform: uppercase;
+          width: min(52vw, 360px);
+          margin: 0 auto;
         }
         .location-name {
-          color: var(--muted);
-          font-size: 0.9rem;
+          color: #d3d0cb;
+          font-size: 0.84rem;
           text-transform: uppercase;
-          letter-spacing: 0.16em;
-          margin-top: 7px;
+          letter-spacing: 0.2em;
+          margin-top: 12px;
         }
         .day-nav {
           position: sticky;
-          top: 0;
+          top: 10px;
           z-index: 2;
           display: flex;
-          gap: 6px;
-          padding: 12px 16px;
+          gap: 8px;
+          padding: 12px 14px;
           overflow-x: auto;
           -webkit-overflow-scrolling: touch;
           scrollbar-width: none;
           justify-content: center;
-          background: rgba(12, 13, 15, 0.84);
+          background: rgba(12, 13, 15, 0.88);
           backdrop-filter: blur(6px);
-          border-bottom: 1px solid var(--line);
+          border: 1px solid var(--line);
+          border-radius: 16px;
+          max-width: 880px;
+          margin: 12px auto 0;
+          box-shadow: 0 12px 28px rgba(0,0,0,0.22);
         }
         .day-nav::-webkit-scrollbar { display: none; }
         .day-tab {
@@ -468,7 +486,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         .day-tab:hover { color: var(--cream); background: rgba(255,255,255,0.08); }
         .day-tab.active {
           color: var(--ink);
-          background: linear-gradient(180deg, #ffffff, #bcc1c8 64%, #727983);
+          background: linear-gradient(180deg, var(--accent-light), var(--gold) 64%, var(--amber));
           border-color: rgba(255,255,255,0.12);
           font-weight: 800;
           box-shadow: inset 0 1px 0 rgba(255,255,255,0.38), 0 8px 16px rgba(0,0,0,0.22);
@@ -479,22 +497,25 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         }
         .hours-line {
           text-align: center;
-          padding: 9px 16px;
+          padding: 10px 16px;
           color: var(--muted);
           font-size: 0.82rem;
           background: rgba(255,255,255,0.03);
-          border-bottom: 1px solid rgba(255,255,255,0.12);
+          border: 1px solid rgba(255,255,255,0.1);
+          border-radius: 999px;
+          max-width: 520px;
+          margin: 10px auto 0;
         }
         .hours-line span { color: var(--gold); font-weight: 600; }
         .theme-banner {
-          margin: 14px auto 4px;
-          max-width: 620px;
+          margin: 18px auto 6px;
+          max-width: 700px;
           background: linear-gradient(180deg, rgba(20, 21, 24, 0.95), rgba(9, 9, 10, 0.98));
           border: 1px solid var(--line);
-          border-radius: 12px;
-          padding: 22px 20px 20px;
+          border-radius: 20px;
+          padding: 24px 22px 22px;
           text-align: center;
-          box-shadow: 0 14px 30px rgba(0,0,0,0.3), inset 0 0 0 1px rgba(255,255,255,0.03);
+          box-shadow: 0 16px 32px rgba(0,0,0,0.3), inset 0 0 0 1px rgba(255,255,255,0.03);
         }
         .theme-day {
           color: var(--gold);
@@ -505,7 +526,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         }
         .today-badge {
           display: inline-block;
-          background: rgba(255,255,255,0.14);
+          background: var(--accent-soft-strong);
           color: var(--ink);
           font-size: 0.65rem;
           padding: 2px 8px;
@@ -536,7 +557,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           margin-right: auto;
           line-height: 1.55;
         }
-        .container { max-width: 650px; margin: 0 auto; padding: 0 16px 14px; }
+        .container { max-width: 760px; margin: 0 auto; padding: 8px 6px 14px; }
         .section { margin: 24px 0; animation: fadeIn .35s ease both; }
         .cocktail-search {
           display: flex;
@@ -548,10 +569,10 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           flex: 1;
           min-width: 0;
           border: 1px solid rgba(245,232,204,0.14);
-          border-radius: 8px;
+          border-radius: 12px;
           background: rgba(255,243,217,0.06);
           color: var(--text);
-          padding: 11px 12px;
+          padding: 12px 14px;
           font-size: 0.9rem;
           outline: none;
           transition: border-color 0.2s, box-shadow 0.2s;
@@ -568,7 +589,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         }
         .filter-chip {
           border: 1px solid rgba(255,255,255,0.12);
-          border-radius: 8px;
+          border-radius: 999px;
           background: rgba(255,255,255,0.05);
           color: #d8dbe0;
           padding: 6px 12px;
@@ -584,16 +605,16 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         }
         .filter-chip.is-active {
           border-color: rgba(255,255,255,0.12);
-          background: linear-gradient(180deg, #ffffff, #bcc1c8 64%, #727983);
+          background: linear-gradient(180deg, var(--accent-light), var(--gold) 64%, var(--amber));
           color: var(--ink);
         }
         .filter-reset {
           white-space: nowrap;
           border: 1px solid rgba(255,255,255,0.18);
-          border-radius: 8px;
+          border-radius: 12px;
           background: rgba(255,255,255,0.05);
           color: var(--cream);
-          padding: 8px 10px;
+          padding: 10px 12px;
           font-size: 0.76rem;
           cursor: pointer;
           font-weight: 700;
@@ -615,23 +636,24 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           align-items: center;
           gap: 10px;
           margin-bottom: 12px;
-          padding: 0 2px;
+          padding: 0 2px 10px;
+          border-bottom: 1px solid rgba(255,255,255,0.08);
         }
         .section-header h2 {
           font-size: 1.02rem;
           color: var(--gold);
           font-weight: 800;
-          letter-spacing: 0.08em;
+          letter-spacing: 0.12em;
           text-transform: uppercase;
         }
         .section-subtitle { color: #9c9486; font-size: 0.84rem; margin: -6px 0 14px 4px; }
         .bottle-card {
           background: linear-gradient(180deg, rgba(20, 21, 24, 0.94), rgba(9, 9, 10, 0.98));
           border: 1px solid var(--line);
-          border-radius: 10px;
-          padding: 14px;
+          border-radius: 16px;
+          padding: 16px;
           margin-bottom: 10px;
-          box-shadow: 0 10px 22px rgba(0,0,0,0.24), inset 0 0 0 1px rgba(255,255,255,0.03);
+          box-shadow: 0 12px 24px rgba(0,0,0,0.24), inset 0 0 0 1px rgba(255,255,255,0.03);
           display: flex;
           flex-direction: column;
           gap: 10px;
@@ -684,10 +706,10 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           gap: 12px;
           background: linear-gradient(180deg, rgba(20, 21, 24, 0.94), rgba(9, 9, 10, 0.98));
           border: 1px solid var(--line);
-          border-radius: 10px;
-          padding: 14px 14px;
+          border-radius: 16px;
+          padding: 16px;
           margin-bottom: 10px;
-          box-shadow: 0 10px 20px rgba(0,0,0,0.24), inset 0 0 0 1px rgba(255,255,255,0.03);
+          box-shadow: 0 12px 24px rgba(0,0,0,0.24), inset 0 0 0 1px rgba(255,255,255,0.03);
           transition: border-color 0.2s, transform 0.2s;
         }
         .deal-card:hover { border-color: rgba(245,232,204,0.24); transform: translateY(-1px); }
@@ -723,6 +745,10 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           font-weight: 800;
           font-size: 1.05rem;
           white-space: nowrap;
+          border: 1px solid rgba(210, 170, 103, 0.24);
+          border-radius: 999px;
+          padding: 6px 10px;
+          background: rgba(210, 170, 103, 0.08);
         }
         .badge {
           display: inline-block;
@@ -730,7 +756,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           color: var(--gold);
           font-size: 0.62rem;
           font-weight: 700;
-          padding: 2px 8px;
+          padding: 3px 8px;
           border-radius: 999px;
           text-transform: uppercase;
           letter-spacing: 0.04em;
@@ -738,7 +764,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         .flight-card {
           background: linear-gradient(180deg, rgba(20, 21, 24, 0.95), rgba(9, 9, 10, 0.98));
           border: 1px solid var(--line);
-          border-radius: 10px;
+          border-radius: 16px;
           padding: 18px 18px 16px;
           box-shadow: 0 10px 24px rgba(0,0,0,0.24), inset 0 0 0 1px rgba(255,255,255,0.03);
         }
@@ -746,7 +772,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         .flight-desc { color: var(--muted); font-size: 0.88rem; margin-bottom: 8px; }
         .flight-price {
           display: inline-block;
-          background: linear-gradient(180deg, #ffffff, #bcc1c8 64%, #727983);
+          background: linear-gradient(180deg, var(--accent-light), var(--gold) 64%, var(--amber));
           color: var(--ink);
           font-weight: 800;
           padding: 4px 14px;
@@ -767,7 +793,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         .pour-number {
           width: 26px;
           height: 26px;
-          background: linear-gradient(180deg, #ffffff, #bcc1c8 64%, #727983);
+          background: linear-gradient(180deg, var(--accent-light), var(--gold) 64%, var(--amber));
           color: var(--ink);
           border-radius: 50%;
           display: flex;
@@ -785,7 +811,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         .teaser-card {
           background: linear-gradient(180deg, rgba(20, 21, 24, 0.9), rgba(9, 9, 10, 0.95));
           border: 1px solid var(--line);
-          border-radius: 10px;
+          border-radius: 16px;
           padding: 14px 16px;
           margin-bottom: 10px;
           text-align: center;
@@ -823,7 +849,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           text-align: center;
           background: rgba(255,255,255,0.06);
           border: 1px solid rgba(255,255,255,0.16);
-          border-radius: 10px;
+          border-radius: 16px;
           padding: 16px;
           color: #f0f1f3;
           box-shadow: 0 8px 24px rgba(0,0,0,0.2);
@@ -833,7 +859,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           text-align: center;
           background: linear-gradient(180deg, rgba(20, 21, 24, 0.95), rgba(9, 9, 10, 0.98));
           border: 1px solid var(--line);
-          border-radius: 10px;
+          border-radius: 16px;
           padding: 32px 20px;
           box-shadow: 0 10px 24px rgba(0,0,0,0.2);
         }
@@ -842,9 +868,9 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           display: inline-block;
           margin-top: 16px;
           color: var(--ink);
-          background: linear-gradient(180deg, #ffffff, #bcc1c8 64%, #727983);
+          background: linear-gradient(180deg, var(--accent-light), var(--gold) 64%, var(--amber));
           padding: 10px 22px;
-          border-radius: 8px;
+          border-radius: 14px;
           text-decoration: none;
           font-weight: 700;
           font-size: 0.9rem;
@@ -859,11 +885,11 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           text-align: center;
           margin: 24px 0 8px;
           padding: 14px 20px;
-          background: linear-gradient(180deg, #ffffff, #bcc1c8 64%, #727983);
+          background: linear-gradient(180deg, var(--accent-light), var(--gold) 64%, var(--amber));
           color: var(--ink);
           font-weight: 800;
           font-size: 0.95rem;
-          border-radius: 8px;
+          border-radius: 14px;
           text-decoration: none;
           letter-spacing: 0.05em;
           box-shadow: 0 10px 24px rgba(0,0,0,0.3);
@@ -875,10 +901,10 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         .hp-search-wrap input {
           width: 100%;
           border: 1px solid rgba(255,255,255,0.14);
-          border-radius: 8px;
+          border-radius: 12px;
           background: rgba(255,255,255,0.05);
           color: var(--text);
-          padding: 11px 12px;
+          padding: 12px 14px;
           font-size: 0.9rem;
           outline: none;
           transition: border-color 0.2s, box-shadow 0.2s;
@@ -929,11 +955,61 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           letter-spacing: 0.06em;
         }
         .back-link:hover { color: var(--gold); }
+        @media (max-width: 720px) {
+          .header {
+            padding: 26px 16px 22px;
+            border-radius: 0 0 24px 24px;
+          }
+          .brand {
+            width: min(78vw, 340px);
+          }
+          .day-nav {
+            top: 8px;
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            justify-content: stretch;
+            overflow: visible;
+            padding: 10px;
+            gap: 6px;
+          }
+          .day-tab {
+            min-width: 0;
+            text-align: center;
+            padding: 9px 0;
+            font-size: 0.72rem;
+            letter-spacing: 0.02em;
+          }
+          .theme-banner {
+            padding: 20px 16px 18px;
+            margin-top: 16px;
+          }
+          .container {
+            padding: 6px 2px 12px;
+          }
+          .cocktail-search {
+            flex-direction: column;
+          }
+          .cocktail-search input,
+          .filter-reset {
+            width: 100%;
+          }
+          .deal-card,
+          .bottle-card {
+            padding: 14px;
+          }
+          .deal-card {
+            flex-direction: column;
+          }
+          .deal-price {
+            margin-left: 0;
+            margin-top: 8px;
+          }
+        }
       </style>
     </head>
     <body>
         <div class="header">
-        <div class="brand">Dram & Draught</div>
+        ${renderBrandMark({ className: 'brand', note: 'Specials' })}
         <div class="location-name">${escHTML(location.name)}</div>
       </div>
 

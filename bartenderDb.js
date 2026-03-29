@@ -129,15 +129,16 @@ async function getBreakEvenBottles(locationSlug) {
     if (locResult.rows.length === 0) return { items: [], error: `Active location not found: ${locationName}` };
     const locationId = locResult.rows[0].id;
 
-    // Get active bottles for upcoming Sunday (today through +7 days only)
+    // Get active bottles for this Sunday only (nearest Sunday: today if Sun, else upcoming)
     const result = await db.query(`
       SELECT "productName", "bottleSize", cost, "sellPrice", notes, "weekStartDate"
       FROM "BreakEvenBottle"
       WHERE "locationId" = $1
         AND status = 'ACTIVE'
-        AND "weekStartDate" >= CURRENT_DATE
-        AND "weekStartDate" <= CURRENT_DATE + INTERVAL '7 days'
-      ORDER BY "weekStartDate" ASC, "productName" ASC
+        AND "weekStartDate" = (
+          CURRENT_DATE + ((7 - EXTRACT(DOW FROM CURRENT_DATE)::int) % 7) * INTERVAL '1 day'
+        )::date
+      ORDER BY "productName" ASC
     `, [locationId]);
 
     return {

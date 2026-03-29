@@ -1,5 +1,6 @@
 const { getLinkButtons, getOpenState } = require('../helpers');
 const { vintageThemeCss } = require('./publicTheme');
+const { brandMarkCss, renderBrandMark } = require('./brandMark');
 
 function generateLocationPage(location, allLocations = []) {
   const quickLinks = [
@@ -57,21 +58,21 @@ function generateLocationPage(location, allLocations = []) {
       <title>Dram & Draught ${location.name} - Whiskey Bar & Cocktails</title>
       <style>
         ${vintageThemeCss()}
+        ${brandMarkCss()}
         .hero {
           position: relative;
           overflow: hidden;
-          padding: 32px 18px 30px;
+          padding: 34px 22px 34px;
           text-align: center;
-          border-radius: 0 0 24px 24px;
+          border-radius: 0 0 30px 30px;
           border: 1px solid var(--line);
           border-top: 0;
           margin: 0 auto;
-          max-width: 920px;
+          max-width: 1020px;
           background:
             linear-gradient(180deg, rgba(24, 25, 28, 0.97), rgba(7, 7, 8, 0.98)),
             radial-gradient(circle at top, rgba(255, 255, 255, 0.08), transparent 42%);
-          box-shadow: 0 18px 54px var(--shadow), inset 0 0 0 1px rgba(255,255,255,0.04);
-          min-height: 360px;
+          box-shadow: 0 22px 58px var(--shadow), inset 0 0 0 1px rgba(255,255,255,0.04);
         }
         .hero::before {
           content: '';
@@ -93,46 +94,74 @@ function generateLocationPage(location, allLocations = []) {
           pointer-events: none;
           opacity: 0.9;
         }
-        .hero h1 {
+        .hero-title {
           position: relative;
-          font-size: clamp(2.1rem, 9vw, 3.4rem);
-          letter-spacing: 0.1em;
-          margin-bottom: 10px;
-          background: linear-gradient(180deg, #ffffff, #d0d4da 68%, #737a84 100%);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          text-transform: uppercase;
+          width: min(78vw, 560px);
+          margin: 0 auto 14px;
         }
-        .hero-title { position: relative; }
-        .hero-subtitle { position: relative; font-size: clamp(1.08rem, 4vw, 1.45rem); color: var(--cream); text-transform: uppercase; letter-spacing: 0.18em; font-weight: 700; }
-        .divider { position: relative; width: 160px; height: 2px; margin: 14px auto; background: linear-gradient(90deg, transparent, var(--gold), transparent); opacity: 0.9; border-radius: 2px; }
+        .hero-subtitle {
+          position: relative;
+          font-size: clamp(1.02rem, 3.8vw, 1.4rem);
+          color: var(--cream);
+          text-transform: uppercase;
+          letter-spacing: 0.22em;
+          font-weight: 700;
+          margin-top: 2px;
+        }
+        .divider { position: relative; width: 156px; height: 2px; margin: 16px auto 12px; background: linear-gradient(90deg, transparent, var(--gold), transparent); opacity: 0.9; border-radius: 2px; }
+        .hero-details {
+          position: relative;
+          max-width: 760px;
+          margin: 14px auto 0;
+        }
+        .hero-details summary {
+          list-style: none;
+        }
+        .hero-details summary::-webkit-details-marker {
+          display: none;
+        }
         .badge {
           display: inline-block;
           color: var(--cream);
           border: 1px solid var(--line);
-          padding: 7px 14px;
-          border-radius: 6px;
+          padding: 8px 14px;
+          border-radius: 999px;
           letter-spacing: 0.16em;
           font-weight: 700;
           font-size: 0.72rem;
           text-transform: uppercase;
           background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(18,19,21,0.26));
-          margin: 4px auto 10px;
+          margin: 0 auto;
           display: inline-flex;
           align-items: center;
           justify-content: center;
-          gap: 8px;
+          gap: 10px;
           box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+          cursor: pointer;
+          user-select: none;
+          transition: transform 0.18s ease, border-color 0.18s ease;
         }
-        .container { position: relative; max-width: 720px; margin: 0 auto; padding: 28px 22px 30px; }
+        .badge:hover {
+          transform: translateY(-1px);
+          border-color: rgba(255, 255, 255, 0.22);
+        }
+        .badge::after {
+          content: '+';
+          font-size: 0.9rem;
+          line-height: 1;
+        }
+        .hero-details[open] .badge::after {
+          content: '−';
+        }
+        .container { position: relative; max-width: 980px; margin: 0 auto; padding: 28px 6px 30px; }
         .status-line {
           display: inline-flex;
           align-items: center;
           gap: 8px;
-          margin-top: 12px;
+          margin-top: 0;
           border: 1px solid rgba(255, 255, 255, 0.14);
-          border-radius: 8px;
-          padding: 7px 14px;
+          border-radius: 999px;
+          padding: 8px 14px;
           font-size: 0.84rem;
           font-weight: 700;
           letter-spacing: 0.08em;
@@ -140,8 +169,8 @@ function generateLocationPage(location, allLocations = []) {
           box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
           background: rgba(255, 255, 255, 0.04);
         }
-        .status-open { color: var(--cream); border-color: rgba(255,255,255,0.24); background: rgba(255,255,255,0.08); }
-        .status-closed { color: #cdced1; border-color: rgba(255,255,255,0.16); background: rgba(255,255,255,0.05); }
+        .status-open { color: #dce7cf; border-color: rgba(90,102,82,0.45); background: rgba(90,102,82,0.2); }
+        .status-closed { color: #ead4a7; border-color: rgba(210,170,103,0.34); background: rgba(210,170,103,0.12); }
         .status-unknown { color: var(--muted); border-color: rgba(255,255,255,0.12); background: rgba(255,255,255,0.03); }
         .rl-desc {
           color: var(--muted);
@@ -150,19 +179,36 @@ function generateLocationPage(location, allLocations = []) {
           line-height: 1.65;
         }
         .rl-card {
+          position: relative;
           background: linear-gradient(180deg, rgba(19, 20, 23, 0.88), rgba(9, 9, 10, 0.92));
           border: 1px solid var(--line);
-          border-radius: 12px;
-          padding: 18px 18px 16px;
-          max-width: 780px;
-          margin: 14px auto 0;
+          border-radius: 18px;
+          padding: 24px 26px 22px;
+          max-width: 760px;
+          margin: 18px auto 0;
           color: #dedbd7;
           line-height: 1.65;
-          box-shadow: 0 12px 30px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(255,255,255,0.03);
+          text-align: left;
+          box-shadow: 0 16px 34px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(255,255,255,0.03);
         }
-        .rl-card p { margin: 0.45rem 0; }
+        .rl-card::before {
+          content: '';
+          position: absolute;
+          inset: 12px;
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          border-radius: 10px;
+          pointer-events: none;
+        }
+        .rl-card p { position: relative; margin: 0.45rem 0; font-size: 1rem; }
         .rl-strong { color: var(--gold); font-weight: 800; }
-        .linktree { max-width: 680px; margin: 0 auto; padding-top: 10px; }
+        .linktree {
+          max-width: 760px;
+          margin: 0 auto;
+          padding-top: 10px;
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+          gap: 12px;
+        }
         .link-btn {
           display: flex;
           align-items: center;
@@ -171,17 +217,18 @@ function generateLocationPage(location, allLocations = []) {
           text-decoration: none;
           text-align: center;
           color: var(--ink);
-          background: linear-gradient(180deg, #ffffff, #bcc1c8 64%, #727983);
-          padding: 16px 22px;
-          border-radius: 10px;
+          background: linear-gradient(180deg, var(--accent-light), var(--gold) 64%, var(--amber));
+          padding: 18px 20px;
+          border-radius: 14px;
           font-weight: 800;
-          margin: 12px 0;
+          margin: 0;
           box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38), 0 12px 24px rgba(0,0,0,0.32);
           transition: transform .2s ease, filter .2s ease, box-shadow .2s ease;
-          min-height: 56px;
+          min-height: 78px;
           border: 1px solid rgba(255, 255, 255, 0.12);
           text-transform: uppercase;
-          letter-spacing: 0.05em;
+          letter-spacing: 0.06em;
+          line-height: 1.35;
         }
         .link-btn:hover { transform: translateY(-2px) scale(1.01); filter: saturate(1.08); box-shadow: 0 12px 28px rgba(0,0,0,0.6); }
         .link-btn:focus-visible { outline: 2px solid #f8e7a8; outline-offset: 2px; }
@@ -199,14 +246,14 @@ function generateLocationPage(location, allLocations = []) {
         .stagger:nth-child(3) { animation-delay: 0.1s; }
         .stagger:nth-child(4) { animation-delay: 0.15s; }
         .review-cta {
-          max-width: 680px;
-          margin: 20px auto 2px;
+          max-width: 760px;
+          margin: 22px auto 2px;
           border: 1px solid var(--line);
-          border-radius: 12px;
+          border-radius: 18px;
           background: linear-gradient(180deg, rgba(20, 21, 24, 0.95), rgba(9, 9, 10, 0.98));
-          padding: 18px 16px 16px;
+          padding: 22px 18px 18px;
           text-align: center;
-          box-shadow: 0 14px 28px rgba(0,0,0,0.28), inset 0 0 0 1px rgba(255,255,255,0.03);
+          box-shadow: 0 16px 32px rgba(0,0,0,0.28), inset 0 0 0 1px rgba(255,255,255,0.03);
         }
         .review-cta h3 {
           color: var(--gold);
@@ -272,7 +319,7 @@ function generateLocationPage(location, allLocations = []) {
           resize: vertical;
         }
         .feedback-form button {
-          background: linear-gradient(180deg, #ffffff, #bcc1c8 64%, #727983);
+          background: linear-gradient(180deg, var(--accent-light), var(--gold) 64%, var(--amber));
           color: var(--ink);
           border: 1px solid rgba(255, 255, 255, 0.12);
           padding: 12px;
@@ -314,11 +361,11 @@ function generateLocationPage(location, allLocations = []) {
         }
         .review-star:hover,
         .review-star:focus-visible {
-          color: #ffffff;
+          color: var(--gold);
           transform: translateY(-1px) scale(1.08);
         }
         .review-star[aria-pressed="true"] {
-          color: #ffffff;
+          color: var(--gold);
         }
         .review-hint {
           color: var(--muted);
@@ -332,23 +379,49 @@ function generateLocationPage(location, allLocations = []) {
           from { opacity: 0; transform: translateY(8px); }
           to { opacity: 1; transform: translateY(0); }
         }
+        @media (max-width: 720px) {
+          .hero {
+            padding: 30px 16px 28px;
+            border-radius: 0 0 24px 24px;
+          }
+          .hero-title {
+            width: min(90vw, 540px);
+          }
+          .hero-subtitle {
+            letter-spacing: 0.18em;
+          }
+          .container {
+            padding: 22px 2px 26px;
+          }
+          .rl-card {
+            padding: 20px 18px 18px;
+          }
+          .linktree {
+            grid-template-columns: 1fr;
+          }
+          .link-btn {
+            min-height: 68px;
+          }
+        }
       </style>
     </head>
     <body>
       <div class="hero">
-        <h1 class="hero-title">Dram & Draught</h1>
+        ${renderBrandMark({ wrapper: 'h1', className: 'hero-title' })}
         <h2 class="hero-subtitle">${location.name}</h2>
         <div class="divider"></div>
-        <div class="badge">REGISTERED LUBRICATION</div>
         ${openState.isOpen === null ? '' : `
         <div class="status-line ${statusClass}">
           ${openState.status}${openState.todayHours ? ` · ${openState.todayHours}` : ''}
         </div>
         `}
-        <div class="rl-card">
-          <p>Our first location was in an old gas station. Back then, a sign for "Registered Lubrication" meant you could count on quality products and good service. We liked that idea, so we kept the phrase. These days, it means great cocktails, whiskey how you like it, and service that knows how to take care of people.</p>
-          <p class="rl-strong">Same promise of quality, just more fun.</p>
-        </div>
+        <details class="hero-details">
+          <summary class="badge">REGISTERED LUBRICATION</summary>
+          <div class="rl-card">
+            <p>Our first location was in an old gas station. Back then, a sign for "Registered Lubrication" meant you could count on quality products and good service. We liked that idea, so we kept the phrase. These days, it means great cocktails, whiskey how you like it, and service that knows how to take care of people.</p>
+            <p class="rl-strong">Same promise of quality, just more fun.</p>
+          </div>
+        </details>
       </div>
       <div class="container linktree">
         ${buttons.map((l, i) => `<a class="link-btn stagger" href="${l.url}"${l.url.startsWith('/') ? '' : ' target="_blank" rel="noopener noreferrer"'} style="animation-delay:${Math.min(i * 0.04, 0.2)}s;"><span>${l.label}</span></a>`).join('')}

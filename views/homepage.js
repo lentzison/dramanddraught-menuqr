@@ -1,4 +1,5 @@
 const { vintageThemeCss } = require('./publicTheme');
+const { brandMarkCss, renderBrandMark } = require('./brandMark');
 
 function generateHomepage(locs) {
   return `
@@ -10,22 +11,23 @@ function generateHomepage(locs) {
       <title>Dram & Draught - Locations in North Carolina</title>
       <style>
         ${vintageThemeCss()}
+        ${brandMarkCss()}
         .hero {
           position: relative;
           overflow: hidden;
           color: var(--cream);
           text-align: center;
-          padding: 62px 20px 48px;
-          border-radius: 0 0 26px 26px;
+          padding: 44px 24px 38px;
+          border-radius: 0 0 30px 30px;
           border: 1px solid var(--line);
           border-top: 0;
-          border-bottom-color: rgba(255, 255, 255, 0.12);
-          box-shadow: 0 18px 48px var(--shadow), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+          border-bottom-color: rgba(255, 255, 255, 0.14);
+          box-shadow: 0 24px 58px var(--shadow), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
           background:
             linear-gradient(180deg, rgba(24, 25, 28, 0.97), rgba(7, 7, 8, 0.98)),
-            radial-gradient(circle at top, rgba(255, 255, 255, 0.08), transparent 42%);
+            radial-gradient(circle at top, rgba(255, 255, 255, 0.09), transparent 42%);
           margin: 0 auto;
-          max-width: 980px;
+          max-width: 1080px;
           animation: fadeIn .45s ease-out;
         }
         .hero::before {
@@ -48,81 +50,122 @@ function generateHomepage(locs) {
           opacity: 0.9;
           pointer-events: none;
         }
-        .hero h1 {
+        .hero-title {
           position: relative;
-          font-size: clamp(2.2rem, 8vw, 3.4rem);
-          margin-bottom: 10px;
-          letter-spacing: 0.1em;
-          text-transform: uppercase;
-          background: linear-gradient(180deg, #ffffff, #d0d4da 68%, #737a84 100%);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          text-shadow: 0 1px 0 rgba(0,0,0,0.25);
+          width: min(82vw, 620px);
+          margin: 0 auto 16px;
         }
-        .hero-title { position: relative; }
         .divider {
           position: relative;
-          width: 140px;
+          width: 164px;
           height: 2px;
-          margin: 14px auto;
+          margin: 18px auto 12px;
           background: linear-gradient(90deg, transparent, var(--gold), transparent);
           opacity: 0.95;
           border-radius: 2px;
         }
+        .hero-details {
+          position: relative;
+          max-width: 760px;
+          margin: 0 auto;
+        }
+        .hero-details summary {
+          list-style: none;
+        }
+        .hero-details summary::-webkit-details-marker {
+          display: none;
+        }
         .badge {
           position: relative;
-          display: inline-block;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
           color: var(--cream);
           border: 1px solid var(--line);
-          padding: 7px 13px;
-          border-radius: 6px;
+          padding: 8px 14px;
+          border-radius: 999px;
           letter-spacing: 0.16em;
           font-weight: 700;
-          font-size: 0.76em;
+          font-size: 0.72rem;
           text-transform: uppercase;
-          background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(18, 19, 21, 0.26));
-          margin-top: 8px;
-          margin-bottom: 12px;
-          box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+          background: linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(18, 19, 21, 0.26));
+          margin-top: 0;
+          margin-bottom: 0;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+          cursor: pointer;
+          user-select: none;
+          transition: transform 0.18s ease, border-color 0.18s ease, background-color 0.18s ease;
+        }
+        .badge:hover {
+          transform: translateY(-1px);
+          border-color: rgba(255, 255, 255, 0.22);
+        }
+        .badge::after {
+          content: '+';
+          font-size: 0.9rem;
+          line-height: 1;
+        }
+        .hero-details[open] .badge::after {
+          content: '−';
         }
         .rl-card {
           position: relative;
-          background: linear-gradient(180deg, rgba(19, 20, 23, 0.88), rgba(9, 9, 10, 0.92));
+          background: linear-gradient(180deg, rgba(18, 19, 22, 0.9), rgba(10, 10, 11, 0.95));
           border: 1px solid var(--line);
-          border-radius: 12px;
-          padding: 18px 18px 16px;
-          max-width: 900px;
-          margin: 0 auto;
+          border-radius: 18px;
+          padding: 24px 26px 22px;
+          max-width: 760px;
+          margin: 14px auto 0;
           color: #dedbd7;
+          text-align: left;
           line-height: 1.65;
-          box-shadow: 0 12px 30px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(255,255,255,0.03);
+          box-shadow: 0 16px 34px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(255,255,255,0.03);
           animation: fadeIn .45s ease-out .08s both;
         }
-        .rl-card p { margin: 0.4rem 0; }
+        .rl-card::before {
+          content: '';
+          position: absolute;
+          inset: 12px;
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          border-radius: 10px;
+          pointer-events: none;
+        }
+        .rl-card p {
+          position: relative;
+          margin: 0.5rem 0;
+          font-size: 1rem;
+        }
         .rl-strong { color: var(--gold); font-weight: 700; }
         .container {
-          max-width: 1200px;
+          max-width: 1120px;
           margin: 0 auto;
-          padding: 42px 20px 54px;
+          padding: 28px 6px 54px;
         }
         .location-controls {
-          max-width: 980px;
-          margin: 0 auto 22px;
-          text-align: center;
+          max-width: 920px;
+          margin: 0 auto 18px;
+          text-align: left;
           display: flex;
-          justify-content: center;
+          justify-content: space-between;
           align-items: center;
-          gap: 12px;
+          gap: 14px;
           flex-wrap: wrap;
+          padding: 16px 18px;
+          border: 1px solid var(--line);
+          border-radius: 18px;
+          background: linear-gradient(180deg, rgba(19, 20, 23, 0.84), rgba(9, 9, 10, 0.9));
+          box-shadow: 0 14px 30px rgba(0, 0, 0, 0.24), inset 0 0 0 1px rgba(255,255,255,0.03);
         }
         .location-controls p {
-          color: var(--muted);
+          color: #d7d4cf;
           margin-bottom: 0;
-          font-size: 0.94rem;
-          letter-spacing: 0.03em;
+          font-size: 0.93rem;
+          letter-spacing: 0.04em;
+          max-width: 560px;
         }
         .location-controls button {
-          background: linear-gradient(180deg, #ffffff, #bcc1c8 64%, #727983);
+          background: linear-gradient(180deg, var(--accent-light), var(--gold) 64%, var(--amber));
           color: var(--ink);
           border: 1px solid rgba(255, 255, 255, 0.12);
           border-radius: 8px;
@@ -148,16 +191,16 @@ function generateHomepage(locs) {
         }
         .locations-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-          gap: 25px;
-          margin-top: 28px;
+          grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+          gap: 18px;
+          margin-top: 22px;
         }
         .location-card {
           position: relative;
           overflow: hidden;
           border: 1px solid var(--line);
-          border-radius: 10px;
-          padding: 24px;
+          border-radius: 18px;
+          padding: 24px 24px 82px;
           background: linear-gradient(180deg, rgba(20, 21, 24, 0.94), rgba(9, 9, 10, 0.98));
           box-shadow: 0 14px 30px rgba(0,0,0,0.28), inset 0 0 0 1px rgba(255,255,255,0.03);
           text-decoration: none;
@@ -165,12 +208,12 @@ function generateHomepage(locs) {
           display: block;
           transition: transform 0.26s ease, border-color 0.26s ease, box-shadow 0.26s ease;
           animation: fadeIn .45s ease-out;
-          min-height: 238px;
+          min-height: 252px;
         }
         .location-card:hover {
-          transform: translateY(-4px);
+          transform: translateY(-5px);
           border-color: rgba(255, 255, 255, 0.24);
-          box-shadow: 0 18px 36px rgba(0,0,0,0.32), inset 0 0 0 1px rgba(255,255,255,0.04);
+          box-shadow: 0 22px 40px rgba(0,0,0,0.32), inset 0 0 0 1px rgba(255,255,255,0.04);
         }
         .location-card::before {
           content: '';
@@ -178,43 +221,46 @@ function generateHomepage(locs) {
           top: 0;
           left: 0;
           right: 0;
-          height: 2px;
-          background: linear-gradient(90deg, transparent, var(--gold), transparent);
-          opacity: 0.8;
+          height: 3px;
+          background: linear-gradient(90deg, transparent, var(--gold) 18%, rgba(255, 255, 255, 0.85) 50%, var(--gold) 82%, transparent);
+          opacity: 0.92;
         }
         .location-card::after {
           content: '';
           position: absolute;
-          inset: 10px;
-          border: 1px solid rgba(255, 255, 255, 0.06);
-          border-radius: 6px;
+          inset: 12px;
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          border-radius: 10px;
           pointer-events: none;
         }
         .location-name {
-          font-size: 1.5em;
+          font-size: 1.35rem;
           color: var(--cream);
-          margin-bottom: 10px;
-          font-weight: 600;
+          margin-bottom: 12px;
+          font-weight: 700;
           text-transform: uppercase;
-          letter-spacing: 0.05em;
+          letter-spacing: 0.08em;
         }
         .location-meta {
-          color: #b3afb0;
-          margin-bottom: 10px;
+          color: #c0bcbb;
+          margin-bottom: 14px;
           line-height: 1.45;
-          font-size: 0.93rem;
+          font-size: 0.9rem;
         }
         .special-line {
-          color: #d8dbe0;
-          font-size: 0.9em;
-          min-height: 1.3em;
-          margin-top: 10px;
-          margin-bottom: 20px;
+          color: #e1ddd7;
+          font-size: 0.88rem;
+          min-height: 2.7em;
+          margin-top: 0;
+          margin-bottom: 18px;
+          line-height: 1.5;
         }
         .location-distance {
-          font-size: 0.85rem;
+          font-size: 0.82rem;
           color: #b9bec5;
           min-height: 1.2rem;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
         }
         .view-location {
           position: absolute;
@@ -222,7 +268,7 @@ function generateHomepage(locs) {
           bottom: 24px;
           display: inline-block;
           color: var(--ink);
-          background: linear-gradient(180deg, #ffffff, #bcc1c8 64%, #727983);
+          background: linear-gradient(180deg, var(--accent-light), var(--gold) 64%, var(--amber));
           padding: 10px 20px;
           border-radius: 8px;
           font-weight: 700;
@@ -243,17 +289,48 @@ function generateHomepage(locs) {
           line-height: 1.55;
           background: rgba(255, 255, 255, 0.03);
         }
+        @media (max-width: 720px) {
+          .hero {
+            padding: 34px 16px 28px;
+            border-radius: 0 0 24px 24px;
+          }
+          .hero-title {
+            width: min(90vw, 560px);
+          }
+          .rl-card {
+            padding: 20px 18px 18px;
+          }
+          .container {
+            padding: 22px 2px 42px;
+          }
+          .location-controls {
+            padding: 14px;
+          }
+          .location-controls button {
+            width: 100%;
+          }
+          .location-card {
+            min-height: 236px;
+            padding: 22px 20px 78px;
+          }
+          .view-location {
+            left: 20px;
+            bottom: 20px;
+          }
+        }
       </style>
     </head>
     <body>
       <div class="hero">
-        <h1 class="hero-title">Dram & Draught</h1>
+        ${renderBrandMark({ wrapper: 'h1', className: 'hero-title', note: 'North Carolina locations' })}
         <div class="divider"></div>
-        <div class="badge">REGISTERED LUBRICATION</div>
-        <div class="rl-card">
-          <p>Our first location was in an old gas station. Back then, a sign for 'Registered Lubrication' meant you could count on quality products and good service. We liked that idea, so we kept the phrase. These days, it means great cocktails, whiskey how you like it, and service that knows how to take care of people.</p>
-          <p class="rl-strong">Same promise of quality, just more fun.</p>
-        </div>
+        <details class="hero-details">
+          <summary class="badge">REGISTERED LUBRICATION</summary>
+          <div class="rl-card">
+            <p>Our first location was in an old gas station. Back then, a sign for 'Registered Lubrication' meant you could count on quality products and good service. We liked that idea, so we kept the phrase. These days, it means great cocktails, whiskey how you like it, and service that knows how to take care of people.</p>
+            <p class="rl-strong">Same promise of quality, just more fun.</p>
+          </div>
+        </details>
       </div>
       <div class="container">
         <div class="location-controls">

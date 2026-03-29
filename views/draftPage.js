@@ -1,5 +1,6 @@
 const { getOpenState } = require('../helpers');
 const { vintageThemeCss } = require('./publicTheme');
+const { brandMarkCss, renderBrandMark } = require('./brandMark');
 
 function escHTML(str) {
   return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -89,47 +90,68 @@ function generateDraftPage(location, taps = [], hasError = false) {
         <title>On Draft - Dram & Draught ${escHTML(location.name)}</title>
         <style>
         ${vintageThemeCss()}
+        ${brandMarkCss()}
         .header {
           text-align: center;
-          padding: 30px 20px 0;
+          padding: 30px 24px 26px;
+          max-width: 900px;
+          margin: 0 auto;
+          position: relative;
+          overflow: hidden;
+          background:
+            linear-gradient(180deg, rgba(24, 25, 28, 0.97), rgba(7, 7, 8, 0.98)),
+            radial-gradient(circle at top, rgba(255, 255, 255, 0.08), transparent 42%);
+          border: 1px solid var(--line);
+          border-top: 0;
+          border-radius: 0 0 28px 28px;
+          box-shadow: 0 22px 58px var(--shadow), inset 0 0 0 1px rgba(255,255,255,0.04);
+        }
+        .header::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background:
+            repeating-linear-gradient(90deg, rgba(255,255,255,0.03), rgba(255,255,255,0.03) 1px, transparent 1px, transparent 8px),
+            repeating-linear-gradient(0deg, rgba(0,0,0,0.06), rgba(0,0,0,0.06) 1px, transparent 1px, transparent 10px);
+          opacity: 0.24;
+          pointer-events: none;
         }
         .brand {
-          font-size: clamp(1.7rem, 7vw, 2.2rem);
-          font-weight: 800;
-          letter-spacing: 0.12em;
-          text-transform: uppercase;
-          background: linear-gradient(180deg, #ffffff, #d0d4da 68%, #737a84 100%);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
+          width: min(52vw, 360px);
+          margin: 0 auto;
         }
         .location-name {
-          color: var(--muted);
+          color: #d3d0cb;
           text-transform: uppercase;
-          letter-spacing: 0.16em;
-          margin-top: 6px;
-          font-size: 0.9rem;
+          letter-spacing: 0.2em;
+          margin-top: 12px;
+          font-size: 0.84rem;
         }
         .page-banner {
-          margin: 14px auto 0;
-          max-width: 680px;
+          margin: -10px auto 0;
+          max-width: 620px;
           border: 1px solid var(--line);
-          border-radius: 12px;
-          padding: 16px 14px 14px;
+          border-radius: 18px;
+          padding: 18px 16px 16px;
           text-align: center;
           background: linear-gradient(180deg, rgba(20, 21, 24, 0.95), rgba(9, 9, 10, 0.98));
-          box-shadow: 0 14px 30px rgba(0, 0, 0, 0.3), inset 0 0 0 1px rgba(255,255,255,0.03);
+          box-shadow: 0 16px 30px rgba(0, 0, 0, 0.3), inset 0 0 0 1px rgba(255,255,255,0.03);
+          position: relative;
+          z-index: 1;
         }
         .page-title {
-          font-size: 1.6rem;
+          font-size: 1.55rem;
           font-weight: 800;
           color: var(--cream);
+          letter-spacing: 0.04em;
         }
         .page-subtitle {
           color: var(--gold);
-          font-size: 0.9rem;
-          margin-top: 2px;
-          letter-spacing: 0.08em;
+          font-size: 0.82rem;
+          margin-top: 4px;
+          letter-spacing: 0.18em;
           text-transform: uppercase;
+          font-weight: 800;
         }
         .status-line {
           display: inline-flex;
@@ -143,32 +165,33 @@ function generateDraftPage(location, taps = [], hasError = false) {
           text-transform: uppercase;
           font-weight: 700;
           letter-spacing: 0.08em;
-          background: rgba(34, 24, 17, 0.45);
+          background: rgba(255,255,255,0.04);
         }
-        .status-open { color: var(--cream); border-color: rgba(255,255,255,0.24); background: rgba(255,255,255,0.08); }
-        .status-closed { color: #cdced1; border-color: rgba(255,255,255,0.16); background: rgba(255,255,255,0.05); }
+        .status-open { color: #dce7cf; border-color: rgba(90,102,82,0.45); background: rgba(90,102,82,0.2); }
+        .status-closed { color: #ead4a7; border-color: rgba(210,170,103,0.34); background: rgba(210,170,103,0.12); }
         .status-unknown { color: var(--muted); border-color: rgba(255,255,255,0.12); background: rgba(255,255,255,0.03); }
         .container {
-          max-width: 680px;
+          max-width: 760px;
           margin: 0 auto;
-          padding: 22px 16px 30px;
+          padding: 24px 6px 32px;
         }
         .section {
-          margin: 22px 0;
+          margin: 24px 0;
         }
         .section-header {
           display: flex;
           align-items: center;
           gap: 10px;
-          margin-bottom: 10px;
-          padding: 0 2px;
+          margin-bottom: 12px;
+          padding: 0 2px 10px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
         }
         .section-header h2 {
           flex: 1;
           font-size: 1.05rem;
           color: var(--gold);
           font-weight: 800;
-          letter-spacing: 0.08em;
+          letter-spacing: 0.12em;
           text-transform: uppercase;
         }
         .section-count {
@@ -186,26 +209,27 @@ function generateDraftPage(location, taps = [], hasError = false) {
           align-items: center;
           background: linear-gradient(180deg, rgba(20, 21, 24, 0.94), rgba(9, 9, 10, 0.98));
           border: 1px solid var(--line);
-          border-radius: 10px;
-          padding: 14px;
+          border-radius: 16px;
+          padding: 16px;
           margin-bottom: 10px;
           transition: transform 0.18s ease, border-color 0.18s ease;
-          box-shadow: 0 10px 24px rgba(0,0,0,0.24), inset 0 0 0 1px rgba(255,255,255,0.03);
+          box-shadow: 0 12px 24px rgba(0,0,0,0.24), inset 0 0 0 1px rgba(255,255,255,0.03);
         }
         .tap-card:hover { transform: translateY(-1px); border-color: rgba(245,232,204,0.24); }
         .tap-card.empty { opacity: 0.6; }
         .tap-number {
-          width: 34px;
-          height: 34px;
-          background: linear-gradient(180deg, #ffffff, #bcc1c8 64%, #727983);
+          width: 38px;
+          height: 38px;
+          background: linear-gradient(180deg, var(--accent-light), var(--gold) 64%, var(--amber));
           color: var(--ink);
-          border-radius: 50%;
+          border-radius: 12px;
           display: flex;
           align-items: center;
           justify-content: center;
           font-weight: 800;
           font-size: 0.9rem;
           flex-shrink: 0;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.34);
         }
         .tap-info { min-width: 0; }
         .tap-name { font-weight: 800; color: var(--cream); font-size: 1rem; }
@@ -244,6 +268,11 @@ function generateDraftPage(location, taps = [], hasError = false) {
           color: var(--gold);
           font-weight: 800;
           font-size: 1.08rem;
+          border: 1px solid rgba(210, 170, 103, 0.24);
+          border-radius: 999px;
+          padding: 6px 10px;
+          background: rgba(210, 170, 103, 0.08);
+          display: inline-block;
         }
         .tap-size {
           color: #9d9486;
@@ -254,7 +283,7 @@ function generateDraftPage(location, taps = [], hasError = false) {
           text-align: center;
           background: linear-gradient(180deg, rgba(20, 21, 24, 0.95), rgba(9, 9, 10, 0.98));
           border: 1px solid var(--line);
-          border-radius: 10px;
+          border-radius: 16px;
           padding: 32px 20px;
           box-shadow: 0 10px 24px rgba(0, 0, 0, 0.2);
         }
@@ -263,7 +292,7 @@ function generateDraftPage(location, taps = [], hasError = false) {
           text-align: center;
           background: rgba(255,255,255,0.06);
           border: 1px solid rgba(255,255,255,0.16);
-          border-radius: 10px;
+          border-radius: 16px;
           padding: 16px;
           color: #f0f1f3;
           margin-bottom: 10px;
@@ -274,7 +303,7 @@ function generateDraftPage(location, taps = [], hasError = false) {
           display: inline-block;
           margin-top: 16px;
           color: var(--ink);
-          background: linear-gradient(180deg, #ffffff, #bcc1c8 64%, #727983);
+          background: linear-gradient(180deg, var(--accent-light), var(--gold) 64%, var(--amber));
           padding: 10px 22px;
           border-radius: 8px;
           text-decoration: none;
@@ -289,9 +318,10 @@ function generateDraftPage(location, taps = [], hasError = false) {
           width: 100%;
           margin: 26px 0 8px;
           text-align: center;
-          padding: 13px 20px;
+          padding: 14px 20px;
           font-size: 0.95rem;
           letter-spacing: 0.05em;
+          border-radius: 14px;
         }
         .footer {
           text-align: center;
@@ -307,11 +337,38 @@ function generateDraftPage(location, taps = [], hasError = false) {
           letter-spacing: 0.06em;
         }
         .back-link:hover { color: var(--gold); }
+        @media (max-width: 720px) {
+          .header {
+            padding: 26px 16px 22px;
+            border-radius: 0 0 24px 24px;
+          }
+          .brand {
+            width: min(78vw, 340px);
+          }
+          .page-banner {
+            margin-top: -8px;
+            padding: 16px 14px;
+          }
+          .container {
+            padding: 22px 2px 28px;
+          }
+          .tap-card {
+            grid-template-columns: auto 1fr;
+            padding: 14px;
+          }
+          .tap-price-col {
+            grid-column: 2;
+            text-align: left;
+          }
+          .tap-price {
+            margin-top: 2px;
+          }
+        }
       </style>
     </head>
     <body>
       <div class="header">
-        <div class="brand">Dram & Draught</div>
+        ${renderBrandMark({ className: 'brand', note: 'On Draft' })}
         <div class="location-name">${escHTML(location.name)}</div>
       </div>
 

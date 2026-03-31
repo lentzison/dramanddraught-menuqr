@@ -419,31 +419,43 @@ function generateLocationPage(location, allLocations = [], menuCategories = []) 
         }
         .menu-section {
           max-width: 480px;
-          margin: 0 auto 20px;
+          margin: 18px auto 6px;
+          background: linear-gradient(180deg, rgba(20,21,24,0.95), rgba(9,9,10,0.98));
+          border: 1px solid var(--line);
+          border-radius: 16px;
+          padding: 20px 20px 14px;
+          box-shadow: 0 10px 28px rgba(0,0,0,0.25);
         }
         .menu-section-hdr {
           color: var(--gold);
-          font-size: 0.7rem;
+          font-size: 0.72rem;
           font-weight: 800;
           letter-spacing: 0.18em;
           text-transform: uppercase;
           text-align: center;
-          margin-bottom: 12px;
+          margin-bottom: 16px;
         }
         .menu-item {
+          padding: 12px 0;
+          border-top: 1px solid rgba(255,255,255,0.06);
+        }
+        .menu-item:first-child { border-top: none; padding-top: 0; }
+        .menu-item:last-child { padding-bottom: 0; }
+        .menu-item-top {
           display: flex;
           justify-content: space-between;
           align-items: baseline;
-          padding: 10px 16px;
-          background: linear-gradient(180deg, rgba(20,21,24,0.94), rgba(9,9,10,0.98));
-          border: 1px solid var(--line);
-          border-radius: 12px;
-          margin-bottom: 8px;
         }
         .menu-item-name {
           font-weight: 700;
           color: var(--cream);
-          font-size: 0.92rem;
+          font-size: 0.94rem;
+        }
+        .menu-item-desc {
+          color: var(--muted);
+          font-size: 0.8rem;
+          line-height: 1.4;
+          margin-top: 3px;
         }
         .menu-item-price {
           color: var(--gold);
@@ -565,8 +577,11 @@ function generateLocationPage(location, allLocations = [], menuCategories = []) 
         <div class="menu-section-hdr">${escHTML(cat.name)}</div>
         ${(cat.items || []).map(item => `
         <div class="menu-item">
-          <span class="menu-item-name">${escHTML(item.name)}${item.description ? ` <span style="color:var(--muted); font-weight:400; font-size:0.8rem;">${escHTML(item.description)}</span>` : ''}</span>
-          ${item.price ? `<span class="menu-item-price">$${Number(item.price).toFixed(0)}</span>` : ''}
+          <div class="menu-item-top">
+            <span class="menu-item-name">${escHTML(item.name)}</span>
+            ${item.price ? `<span class="menu-item-price">$${Number(item.price).toFixed(0)}</span>` : ''}
+          </div>
+          ${item.description ? `<div class="menu-item-desc">${escHTML(item.description)}</div>` : ''}
         </div>
         `).join('')}
       </div>

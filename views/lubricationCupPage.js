@@ -289,9 +289,8 @@ function generateLubricationCupPage(location) {
     <body>
       <div class="cup-wrap">
         <div class="cup-hero">
-          ${renderBrandMark({ className: '' })}
-          <div class="cup-presents">Dram &amp; Draught Presents</div>
-          <div class="cup-registered">The Registered</div>
+          ${renderBrandMark({ className: '', note: 'Presents' })}
+          <div class="cup-registered" style="margin-top:18px;">The Registered</div>
           <div class="cup-title">Lubrication Cup</div>
           <div class="cup-subtitle">Bartender Speed Competition</div>
           <div class="divider"></div>

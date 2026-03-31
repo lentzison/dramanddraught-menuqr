@@ -36,7 +36,8 @@ function generateLocationPage(location, allLocations = [], menuCategories = []) 
   const reviewConfig = {
     locationName: location.name || 'Dram & Draught',
     locationEmail: reviewEmail || 'cheers@dramanddraught.com',
-    googleReviewUrl: String(location.googleReviewUrl || '').trim(),
+    googleReviewUrl: String(location.googleReviewUrl || '').trim()
+      || 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent('Dram and Draught ' + (location.address || '') + ' ' + (location.city || '') + ' NC'),
     feedbackEndpoint: '/api/feedback',
     locationSlug: location.slug || '',
     locationResolution: {

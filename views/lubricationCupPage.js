@@ -354,7 +354,7 @@ function generateLubricationCupPage(location) {
           </div>
           <div class="cocktail-row">
             <span class="cocktail-name">Gin Fizz</span>
-            <span class="cocktail-spec">Bombay Gin, Lemon, Simple Syrup, Soda</span>
+            <span class="cocktail-spec">Drumshanbo Gunpowder Gin, Lemon, Simple Syrup, Soda</span>
           </div>
         </div>
 

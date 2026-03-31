@@ -1385,7 +1385,8 @@ async function generateFeedbackResponse(payload) {
               content:
                 'You are a guest-experience assistant for Dram & Draught. Write a friendly, human reply to a guest feedback email. '
                 + 'Use a warm bar-owner tone, thank them for visiting and giving feedback, acknowledge the specific feedback details, and say the team will review it. '
-                + 'Keep it concise, sincere, and personalized to the provided rating and comments. Use no markdown.',
+                + 'Keep it concise, sincere, and personalized to the provided rating and comments. Use no markdown. '
+                + 'Always sign off as "Cheers,\nThe Dram & Draught Team" — never use a placeholder like [Your Name].',
             },
             {
               role: 'user',

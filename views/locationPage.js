@@ -943,7 +943,7 @@ function generateLocationPage(location, allLocations = [], menuCategories = []) 
 
       <div class="promo-toast" id="promo-toast" role="alert">
         <button class="promo-toast-dismiss" id="promo-dismiss" aria-label="Dismiss">&times;</button>
-        <div class="promo-toast-headline">Rate your visit &amp; win a $100 gift card</div>
+        <div class="promo-toast-headline">Rate your visit for a chance to win a $100 gift card</div>
         <div class="promo-toast-sub">Tap here to leave a quick review &mdash; takes 30 seconds</div>
       </div>
       <script>

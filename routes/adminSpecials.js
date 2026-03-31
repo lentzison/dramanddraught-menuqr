@@ -3,6 +3,7 @@ const { requireAuth } = require('../auth');
 const { specialsDashboard, dayThemeEditor, flightsList, flightEditor, bottlesList, bottleEditor, DAYS } = require('../views/adminSpecialsViews');
 const { adminLayout } = require('../views/adminLayout');
 const { getSpiritCategories, getSpiritCatalog, getHalfPriceSpirits } = require('../bartenderDb');
+const { sendJSON } = require('../helpers');
 const OP_IMAGE_REGEN_TOKEN = process.env.OP_SPECIAL_IMAGE_REGEN_TOKEN || 'menuqr-special-image-regenerate';
 
 function normalizeText(value) {
@@ -1149,6 +1150,239 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
     const flashMsg = getFlashMsg(req.url);
     sendHTML(res, 200, bottleEditor(bottle, false, user, null, flashMsg));
     return true;
+  }
+
+  // Analytics dashboard
+  if (pathname === '/admin/analytics' || pathname === '/admin/analytics/export') {
+    const user = requireAuth(req, res);
+    if (!user) { redirect(res, '/admin/login'); return true; }
+
+    if (!prisma?.visitorSession) {
+      sendHTML(res, 200, adminLayout('Analytics', '<p>Analytics not available yet. Waiting for database migration.</p>', user, { pathname: '/admin/analytics' }));
+      return true;
+    }
+
+    const url = require('url');
+    const parsed = url.parse(req.url, true);
+    const filterSlug = parsed.query.location || '';
+    const filterRange = parsed.query.range || '7d';
+
+    // Date range
+    const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    let rangeStart;
+    if (filterRange === 'today') rangeStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    else if (filterRange === '30d') rangeStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    else rangeStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    const where = { startedAt: { gte: rangeStart } };
+    if (filterSlug) where.locationSlug = filterSlug;
+
+    try {
+      // CSV export
+      if (pathname === '/admin/analytics/export') {
+        const rows = await prisma.visitorSession.findMany({ where, orderBy: { startedAt: 'desc' }, take: 5000 });
+        const csvHeader = 'Date,Location,Device,Browser,OS,Entry Page,Pages,Duration (s),QR Scan,Return Visitor,Screen,Language,IP\n';
+        const csvRows = rows.map(r => [
+          r.startedAt ? r.startedAt.toISOString() : '',
+          r.locationSlug || '',
+          r.deviceType || '',
+          r.browser || '',
+          r.os || '',
+          r.entryPage || '',
+          r.pageCount || 1,
+          r.durationSecs || '',
+          r.isQrScan ? 'Yes' : 'No',
+          '', // return visitor computed below
+          r.screenWidth && r.screenHeight ? `${r.screenWidth}x${r.screenHeight}` : '',
+          r.language || '',
+          r.ipAddress || '',
+        ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+        res.writeHead(200, { 'Content-Type': 'text/csv', 'Content-Disposition': `attachment; filename="analytics-${filterRange}.csv"` });
+        res.end(csvHeader + csvRows);
+        return true;
+      }
+
+      // Dashboard data
+      const [sessions, locations, pageViews] = await Promise.all([
+        prisma.visitorSession.findMany({ where, orderBy: { startedAt: 'desc' }, take: 10000 }),
+        prisma.location.findMany({ where: { isActive: true }, orderBy: { name: 'asc' }, select: { slug: true, name: true } }),
+        prisma.pageView.groupBy({ by: ['pageType'], _count: true, where: { viewedAt: { gte: rangeStart }, ...(filterSlug ? { locationSlug: filterSlug } : {}) } }),
+      ]);
+
+      const totalScans = sessions.length;
+      const uniqueVisitors = new Set(sessions.map(s => s.visitorId)).size;
+      const durationsValid = sessions.filter(s => s.durationSecs && s.durationSecs > 0);
+      const avgDuration = durationsValid.length > 0 ? Math.round(durationsValid.reduce((sum, s) => sum + s.durationSecs, 0) / durationsValid.length) : 0;
+      const avgPages = totalScans > 0 ? (sessions.reduce((sum, s) => sum + (s.pageCount || 1), 0) / totalScans).toFixed(1) : '0';
+
+      // Return visitors (visited more than once ever)
+      const visitorCounts = {};
+      sessions.forEach(s => { visitorCounts[s.visitorId] = (visitorCounts[s.visitorId] || 0) + 1; });
+      const returnVisitors = Object.values(visitorCounts).filter(c => c > 1).length;
+      const returnRate = uniqueVisitors > 0 ? Math.round((returnVisitors / uniqueVisitors) * 100) : 0;
+
+      // Device breakdown
+      const devices = {};
+      sessions.forEach(s => { const d = s.deviceType || 'unknown'; devices[d] = (devices[d] || 0) + 1; });
+
+      // Browser breakdown
+      const browsers = {};
+      sessions.forEach(s => { const b = s.browser || 'Other'; browsers[b] = (browsers[b] || 0) + 1; });
+
+      // OS breakdown
+      const osList = {};
+      sessions.forEach(s => { const o = s.os || 'Other'; osList[o] = (osList[o] || 0) + 1; });
+
+      // Scans by day
+      const byDay = {};
+      sessions.forEach(s => {
+        const d = s.startedAt ? s.startedAt.toISOString().slice(0, 10) : 'unknown';
+        byDay[d] = (byDay[d] || 0) + 1;
+      });
+      const daysSorted = Object.entries(byDay).sort((a, b) => a[0].localeCompare(b[0]));
+      const maxDay = Math.max(...daysSorted.map(d => d[1]), 1);
+
+      // Scans by hour
+      const byHour = {};
+      sessions.forEach(s => {
+        if (!s.startedAt) return;
+        const h = new Date(s.startedAt.toLocaleString('en-US', { timeZone: 'America/New_York' })).getHours();
+        byHour[h] = (byHour[h] || 0) + 1;
+      });
+
+      // Location breakdown
+      const byLocation = {};
+      sessions.forEach(s => { const l = s.locationSlug || 'home'; byLocation[l] = (byLocation[l] || 0) + 1; });
+
+      // QR vs direct
+      const qrCount = sessions.filter(s => s.isQrScan).length;
+
+      // Page type breakdown from groupBy
+      const pageTypeCounts = {};
+      pageViews.forEach(p => { pageTypeCounts[p.pageType] = p._count; });
+
+      function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+      function barChart(entries, maxVal) {
+        return entries.map(([label, count]) => `
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+            <span style="min-width:80px;font-size:0.82rem;color:#aaa;text-align:right;">${esc(label)}</span>
+            <div style="flex:1;background:#1a1a1d;border-radius:4px;height:22px;overflow:hidden;">
+              <div style="width:${Math.round((count / maxVal) * 100)}%;background:linear-gradient(90deg,#d4af37,#b8913e);height:100%;border-radius:4px;min-width:2px;"></div>
+            </div>
+            <span style="min-width:36px;font-size:0.82rem;color:#ccc;">${count}</span>
+          </div>
+        `).join('');
+      }
+
+      function statCard(label, value) {
+        return `<div style="background:#1a1a1d;border:1px solid #333;border-radius:12px;padding:16px;text-align:center;min-width:120px;">
+          <div style="font-size:1.6rem;font-weight:800;color:#d4af37;">${esc(String(value))}</div>
+          <div style="font-size:0.78rem;color:#999;margin-top:4px;">${esc(label)}</div>
+        </div>`;
+      }
+
+      // Build filter controls
+      const locationOptions = locations.map(l => `<option value="${esc(l.slug)}"${filterSlug === l.slug ? ' selected' : ''}>${esc(l.name)}</option>`).join('');
+      const rangeOptions = [['today', 'Today'], ['7d', 'Last 7 Days'], ['30d', 'Last 30 Days']]
+        .map(([val, label]) => `<option value="${val}"${filterRange === val ? ' selected' : ''}>${label}</option>`).join('');
+
+      const filters = `
+        <form method="GET" action="/admin/analytics" style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;align-items:center;">
+          <select name="location" style="padding:8px 12px;background:#1a1a1d;color:#ccc;border:1px solid #333;border-radius:8px;font-size:0.88rem;">
+            <option value="">All Locations</option>${locationOptions}
+          </select>
+          <select name="range" style="padding:8px 12px;background:#1a1a1d;color:#ccc;border:1px solid #333;border-radius:8px;font-size:0.88rem;">
+            ${rangeOptions}
+          </select>
+          <button type="submit" style="padding:8px 16px;background:#d4af37;color:#0e0d0b;border:none;border-radius:8px;font-weight:700;cursor:pointer;">Filter</button>
+          <a href="/admin/analytics/export?location=${esc(filterSlug)}&range=${esc(filterRange)}" style="padding:8px 16px;background:#333;color:#ccc;border-radius:8px;text-decoration:none;font-size:0.85rem;">Export CSV</a>
+        </form>`;
+
+      // Format duration
+      const fmtDur = (s) => s >= 60 ? `${Math.floor(s/60)}m ${s%60}s` : `${s}s`;
+
+      // Recent sessions table
+      const recentRows = sessions.slice(0, 50).map(s => {
+        const time = s.startedAt ? new Date(s.startedAt).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+        return `<tr>
+          <td>${esc(time)}</td>
+          <td>${esc(s.locationSlug || 'home')}</td>
+          <td>${esc(s.deviceType || '?')}</td>
+          <td>${esc(s.browser || '?')}</td>
+          <td>${esc(s.os || '?')}</td>
+          <td>${esc(s.entryPage || '/')}</td>
+          <td>${s.pageCount || 1}</td>
+          <td>${s.durationSecs ? fmtDur(s.durationSecs) : '-'}</td>
+          <td>${s.isQrScan ? 'QR' : 'Direct'}</td>
+          <td>${s.screenWidth ? `${s.screenWidth}x${s.screenHeight}` : '-'}</td>
+        </tr>`;
+      }).join('');
+
+      const content = `
+        <h1>Analytics</h1>
+        ${filters}
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:24px;">
+          ${statCard('Total Scans', totalScans)}
+          ${statCard('Unique Visitors', uniqueVisitors)}
+          ${statCard('Avg Duration', fmtDur(avgDuration))}
+          ${statCard('Pages / Session', avgPages)}
+          ${statCard('Return Rate', returnRate + '%')}
+          ${statCard('QR Scans', Math.round((qrCount/Math.max(totalScans,1))*100) + '%')}
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px;">
+          <div style="background:#111;border:1px solid #333;border-radius:12px;padding:16px;">
+            <h3 style="color:#d4af37;font-size:0.82rem;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:12px;">Scans by Day</h3>
+            ${daysSorted.length > 0 ? barChart(daysSorted.map(([d, c]) => [d.slice(5), c]), maxDay) : '<p style="color:#666;">No data</p>'}
+          </div>
+          <div style="background:#111;border:1px solid #333;border-radius:12px;padding:16px;">
+            <h3 style="color:#d4af37;font-size:0.82rem;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:12px;">By Location</h3>
+            ${barChart(Object.entries(byLocation).sort((a,b) => b[1]-a[1]), Math.max(...Object.values(byLocation), 1))}
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-bottom:24px;">
+          <div style="background:#111;border:1px solid #333;border-radius:12px;padding:16px;">
+            <h3 style="color:#d4af37;font-size:0.82rem;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:12px;">Devices</h3>
+            ${barChart(Object.entries(devices).sort((a,b) => b[1]-a[1]), Math.max(...Object.values(devices), 1))}
+          </div>
+          <div style="background:#111;border:1px solid #333;border-radius:12px;padding:16px;">
+            <h3 style="color:#d4af37;font-size:0.82rem;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:12px;">Browsers</h3>
+            ${barChart(Object.entries(browsers).sort((a,b) => b[1]-a[1]), Math.max(...Object.values(browsers), 1))}
+          </div>
+          <div style="background:#111;border:1px solid #333;border-radius:12px;padding:16px;">
+            <h3 style="color:#d4af37;font-size:0.82rem;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:12px;">Operating Systems</h3>
+            ${barChart(Object.entries(osList).sort((a,b) => b[1]-a[1]), Math.max(...Object.values(osList), 1))}
+          </div>
+        </div>
+
+        <div style="background:#111;border:1px solid #333;border-radius:12px;padding:16px;margin-bottom:24px;">
+          <h3 style="color:#d4af37;font-size:0.82rem;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:12px;">Top Pages</h3>
+          ${barChart(Object.entries(pageTypeCounts).sort((a,b) => b[1]-a[1]), Math.max(...Object.values(pageTypeCounts), 1))}
+        </div>
+
+        <div style="background:#111;border:1px solid #333;border-radius:12px;padding:16px;overflow-x:auto;">
+          <h3 style="color:#d4af37;font-size:0.82rem;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:12px;">Recent Sessions</h3>
+          <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+            <thead><tr style="color:#999;text-align:left;border-bottom:1px solid #333;">
+              <th style="padding:8px 6px;">Time</th><th style="padding:8px 6px;">Location</th><th style="padding:8px 6px;">Device</th>
+              <th style="padding:8px 6px;">Browser</th><th style="padding:8px 6px;">OS</th><th style="padding:8px 6px;">Entry Page</th>
+              <th style="padding:8px 6px;">Pages</th><th style="padding:8px 6px;">Duration</th><th style="padding:8px 6px;">Source</th><th style="padding:8px 6px;">Screen</th>
+            </tr></thead>
+            <tbody style="color:#ccc;">${recentRows || '<tr><td colspan="10" style="padding:12px;color:#666;">No sessions yet</td></tr>'}</tbody>
+          </table>
+        </div>
+      `;
+
+      sendHTML(res, 200, adminLayout('Analytics', content, user, { pathname: '/admin/analytics' }));
+      return true;
+    } catch (err) {
+      console.error('Analytics dashboard error:', err);
+      sendHTML(res, 500, adminLayout('Analytics', '<p>Error loading analytics data.</p>', user, { pathname: '/admin/analytics' }));
+      return true;
+    }
   }
 
   return false;

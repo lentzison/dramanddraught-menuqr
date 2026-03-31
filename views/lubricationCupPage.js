@@ -296,7 +296,8 @@ function generateLubricationCupPage(location) {
           <div class="cup-subtitle">Bartender Speed Competition</div>
           <div class="divider"></div>
           <p style="color:var(--cream); font-size:0.92rem; font-weight:700; margin-bottom:4px;">Monday, April 20th &middot; 7:00 PM</p>
-          <p style="color:var(--muted); font-size:0.82rem;">${escHTML(location.name)}</p>
+          <p style="color:var(--muted); font-size:0.82rem; margin-bottom:14px;">${escHTML(location.name)}</p>
+          <a href="#signup-form" style="color:var(--gold); font-size:0.74rem; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; text-decoration:none; border:1px solid rgba(210,170,103,0.35); padding:8px 20px; border-radius:20px; transition: background 0.2s, border-color 0.2s;" onmouseover="this.style.background='rgba(210,170,103,0.1)';this.style.borderColor='rgba(210,170,103,0.6)'" onmouseout="this.style.background='transparent';this.style.borderColor='rgba(210,170,103,0.35)'">Want to compete? Sign up &darr;</a>
         </div>
 
         <div class="round-card">

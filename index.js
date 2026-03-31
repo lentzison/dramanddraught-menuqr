@@ -1,6 +1,6 @@
 const http = require('http');
 const url = require('url');
-const { sendHTML } = require('./helpers');
+const { sendHTML, sendEmailViaGoogle } = require('./helpers');
 
 let prisma;
 try { prisma = require('./db'); } catch { prisma = null; }
@@ -98,8 +98,109 @@ async function seedSnacks() {
   }
 }
 
+const GIFT_CARD_RECIPIENTS = [
+  'carrie@dramanddraught.com',
+  'lexi@dramanddraught.com',
+  'lentz@dramanddraught.com',
+];
+
+// Monthly gift card drawing — runs on startup, picks a winner for the previous month
+async function runGiftCardDrawing() {
+  if (!prisma) return;
+  try {
+    // Determine previous month
+    const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    let drawMonth = now.getMonth(); // 0-indexed, so this is previous month (current - 1)
+    let drawYear = now.getFullYear();
+    if (drawMonth === 0) { drawMonth = 12; drawYear -= 1; } // January -> draw for December
+
+    // Only run after the 1st of the new month, skip if too early in the month
+    if (now.getDate() > 7) {
+      // Also check current month hasn't been drawn yet (in case server restarts mid-month)
+    }
+
+    // Check if drawing already done for that month
+    if (prisma.giftCardDrawing) {
+      const existing = await prisma.giftCardDrawing.findFirst({
+        where: { month: drawMonth, year: drawYear },
+      });
+      if (existing) {
+        console.log(`Gift card drawing already done for ${drawMonth}/${drawYear}: ${existing.winnerEmail}`);
+        return;
+      }
+    }
+
+    // Get all opted-in feedback entries from that month with valid emails
+    const startDate = new Date(drawYear, drawMonth - 1, 1); // month is 0-indexed in Date
+    const endDate = new Date(drawMonth === 12 ? drawYear + 1 : drawYear, drawMonth === 12 ? 0 : drawMonth, 1);
+
+    const entries = await prisma.guestFeedback.findMany({
+      where: {
+        giftCardOptIn: true,
+        guestEmail: { not: null },
+        createdAt: { gte: startDate, lt: endDate },
+      },
+      select: { id: true, guestName: true, guestEmail: true, locationName: true, rating: true },
+    });
+
+    if (entries.length === 0) {
+      console.log(`No gift card entries for ${drawMonth}/${drawYear}.`);
+      return;
+    }
+
+    // Pick random winner
+    const winner = entries[Math.floor(Math.random() * entries.length)];
+    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const monthLabel = monthNames[drawMonth - 1] + ' ' + drawYear;
+
+    // Save drawing result
+    if (prisma.giftCardDrawing) {
+      await prisma.giftCardDrawing.create({
+        data: {
+          month: drawMonth,
+          year: drawYear,
+          winnerId: winner.id,
+          winnerName: winner.guestName || null,
+          winnerEmail: winner.guestEmail,
+          locationName: winner.locationName || null,
+        },
+      });
+    }
+
+    // Email staff
+    const emailBody = [
+      `MONTHLY $100 GIFT CARD DRAWING - ${monthLabel.toUpperCase()}`,
+      '',
+      `Winner: ${winner.guestName || 'Guest'}`,
+      `Email: ${winner.guestEmail}`,
+      `Location: ${winner.locationName || 'N/A'}`,
+      `Rating given: ${winner.rating}/5`,
+      `Total entries this month: ${entries.length}`,
+      '',
+      '--- ACTION REQUIRED ---',
+      '',
+      '1. Send a $100 Dram & Draught gift card to the winner at the email above',
+      '2. Include a congratulations message letting them know they won the monthly drawing',
+      '3. Reply-all to this email confirming the gift card has been sent',
+      '',
+      'Thank you!',
+    ].join('\n');
+
+    await sendEmailViaGoogle({
+      to: GIFT_CARD_RECIPIENTS,
+      subject: `Gift Card Winner - ${monthLabel}: ${winner.guestName || winner.guestEmail}`,
+      body: emailBody,
+    });
+
+    console.log(`Gift card drawing complete for ${monthLabel}: ${winner.guestEmail}`);
+  } catch (err) {
+    console.warn('Gift card drawing error:', err.message);
+  }
+}
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Dram & Draught server running on port ${PORT}`);
   console.log('Ready to serve location pages!');
   seedSnacks();
+  runGiftCardDrawing();
 });

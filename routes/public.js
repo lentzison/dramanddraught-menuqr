@@ -163,6 +163,7 @@ async function handleFeedback(req, res, prisma) {
   const newsletterOptIn = parseBooleanValue(
     body.newsletterOptIn || body.newsletter || body.subscribeToNewsletter || body.newsletterSignup,
   );
+  const giftCardOptIn = parseBooleanValue(body.giftCardOptIn);
 
   if (!requestedSlug) {
     sendJSON(res, 400, { ok: false, error: 'Missing location slug' });
@@ -230,6 +231,7 @@ async function handleFeedback(req, res, prisma) {
           guestEmail,
           feedbackText: normalizedFeedback,
           newsletterOptIn: Boolean(newsletterOptIn),
+          giftCardOptIn: Boolean(giftCardOptIn),
         },
       });
       savedFeedbackId = created?.id || null;

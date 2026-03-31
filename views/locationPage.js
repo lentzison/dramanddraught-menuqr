@@ -592,7 +592,8 @@ function generateLocationPage(location, allLocations = [], menuCategories = []) 
       <div class="review-cta">
         <h3>Rate your visit</h3>
         <p class="review-copy">
-          Tap a star. 5 stars opens a Google review after your note is sent.
+          Tap a star for a chance to win a <strong>$100 gift card</strong> (drawn monthly).<br>
+          5 stars opens a Google review after your note is sent.
         </p>
         <div class="review-stars" role="radiogroup" aria-label="Guest rating">
           <button class="review-star" type="button" role="radio" aria-label="Rate 1 star" data-rating="1" aria-pressed="false">★</button>
@@ -610,6 +611,10 @@ function generateLocationPage(location, allLocations = [], menuCategories = []) 
             <input id="feedback-email" name="email" type="email" placeholder="you@email.com" />
             <label for="feedback-message">Share your feedback</label>
             <textarea id="feedback-message" name="feedback" placeholder="What was great, and what can we improve?"></textarea>
+            <label class="feedback-optin" for="feedback-giftcard-optin">
+              <input id="feedback-giftcard-optin" name="giftCardOptIn" type="checkbox" checked />
+              <span>Enter me for a chance to win a <strong>$100 gift card</strong> (drawn monthly).</span>
+            </label>
             <label class="feedback-optin" for="feedback-newsletter-optin">
               <input id="feedback-newsletter-optin" name="newsletterOptIn" type="checkbox" />
               <span>Sign me up for the newsletter with special events, new releases, and tasting updates.</span>
@@ -630,6 +635,7 @@ function generateLocationPage(location, allLocations = [], menuCategories = []) 
           const feedbackMessageInput = document.getElementById('feedback-message');
           const feedbackEmailInput = document.getElementById('feedback-email');
           const feedbackNewsletterInput = document.getElementById('feedback-newsletter-optin');
+          const feedbackGiftCardInput = document.getElementById('feedback-giftcard-optin');
           const feedbackRatingInput = document.getElementById('feedback-rating');
           const feedbackSubmitButton = document.getElementById('feedback-submit');
 
@@ -830,6 +836,7 @@ function generateLocationPage(location, allLocations = [], menuCategories = []) 
               email: sanitize(payload.email || ''),
               feedback: sanitize(payload.feedback || ''),
               newsletterOptIn: Boolean(payload.newsletterOptIn),
+              giftCardOptIn: Boolean(payload.giftCardOptIn),
             };
 
             if (!feedbackPayload.rating) {
@@ -933,6 +940,7 @@ function generateLocationPage(location, allLocations = [], menuCategories = []) 
               email: sanitize((feedbackEmailInput && feedbackEmailInput.value) || ''),
               feedback: sanitize(feedbackMessageInput.value),
               newsletterOptIn: feedbackNewsletterInput && feedbackNewsletterInput.checked,
+              giftCardOptIn: feedbackGiftCardInput && feedbackGiftCardInput.checked,
             };
             await submitFeedback(payload, {
               hint: 'Sending your feedback...',

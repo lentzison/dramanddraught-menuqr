@@ -931,21 +931,16 @@ async function handleLubricationCupSignup(req, res) {
     return true;
   }
 
-  const escH = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
   const staffBody = [
-    '<div style="font-family:Georgia,serif; max-width:600px; margin:0 auto; color:#222;">',
-    '<h2 style="color:#8a5635;">Lubrication Cup &mdash; New Competitor Signup</h2>',
-    '<table style="width:100%; border-collapse:collapse;">',
-    `<tr><td style="padding:8px 12px; font-weight:bold; border-bottom:1px solid #eee;">Name</td><td style="padding:8px 12px; border-bottom:1px solid #eee;">${escH(name)}</td></tr>`,
-    `<tr><td style="padding:8px 12px; font-weight:bold; border-bottom:1px solid #eee;">Email</td><td style="padding:8px 12px; border-bottom:1px solid #eee;"><a href="mailto:${escH(email)}">${escH(email)}</a></td></tr>`,
-    phone ? `<tr><td style="padding:8px 12px; font-weight:bold; border-bottom:1px solid #eee;">Phone</td><td style="padding:8px 12px; border-bottom:1px solid #eee;">${escH(phone)}</td></tr>` : '',
-    `<tr><td style="padding:8px 12px; font-weight:bold; border-bottom:1px solid #eee;">Bar</td><td style="padding:8px 12px; border-bottom:1px solid #eee;">${escH(bar)}</td></tr>`,
-    `<tr><td style="padding:8px 12px; font-weight:bold; border-bottom:1px solid #eee;">Experience</td><td style="padding:8px 12px; border-bottom:1px solid #eee;">${escH(experience)}</td></tr>`,
-    why ? `<tr><td style="padding:8px 12px; font-weight:bold; border-bottom:1px solid #eee;">Why compete?</td><td style="padding:8px 12px; border-bottom:1px solid #eee;">${escH(why)}</td></tr>` : '',
-    location ? `<tr><td style="padding:8px 12px; font-weight:bold;">Location</td><td style="padding:8px 12px;">${escH(location)}</td></tr>` : '',
-    '</table>',
-    '</div>',
+    'LUBRICATION CUP - NEW COMPETITOR SIGNUP',
+    '',
+    `Name: ${name}`,
+    `Email: ${email}`,
+    phone ? `Phone: ${phone}` : '',
+    `Bar: ${bar}`,
+    `Experience: ${experience}`,
+    why ? `Why compete: ${why}` : '',
+    location ? `Location: ${location}` : '',
   ].filter(Boolean).join('\n');
 
   try {
@@ -953,7 +948,6 @@ async function handleLubricationCupSignup(req, res) {
       to: LUBRICATION_CUP_RECIPIENTS,
       subject: `Lubrication Cup Signup: ${name}`,
       body: staffBody,
-      html: true,
     });
 
     if (result && result.ok) {

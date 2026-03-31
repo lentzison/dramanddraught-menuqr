@@ -607,7 +607,7 @@ function generateLocationPage(location, allLocations = [], menuCategories = []) 
             <label for="feedback-name">Name</label>
             <input id="feedback-name" name="name" type="text" placeholder="Guest name (optional)" />
             <label for="feedback-email">Email</label>
-            <input id="feedback-email" name="email" type="email" placeholder="you@email.com" />
+            <input id="feedback-email" name="email" type="email" placeholder="you@email.com (optional — needed for gift card drawing)" />
             <label for="feedback-message">Share your feedback</label>
             <textarea id="feedback-message" name="feedback" placeholder="What was great, and what can we improve?"></textarea>
             <label class="feedback-optin" for="feedback-giftcard-optin">
@@ -768,12 +768,10 @@ function generateLocationPage(location, allLocations = [], menuCategories = []) 
                 ? 'Tell us what you loved about your visit (optional for 5 stars).'
                 : 'What was great, and what can we improve?';
             }
-            setFieldRequired(true, !isFiveStar);
+            setFieldRequired(false, false);
             setHint(isFiveStar
-              ? 'You selected 5/5. Leave your email to get a personal thanks.'
-              : 'You selected ' + rating + '/5. Share a few details and we will review them right away.');
-            const emailInput = document.getElementById('feedback-email');
-            if (emailInput) emailInput.focus();
+              ? 'You selected 5/5. Add your email for a chance to win the gift card.'
+              : 'You selected ' + rating + '/5. Share any details you\'d like.');
           }
 
           function copyReviewTextToClipboard(reviewText) {
@@ -843,13 +841,8 @@ function generateLocationPage(location, allLocations = [], menuCategories = []) 
               return;
             }
 
-            if (!feedbackPayload.email || !isLikelyValidEmail(feedbackPayload.email)) {
-              setHint('Please provide a valid email address.');
-              return;
-            }
-
-            if (!isFiveStar && !feedbackPayload.feedback) {
-              setHint('Please share your feedback message.');
+            if (feedbackPayload.email && !isLikelyValidEmail(feedbackPayload.email)) {
+              setHint('Please enter a valid email or leave it blank.');
               return;
             }
 

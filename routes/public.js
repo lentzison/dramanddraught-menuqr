@@ -175,18 +175,8 @@ async function handleFeedback(req, res, prisma) {
     return true;
   }
 
-  if (!isFiveStar && !feedbackText) {
-    sendJSON(res, 400, { ok: false, error: 'Feedback details are required' });
-    return true;
-  }
-
-  if (!guestEmailRaw) {
-    sendJSON(res, 400, { ok: false, error: 'Email is required for feedback confirmation.' });
-    return true;
-  }
-
-  if (!isLikelyValidEmail(guestEmailRaw)) {
-    sendJSON(res, 400, { ok: false, error: 'Please provide a valid email address' });
+  if (guestEmailRaw && !isLikelyValidEmail(guestEmailRaw)) {
+    sendJSON(res, 400, { ok: false, error: 'Please provide a valid email address or leave it blank' });
     return true;
   }
 

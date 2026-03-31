@@ -215,9 +215,17 @@ async function runGiftCardDrawing() {
   }
 }
 
+// Check for gift card drawing every hour so it fires reliably on the 15th
+function scheduleGiftCardDrawing() {
+  runGiftCardDrawing();
+  setInterval(() => {
+    runGiftCardDrawing();
+  }, 60 * 60 * 1000); // every hour
+}
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Dram & Draught server running on port ${PORT}`);
   console.log('Ready to serve location pages!');
   seedSnacks();
-  runGiftCardDrawing();
+  scheduleGiftCardDrawing();
 });

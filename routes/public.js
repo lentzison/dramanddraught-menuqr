@@ -877,7 +877,7 @@ async function handleMenu(req, res, prisma, locationSlug) {
       menu = await prisma.menuCategory.findMany({
         where: { locationId: location.id, isActive: true },
         include: {
-          items: { where: { isActive: true }, orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }] },
+          items: { where: { isAvailable: true }, orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }] },
         },
         orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }],
       });

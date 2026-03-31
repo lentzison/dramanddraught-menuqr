@@ -256,6 +256,17 @@ function normalizeGoogleHoursText(text) {
     .trim();
 }
 
+// Direct Google review URLs by location slug (using CIDs)
+const GOOGLE_REVIEW_URLS = {
+  'raleigh': 'https://search.google.com/local/writereview?placeid=ChIJTaD_5GRfrIkRynJ-tfJtZSI',
+  'greensboro': 'https://www.google.com/maps?cid=7371053924603763603',
+  'winston-salem': 'https://www.google.com/maps?cid=6078974007613483928',
+  'durham': 'https://www.google.com/maps?cid=5707873104102207707',
+  'cary': 'https://www.google.com/maps?cid=4959704637554130279',
+  'charlotte': 'https://www.google.com/maps?cid=7858976320037327007',
+  'wilmington': 'https://www.google.com/maps?cid=9929267989488390120',
+};
+
 function parseGooglePlaceIdOverrides() {
   const builtInOverrides = {
     'winston': 'ChIJu2rfS46vU4gRmGui8qbaXFQ',
@@ -2029,7 +2040,7 @@ async function getLocations(prisma) {
       const enriched = await Promise.all(
         locations.map(async (location) => {
           const googleData = await getGoogleHoursForLocation(location);
-          if (!googleData) return location;
+          if (!googleData) return { ...location, googleReviewUrl: GOOGLE_REVIEW_URLS[location.slug] || null };
           const googleCoordinates = googleData.coordinates || null;
           const mergedHours = {
             ...(typeof location.hours === 'object' && location.hours ? location.hours : {}),
@@ -2040,7 +2051,7 @@ async function getLocations(prisma) {
             hours: mergedHours,
             openHoursSource: 'google',
             googlePlaceId: googleData.placeId || null,
-            googleReviewUrl: googleData.reviewUrl || null,
+            googleReviewUrl: GOOGLE_REVIEW_URLS[location.slug] || googleData.reviewUrl || null,
             googleCoordinates: googleCoordinates,
           };
         }),

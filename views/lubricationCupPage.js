@@ -331,7 +331,7 @@ function generateLubricationCupPage(location) {
 
         <div class="round-card menu-section">
           <div class="menu-section-title">Event Cocktail Menu</div>
-          <div class="menu-section-sub">Available for guests throughout the evening</div>
+          <div class="menu-section-sub">Available for guests throughout the evening &middot; $10 each</div>
           <div class="cocktail-row">
             <span class="cocktail-name">Manhattan</span>
             <span class="cocktail-spec">Yellowstone Bourbon, Sweet Vermouth, Angostura Bitters</span>

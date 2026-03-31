@@ -295,7 +295,7 @@ function generateLubricationCupPage(location) {
           <div class="cup-title">Lubrication Cup</div>
           <div class="cup-subtitle">Bartender Speed Competition</div>
           <div class="divider"></div>
-          <p style="color:var(--cream); font-size:0.92rem; font-weight:700; margin-bottom:4px;">Sunday, April 20th &middot; 7:00 PM</p>
+          <p style="color:var(--cream); font-size:0.92rem; font-weight:700; margin-bottom:4px;">Monday, April 20th &middot; 7:00 PM</p>
           <p style="color:var(--muted); font-size:0.82rem;">${escHTML(location.name)}</p>
         </div>
 

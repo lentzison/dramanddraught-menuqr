@@ -7,9 +7,6 @@ function generateLocationPage(location, allLocations = []) {
     { label: "Today's Specials", url: `/${location.slug}/specials` },
     { label: 'On Draft', url: `/${location.slug}/draft` },
   ];
-  if (location.slug === 'winston-salem') {
-    quickLinks.push({ label: 'The Lubrication Cup', url: `/${location.slug}/lubrication-cup` });
-  }
   const dynamicLinks = getLinkButtons(location);
   const buttons = [...quickLinks, ...dynamicLinks].filter((link, index, arr) =>
     arr.findIndex((entry) => entry.url === link.url && entry.label === link.label) === index
@@ -378,6 +375,44 @@ function generateLocationPage(location, allLocations = []) {
         .review-success {
           color: #86efac;
         }
+        .event-banner {
+          display: block;
+          text-align: center;
+          text-decoration: none;
+          margin: 18px auto 0;
+          max-width: 480px;
+          padding: 14px 20px;
+          border: 1px solid rgba(210,170,103,0.3);
+          border-radius: 14px;
+          background: linear-gradient(180deg, rgba(210,170,103,0.06), rgba(210,170,103,0.02));
+          transition: border-color 0.2s, transform 0.15s, background 0.2s;
+        }
+        .event-banner:hover {
+          border-color: rgba(210,170,103,0.55);
+          background: linear-gradient(180deg, rgba(210,170,103,0.1), rgba(210,170,103,0.04));
+          transform: translateY(-1px);
+        }
+        .event-date {
+          display: block;
+          color: var(--gold);
+          font-size: 0.68rem;
+          font-weight: 800;
+          letter-spacing: 0.18em;
+          text-transform: uppercase;
+          margin-bottom: 3px;
+        }
+        .event-name {
+          display: block;
+          color: var(--cream);
+          font-size: 1.05rem;
+          font-weight: 800;
+        }
+        .event-detail {
+          display: block;
+          color: var(--muted);
+          font-size: 0.78rem;
+          margin-top: 2px;
+        }
         @keyframes rise {
           from { opacity: 0; transform: translateY(8px); }
           to { opacity: 1; transform: translateY(0); }
@@ -426,6 +461,13 @@ function generateLocationPage(location, allLocations = []) {
           </div>
         </details>
       </div>
+      ${location.slug === 'winston-salem' ? `
+      <a href="/${location.slug}/lubrication-cup" class="event-banner stagger" style="animation-delay:0.06s;">
+        <span class="event-date">April 20th</span>
+        <span class="event-name">The Lubrication Cup</span>
+        <span class="event-detail">Bartender Speed Competition &middot; 7 PM</span>
+      </a>
+      ` : ''}
       <div class="container linktree">
         ${buttons.map((l, i) => `<a class="link-btn stagger" href="${l.url}"${l.url.startsWith('/') ? '' : ' target="_blank" rel="noopener noreferrer"'} style="animation-delay:${Math.min(i * 0.04, 0.2)}s;"><span>${l.label}</span></a>`).join('')}
       </div>

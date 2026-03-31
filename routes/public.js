@@ -11,6 +11,7 @@ const {
   getOpenAiDiagnosticSnapshot,
   parseBody,
   sendFeedbackEmails,
+  sendEmailViaGoogle,
   getFeedbackFromAddress,
 } = require('../helpers');
 const { generateHomepage } = require('../views/homepage');
@@ -31,6 +32,7 @@ const {
 } = require('../bartenderDb');
 const { generateDraftPage } = require('../views/draftPage');
 const { generateMenuPage } = require('../views/menuPage');
+const { generateLubricationCupPage } = require('../views/lubricationCupPage');
 
 const DAYS_ORDER = Array.isArray(importDaysOrder) && importDaysOrder.length > 0 ? importDaysOrder : ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
 const BRAND_LOGO_PATH = path.join(__dirname, '..', 'assets', 'dram-draught-logo-white.png');
@@ -891,6 +893,82 @@ async function handleMenu(req, res, prisma, locationSlug) {
   return true;
 }
 
+const LUBRICATION_CUP_RECIPIENTS = [
+  'jax.Daugherty@rndc-usa.com',
+  'anna@dramanddraught.com',
+  'lentz@dramanddraught.com',
+];
+
+async function handleLubricationCupSignup(req, res) {
+  if (req.method !== 'POST') {
+    sendJSON(res, 405, { ok: false, error: 'Method Not Allowed' });
+    return true;
+  }
+
+  let body;
+  try {
+    body = await parseBody(req);
+  } catch (err) {
+    sendJSON(res, 400, { ok: false, error: 'Invalid request body' });
+    return true;
+  }
+
+  const name = String(body.name || '').trim();
+  const email = String(body.email || '').trim();
+  const phone = String(body.phone || '').trim();
+  const bar = String(body.bar || '').trim();
+  const experience = String(body.experience || '').trim();
+  const why = String(body.why || '').trim();
+  const location = String(body.location || '').trim();
+
+  if (!name || !email || !bar || !experience) {
+    sendJSON(res, 400, { ok: false, error: 'Please fill in all required fields.' });
+    return true;
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    sendJSON(res, 400, { ok: false, error: 'Please enter a valid email address.' });
+    return true;
+  }
+
+  const escH = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  const staffBody = [
+    '<div style="font-family:Georgia,serif; max-width:600px; margin:0 auto; color:#222;">',
+    '<h2 style="color:#8a5635;">Lubrication Cup &mdash; New Competitor Signup</h2>',
+    '<table style="width:100%; border-collapse:collapse;">',
+    `<tr><td style="padding:8px 12px; font-weight:bold; border-bottom:1px solid #eee;">Name</td><td style="padding:8px 12px; border-bottom:1px solid #eee;">${escH(name)}</td></tr>`,
+    `<tr><td style="padding:8px 12px; font-weight:bold; border-bottom:1px solid #eee;">Email</td><td style="padding:8px 12px; border-bottom:1px solid #eee;"><a href="mailto:${escH(email)}">${escH(email)}</a></td></tr>`,
+    phone ? `<tr><td style="padding:8px 12px; font-weight:bold; border-bottom:1px solid #eee;">Phone</td><td style="padding:8px 12px; border-bottom:1px solid #eee;">${escH(phone)}</td></tr>` : '',
+    `<tr><td style="padding:8px 12px; font-weight:bold; border-bottom:1px solid #eee;">Bar</td><td style="padding:8px 12px; border-bottom:1px solid #eee;">${escH(bar)}</td></tr>`,
+    `<tr><td style="padding:8px 12px; font-weight:bold; border-bottom:1px solid #eee;">Experience</td><td style="padding:8px 12px; border-bottom:1px solid #eee;">${escH(experience)}</td></tr>`,
+    why ? `<tr><td style="padding:8px 12px; font-weight:bold; border-bottom:1px solid #eee;">Why compete?</td><td style="padding:8px 12px; border-bottom:1px solid #eee;">${escH(why)}</td></tr>` : '',
+    location ? `<tr><td style="padding:8px 12px; font-weight:bold;">Location</td><td style="padding:8px 12px;">${escH(location)}</td></tr>` : '',
+    '</table>',
+    '</div>',
+  ].filter(Boolean).join('\n');
+
+  try {
+    const result = await sendEmailViaGoogle({
+      to: LUBRICATION_CUP_RECIPIENTS,
+      subject: `Lubrication Cup Signup: ${name}`,
+      body: staffBody,
+    });
+
+    if (result && result.ok) {
+      sendJSON(res, 200, { ok: true });
+    } else {
+      console.warn('Lubrication Cup signup email failed:', result);
+      sendJSON(res, 200, { ok: true });
+    }
+  } catch (err) {
+    console.error('Lubrication Cup signup email error:', err.message);
+    sendJSON(res, 200, { ok: true });
+  }
+
+  return true;
+}
+
 async function handlePublic(req, res, pathname, prisma) {
   if (pathname === '/assets/dram-draught-logo-white.png') {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
@@ -930,6 +1008,10 @@ async function handlePublic(req, res, pathname, prisma) {
 
   if (pathname === '/api/feedback') {
     return handleFeedback(req, res, prisma);
+  }
+
+  if (pathname === '/api/lubrication-cup-signup') {
+    return handleLubricationCupSignup(req, res);
   }
 
   // Staff training pages (printable)
@@ -976,6 +1058,20 @@ async function handlePublic(req, res, pathname, prisma) {
   if (menuMatch) {
     const slug = menuMatch[1];
     return handleMenu(req, res, prisma, slug);
+  }
+
+  // Lubrication Cup page: /winston-salem/lubrication-cup
+  const cupMatch = pathname.match(/^\/([a-z0-9-]+)\/lubrication-cup$/);
+  if (cupMatch) {
+    const slug = cupMatch[1];
+    const locs = await getLocations(prisma);
+    const location = locs.find((l) => l.slug === slug);
+    if (location) {
+      sendHTML(res, 200, generateLubricationCupPage(location));
+      return true;
+    }
+    sendHTML(res, 404, '<h1>Location not found</h1><p><a href="/">Back to locations</a></p>');
+    return true;
   }
 
   // Location page: /{slug}

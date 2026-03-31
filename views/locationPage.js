@@ -7,6 +7,9 @@ function generateLocationPage(location, allLocations = []) {
     { label: "Today's Specials", url: `/${location.slug}/specials` },
     { label: 'On Draft', url: `/${location.slug}/draft` },
   ];
+  if (location.slug === 'winston-salem') {
+    quickLinks.push({ label: 'The Lubrication Cup', url: `/${location.slug}/lubrication-cup` });
+  }
   const dynamicLinks = getLinkButtons(location);
   const buttons = [...quickLinks, ...dynamicLinks].filter((link, index, arr) =>
     arr.findIndex((entry) => entry.url === link.url && entry.label === link.label) === index

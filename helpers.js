@@ -2059,6 +2059,7 @@ module.exports = {
   generateFeedbackResponse,
   buildStaffFeedbackBody,
   sendFeedbackEmails,
+  sendEmailViaGoogle,
   buildFeedbackMailto,
   getFeedbackFromAddress,
   getOpenAiDiagnosticSnapshot,

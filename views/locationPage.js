@@ -507,9 +507,6 @@ function generateLocationPage(location, allLocations = [], menuCategories = []) 
         <span class="event-detail">Bartender Speed Competition &middot; 7 PM</span>
       </a>
       ` : ''}
-      <div class="container linktree">
-        ${buttons.map((l, i) => `<a class="link-btn stagger" href="${l.url}"${l.url.startsWith('/') ? '' : ' target="_blank" rel="noopener noreferrer"'} style="animation-delay:${Math.min(i * 0.04, 0.2)}s;"><span>${l.label}</span></a>`).join('')}
-      </div>
       ${menuCategories.length > 0 ? menuCategories.map(cat => `
       <div class="menu-section">
         <div class="menu-section-hdr">${escHTML(cat.name)}</div>
@@ -521,6 +518,9 @@ function generateLocationPage(location, allLocations = [], menuCategories = []) 
         `).join('')}
       </div>
       `).join('') : ''}
+      <div class="container linktree">
+        ${buttons.map((l, i) => `<a class="link-btn stagger" href="${l.url}"${l.url.startsWith('/') ? '' : ' target="_blank" rel="noopener noreferrer"'} style="animation-delay:${Math.min(i * 0.04, 0.2)}s;"><span>${l.label}</span></a>`).join('')}
+      </div>
       <div class="review-cta">
         <h3>Rate your visit</h3>
         <p class="review-copy">

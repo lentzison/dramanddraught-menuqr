@@ -198,9 +198,42 @@ async function runGiftCardDrawing() {
   }
 }
 
+// TEMPORARY: test gift card winner email — remove after confirming
+async function testGiftCardEmail() {
+  try {
+    const emailBody = [
+      'MONTHLY $100 GIFT CARD DRAWING - MARCH 2026',
+      '',
+      'Winner: Lentz',
+      'Email: lentzison@gmail.com',
+      'Location: Raleigh',
+      'Rating given: 5/5',
+      'Total entries this month: 42',
+      '',
+      '--- ACTION REQUIRED ---',
+      '',
+      '1. Send a $100 Dram & Draught gift card to the winner at the email above',
+      '2. Include a congratulations message letting them know they won the monthly drawing',
+      '3. Reply-all to this email confirming the gift card has been sent',
+      '',
+      'Thank you!',
+    ].join('\n');
+
+    const result = await sendEmailViaGoogle({
+      to: GIFT_CARD_RECIPIENTS,
+      subject: 'Gift Card Winner - March 2026: Lentz (TEST)',
+      body: emailBody,
+    });
+    console.log('Test gift card email result:', result);
+  } catch (err) {
+    console.error('Test gift card email error:', err.message);
+  }
+}
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Dram & Draught server running on port ${PORT}`);
   console.log('Ready to serve location pages!');
   seedSnacks();
   runGiftCardDrawing();
+  testGiftCardEmail();
 });

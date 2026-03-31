@@ -1077,7 +1077,17 @@ async function handlePublic(req, res, pathname, prisma) {
     const locs = await getLocations(prisma);
     const location = locs.find((l) => l.slug === slug);
     if (location) {
-      sendHTML(res, 200, generateLocationPage(location, locs));
+      let menuCategories = [];
+      if (prisma) {
+        try {
+          menuCategories = await prisma.menuCategory.findMany({
+            where: { locationId: location.id, isActive: true },
+            include: { items: { where: { isAvailable: true }, orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }] } },
+            orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }],
+          });
+        } catch (err) { console.warn('Menu load error:', err.message); }
+      }
+      sendHTML(res, 200, generateLocationPage(location, locs, menuCategories));
       return true;
     }
     sendHTML(res, 404, '<h1>Location not found</h1><p><a href="/">Back to locations</a></p>');

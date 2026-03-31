@@ -2,7 +2,11 @@ const { getLinkButtons, getOpenState } = require('../helpers');
 const { vintageThemeCss } = require('./publicTheme');
 const { brandMarkCss, renderBrandMark } = require('./brandMark');
 
-function generateLocationPage(location, allLocations = []) {
+function escHTML(s) {
+  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function generateLocationPage(location, allLocations = [], menuCategories = []) {
   const quickLinks = [
     { label: "Today's Specials", url: `/${location.slug}/specials` },
     { label: 'On Draft', url: `/${location.slug}/draft` },
@@ -413,6 +417,41 @@ function generateLocationPage(location, allLocations = []) {
           font-size: 0.78rem;
           margin-top: 2px;
         }
+        .menu-section {
+          max-width: 480px;
+          margin: 0 auto 20px;
+        }
+        .menu-section-hdr {
+          color: var(--gold);
+          font-size: 0.7rem;
+          font-weight: 800;
+          letter-spacing: 0.18em;
+          text-transform: uppercase;
+          text-align: center;
+          margin-bottom: 12px;
+        }
+        .menu-item {
+          display: flex;
+          justify-content: space-between;
+          align-items: baseline;
+          padding: 10px 16px;
+          background: linear-gradient(180deg, rgba(20,21,24,0.94), rgba(9,9,10,0.98));
+          border: 1px solid var(--line);
+          border-radius: 12px;
+          margin-bottom: 8px;
+        }
+        .menu-item-name {
+          font-weight: 700;
+          color: var(--cream);
+          font-size: 0.92rem;
+        }
+        .menu-item-price {
+          color: var(--gold);
+          font-size: 0.88rem;
+          font-weight: 700;
+          white-space: nowrap;
+          margin-left: 12px;
+        }
         @keyframes rise {
           from { opacity: 0; transform: translateY(8px); }
           to { opacity: 1; transform: translateY(0); }
@@ -471,6 +510,17 @@ function generateLocationPage(location, allLocations = []) {
       <div class="container linktree">
         ${buttons.map((l, i) => `<a class="link-btn stagger" href="${l.url}"${l.url.startsWith('/') ? '' : ' target="_blank" rel="noopener noreferrer"'} style="animation-delay:${Math.min(i * 0.04, 0.2)}s;"><span>${l.label}</span></a>`).join('')}
       </div>
+      ${menuCategories.length > 0 ? menuCategories.map(cat => `
+      <div class="menu-section">
+        <div class="menu-section-hdr">${escHTML(cat.name)}</div>
+        ${(cat.items || []).map(item => `
+        <div class="menu-item">
+          <span class="menu-item-name">${escHTML(item.name)}${item.description ? ` <span style="color:var(--muted); font-weight:400; font-size:0.8rem;">${escHTML(item.description)}</span>` : ''}</span>
+          ${item.price ? `<span class="menu-item-price">$${Number(item.price).toFixed(0)}</span>` : ''}
+        </div>
+        `).join('')}
+      </div>
+      `).join('') : ''}
       <div class="review-cta">
         <h3>Rate your visit</h3>
         <p class="review-copy">

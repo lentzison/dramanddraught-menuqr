@@ -452,6 +452,59 @@ function generateLocationPage(location, allLocations = [], menuCategories = []) 
           white-space: nowrap;
           margin-left: 12px;
         }
+        .promo-toast {
+          position: fixed;
+          bottom: 20px;
+          left: 50%;
+          transform: translateX(-50%) translateY(120px);
+          z-index: 100;
+          max-width: 360px;
+          width: calc(100% - 32px);
+          padding: 14px 18px;
+          background: linear-gradient(135deg, rgba(28,26,22,0.97), rgba(14,13,11,0.98));
+          border: 1px solid rgba(210,170,103,0.45);
+          border-radius: 14px;
+          box-shadow: 0 12px 40px rgba(0,0,0,0.5), 0 0 0 1px rgba(210,170,103,0.08);
+          cursor: pointer;
+          text-align: center;
+          text-decoration: none;
+          opacity: 0;
+          transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.5s ease;
+          pointer-events: none;
+        }
+        .promo-toast.visible {
+          transform: translateX(-50%) translateY(0);
+          opacity: 1;
+          pointer-events: auto;
+        }
+        .promo-toast.hiding {
+          transform: translateX(-50%) translateY(120px);
+          opacity: 0;
+          pointer-events: none;
+        }
+        .promo-toast-headline {
+          color: var(--gold);
+          font-size: 0.92rem;
+          font-weight: 800;
+          margin-bottom: 3px;
+        }
+        .promo-toast-sub {
+          color: var(--muted);
+          font-size: 0.78rem;
+          line-height: 1.4;
+        }
+        .promo-toast-dismiss {
+          position: absolute;
+          top: 6px;
+          right: 10px;
+          background: none;
+          border: none;
+          color: var(--muted);
+          font-size: 1.1rem;
+          cursor: pointer;
+          padding: 2px 6px;
+          line-height: 1;
+        }
         @keyframes rise {
           from { opacity: 0; transform: translateY(8px); }
           to { opacity: 1; transform: translateY(0); }
@@ -869,6 +922,42 @@ function generateLocationPage(location, allLocations = [], menuCategories = []) 
             await submitFeedback(payload, {
               hint: 'Sending your feedback...',
             });
+          });
+        })();
+      </script>
+
+      <div class="promo-toast" id="promo-toast" role="alert">
+        <button class="promo-toast-dismiss" id="promo-dismiss" aria-label="Dismiss">&times;</button>
+        <div class="promo-toast-headline">Rate your visit &amp; win a $100 gift card</div>
+        <div class="promo-toast-sub">Tap here to leave a quick review &mdash; takes 30 seconds</div>
+      </div>
+      <script>
+        (function() {
+          var toast = document.getElementById('promo-toast');
+          var dismiss = document.getElementById('promo-dismiss');
+          var reviewSection = document.querySelector('.review-cta');
+          if (!toast || !reviewSection) return;
+
+          setTimeout(function() { toast.classList.add('visible'); }, 1800);
+
+          setTimeout(function() {
+            if (toast.classList.contains('visible') && !toast.classList.contains('hiding')) {
+              toast.classList.add('hiding');
+              toast.classList.remove('visible');
+            }
+          }, 9000);
+
+          toast.addEventListener('click', function(e) {
+            if (e.target === dismiss) return;
+            toast.classList.add('hiding');
+            toast.classList.remove('visible');
+            reviewSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          });
+
+          dismiss.addEventListener('click', function(e) {
+            e.stopPropagation();
+            toast.classList.add('hiding');
+            toast.classList.remove('visible');
           });
         })();
       </script>

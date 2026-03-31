@@ -592,8 +592,7 @@ function generateLocationPage(location, allLocations = [], menuCategories = []) 
       <div class="review-cta">
         <h3>Rate your visit</h3>
         <p class="review-copy">
-          Tap a star for a chance to win a <strong>$100 gift card</strong> (drawn monthly).<br>
-          5 stars opens a Google review after your note is sent.
+          Tap a star for a chance to win a <strong>$100 gift card</strong> (drawn monthly).
         </p>
         <div class="review-stars" role="radiogroup" aria-label="Guest rating">
           <button class="review-star" type="button" role="radio" aria-label="Rate 1 star" data-rating="1" aria-pressed="false">★</button>
@@ -875,43 +874,14 @@ function generateLocationPage(location, allLocations = [], menuCategories = []) 
                 return;
               }
 
-              if (isFiveStar) {
-                if (config.googleReviewUrl) {
-                  offerGoogleReview(isFiveStar, feedbackPayload.feedback || 'Guest gave a 5-star rating.');
-                }
-              }
-
               if (feedbackForm) feedbackForm.style.display = 'none';
 
-              if (isFiveStar) {
-                if (data.delivery && data.delivery.guest) {
-                  setHint('Thanks for the 5-star rating. We sent your confirmation and we shared it with our team.', true);
-                } else {
-                  setHint('Thanks for the 5-star rating. We shared it with our team.', false);
-                }
-                return;
+              var thankYou = 'Thank you! Your feedback has been shared with our team.';
+              if (config.googleReviewUrl) {
+                thankYou += ' <a href="' + config.googleReviewUrl + '" target="_blank" rel="noopener noreferrer" style="color:var(--gold); font-weight:700;">Leave us a Google review too &rarr;</a>';
               }
-
-              if (data.delivery && data.delivery.guest) {
-                setHint('Thank you! We sent a personalized confirmation to your email.', true);
-              } else {
-                const guestError = data.delivery && data.delivery.errors && data.delivery.errors.guest
-                  ? data.delivery.errors.guest
-                  : null;
-                const detail = guestError
-                  ? (guestError.code ? String(guestError.code) : 'unknown_error')
-                    + (guestError.detail ? ' (' + String(guestError.detail) + ')' : '')
-                  : '';
-                const errorCode = String(guestError && guestError.code ? guestError.code : '').toLowerCase();
-                const errorDetail = String(guestError && guestError.detail ? guestError.detail : '').toLowerCase();
-                const isMissingRecipientError = /missing_recipient|gmail_send_failed_400|recipient address required/.test(errorCode)
-                  || /recipient address required/.test(errorDetail);
-                if (isMissingRecipientError) {
-                  setHint('Thanks for sharing. We could not send a confirmation email automatically, but we logged your feedback with the team.', false);
-                } else {
-                  setHint('Thanks for sharing. We could not send the confirmation email automatically just now.' + detail, false);
-                }
-              }
+              hint.innerHTML = thankYou;
+              hint.classList.add('review-success');
 
             } catch (err) {
               setHint('Something went wrong while sending your feedback. Please try again in a moment.');

@@ -33,8 +33,15 @@ const {
 const { generateDraftPage } = require('../views/draftPage');
 const { generateMenuPage } = require('../views/menuPage');
 const { generateLubricationCupPage } = require('../views/lubricationCupPage');
+const { trackPageView, buildTrackingScript } = require('../analytics');
 
 const DAYS_ORDER = Array.isArray(importDaysOrder) && importDaysOrder.length > 0 ? importDaysOrder : ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
+
+function injectTracking(html, sessionId) {
+  const script = buildTrackingScript(sessionId);
+  if (!script) return html;
+  return html.replace('</body>', script + '</body>');
+}
 const BRAND_LOGO_PATH = path.join(__dirname, '..', 'assets', 'dram-draught-logo-white.png');
 
 function getEasternDayFallback() {
@@ -458,14 +465,16 @@ async function handleSpecials(req, res, prisma, parsedUrl, location) {
     warnings.specials = true;
   }
 
+  const qs = parsedUrl.search || '';
+  const sid = await trackPageView(req, res, prisma, loc.slug, loc.id, `/${loc.slug}/specials`, qs);
   sendHTML(
     res,
     200,
-    generateSpecialsPage(loc, theme, specials, flight, bottles, viewingDay, tomorrowTheme, fridayFlight, {
+    injectTracking(generateSpecialsPage(loc, theme, specials, flight, bottles, viewingDay, tomorrowTheme, fridayFlight, {
       nextAvailable,
       warnings,
       halfPriceSpirits,
-    }),
+    }), sid),
   );
   return true;
 }
@@ -850,7 +859,8 @@ async function handleDraft(req, res, prisma, locationSlug) {
   } else {
     tapError = true;
   }
-  sendHTML(res, 200, generateDraftPage(location, taps, tapError));
+  const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/draft`, null);
+  sendHTML(res, 200, injectTracking(generateDraftPage(location, taps, tapError), sid));
   return true;
 }
 
@@ -881,7 +891,8 @@ async function handleMenu(req, res, prisma, locationSlug) {
     menuError = true;
   }
 
-  sendHTML(res, 200, generateMenuPage(location, menu, menuError));
+  const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/menu`, null);
+  sendHTML(res, 200, injectTracking(generateMenuPage(location, menu, menuError), sid));
   return true;
 }
 
@@ -1001,6 +1012,26 @@ async function handlePublic(req, res, pathname, prisma) {
     return handleLubricationCupSignup(req, res);
   }
 
+  if (pathname === '/api/analytics/heartbeat') {
+    if (req.method !== 'POST') { sendJSON(res, 405, { ok: false }); return true; }
+    try {
+      const body = await parseBody(req);
+      const sessionId = String(body.sessionId || '').trim();
+      if (!sessionId || !prisma) { sendJSON(res, 200, { ok: true }); return true; }
+      const data = { updatedAt: new Date() };
+      if (body.durationSecs && Number.isFinite(Number(body.durationSecs))) {
+        data.durationSecs = Math.min(Math.round(Number(body.durationSecs)), 7200);
+        data.endedAt = new Date();
+      }
+      if (body.screenWidth && Number.isFinite(Number(body.screenWidth))) data.screenWidth = Number(body.screenWidth);
+      if (body.screenHeight && Number.isFinite(Number(body.screenHeight))) data.screenHeight = Number(body.screenHeight);
+      if (body.language) data.language = String(body.language).slice(0, 20);
+      await prisma.visitorSession.update({ where: { id: sessionId }, data }).catch(() => {});
+    } catch (err) { console.warn('Heartbeat error:', err.message); }
+    sendJSON(res, 200, { ok: true });
+    return true;
+  }
+
   // Staff training pages (printable)
   if (pathname === '/training') {
     sendHTML(res, 200, generateTrainingPage());
@@ -1014,7 +1045,8 @@ async function handlePublic(req, res, pathname, prisma) {
   // Homepage
   if (pathname === '/') {
     const locs = await getLocations(prisma);
-    sendHTML(res, 200, generateHomepage(locs));
+    const sid = await trackPageView(req, res, prisma, '', null, '/', null);
+    sendHTML(res, 200, injectTracking(generateHomepage(locs), sid));
     return true;
   }
 
@@ -1054,7 +1086,8 @@ async function handlePublic(req, res, pathname, prisma) {
     const locs = await getLocations(prisma);
     const location = locs.find((l) => l.slug === slug);
     if (location) {
-      sendHTML(res, 200, generateLubricationCupPage(location));
+      const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/lubrication-cup`, null);
+      sendHTML(res, 200, injectTracking(generateLubricationCupPage(location), sid));
       return true;
     }
     sendHTML(res, 404, '<h1>Location not found</h1><p><a href="/">Back to locations</a></p>');
@@ -1079,7 +1112,8 @@ async function handlePublic(req, res, pathname, prisma) {
           });
         } catch (err) { console.warn('Menu load error:', err.message); }
       }
-      sendHTML(res, 200, generateLocationPage(location, locs, menuCategories));
+      const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}`, null);
+      sendHTML(res, 200, injectTracking(generateLocationPage(location, locs, menuCategories), sid));
       return true;
     }
     sendHTML(res, 404, '<h1>Location not found</h1><p><a href="/">Back to locations</a></p>');

@@ -50,6 +50,7 @@ model Location {
   flights          Flight[]
   featuredBottles  FeaturedBottle[]
   guestFeedbacks   GuestFeedback[]
+  visitorSessions  VisitorSession[]
 
   @@index([slug])
 }
@@ -248,6 +249,56 @@ model GuestFeedback {
 
   @@index([locationId])
   @@index([createdAt])
+}
+
+model VisitorSession {
+  id            String   @id @default(uuid())
+  visitorId     String
+  locationId    String?
+  locationSlug  String
+  ipAddress     String?
+  userAgent     String?
+  deviceType    String?
+  browser       String?
+  os            String?
+  screenWidth   Int?
+  screenHeight  Int?
+  language      String?
+  referrer      String?
+  isQrScan      Boolean  @default(true)
+  entryPage     String
+  pageCount     Int      @default(1)
+  durationSecs  Int?
+  startedAt     DateTime @default(now())
+  endedAt       DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  location      Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  pageViews     PageView[]
+
+  @@index([visitorId])
+  @@index([locationSlug])
+  @@index([startedAt])
+  @@index([locationSlug, startedAt])
+}
+
+model PageView {
+  id            String   @id @default(uuid())
+  sessionId     String
+  visitorId     String
+  locationSlug  String
+  pagePath      String
+  pageType      String
+  queryString   String?
+  viewedAt      DateTime @default(now())
+
+  session       VisitorSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@index([locationSlug, viewedAt])
+  @@index([pageType])
+  @@index([viewedAt])
 }
 
 model GiftCardDrawing {

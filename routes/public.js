@@ -953,6 +953,7 @@ async function handleLubricationCupSignup(req, res) {
       to: LUBRICATION_CUP_RECIPIENTS,
       subject: `Lubrication Cup Signup: ${name}`,
       body: staffBody,
+      html: true,
     });
 
     if (result && result.ok) {

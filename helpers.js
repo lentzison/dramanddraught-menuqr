@@ -820,6 +820,7 @@ function buildGmailHeaders({
   cc,
   bcc,
   subject,
+  html = false,
 }) {
   const sanitizeAddress = (value) => String(value || '').replace(/\r|\n/g, ' ').trim();
   const cleanList = (value) => {
@@ -854,13 +855,14 @@ function buildGmailHeaders({
     : `=?UTF-8?B?${Buffer.from(safeSubject).toString('base64')}?=`;
   if (encodedSubject) headers.push(`Subject: ${encodedSubject}`);
   headers.push('MIME-Version: 1.0');
-  headers.push('Content-Type: text/plain; charset="UTF-8"; format=flowed');
+  const contentType = html ? 'text/html' : 'text/plain';
+  headers.push(`Content-Type: ${contentType}; charset="UTF-8"${html ? '' : '; format=flowed'}`);
   headers.push('Content-Transfer-Encoding: 8bit');
   headers.push(`Date: ${new Date().toUTCString()}`);
   return headers;
 }
 
-function buildRawGmailMessage({ from, to, cc, bcc, subject, body }) {
+function buildRawGmailMessage({ from, to, cc, bcc, subject, body, html = false }) {
   const content = String(body || '').trim();
   const headers = buildGmailHeaders({
     from,
@@ -868,6 +870,7 @@ function buildRawGmailMessage({ from, to, cc, bcc, subject, body }) {
     cc,
     bcc,
     subject,
+    html,
   });
   return base64url(`${headers.join('\r\n')}\r\n\r\n${content}`);
 }
@@ -929,7 +932,7 @@ function getGmailClient() {
   }
 }
 
-async function sendEmailViaGoogle({ to, cc, bcc, subject, body }) {
+async function sendEmailViaGoogle({ to, cc, bcc, subject, body, html = false }) {
   const sender = getGoogleServiceAccountSubjectEmail();
   const normalizedTo = normalizeEmailRecipientList(to);
   if (!normalizedTo.length) {
@@ -1216,6 +1219,7 @@ async function sendEmailViaGmailLegacy({ to, cc, bcc, subject, body, sender, key
     bcc: bccList,
     subject,
     body,
+    html,
   });
 
   try {

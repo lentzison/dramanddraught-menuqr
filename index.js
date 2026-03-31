@@ -56,38 +56,50 @@ const server = http.createServer((req, res) => {
   });
 });
 
-// One-time seed: add Snacks category to Cary menu if missing
-async function seedCarySnacks() {
+// One-time seed: add Snacks category to locations if missing
+const SNACKS_SEED = {
+  cary: [
+    { name: 'Pimento Cheese', price: 10, displayOrder: 0 },
+    { name: 'Antipasto', price: 10, displayOrder: 1 },
+  ],
+  durham: [
+    { name: 'Sopressata & Cheddar Snack Tray', description: 'Sopressata salami, sharp cheddar & crackers', price: 10, displayOrder: 0 },
+    { name: 'San Carlo Chips, Lime & Pink Pepper', description: 'Italian-style kettle chips with lime and pink peppercorn', price: 10, displayOrder: 1 },
+  ],
+  raleigh: [
+    { name: 'Sopressata & Cheddar Snack Tray', description: 'Sopressata salami, sharp cheddar & crackers', price: 10, displayOrder: 0 },
+    { name: 'San Carlo Chips, Lime & Pink Pepper', description: 'Italian-style kettle chips with lime and pink peppercorn', price: 10, displayOrder: 1 },
+  ],
+};
+
+async function seedSnacks() {
   if (!prisma) return;
-  try {
-    const cary = await prisma.location.findFirst({ where: { slug: 'cary', isActive: true } });
-    if (!cary) return;
-    const existing = await prisma.menuCategory.findFirst({ where: { locationId: cary.id, name: 'Snacks' } });
-    if (existing) return;
-    const cats = await prisma.menuCategory.findMany({ where: { locationId: cary.id }, orderBy: { displayOrder: 'desc' }, take: 1 });
-    const nextOrder = cats.length > 0 ? cats[0].displayOrder + 1 : 0;
-    await prisma.menuCategory.create({
-      data: {
-        locationId: cary.id,
-        name: 'Snacks',
-        displayOrder: nextOrder,
-        isActive: true,
-        items: {
-          create: [
-            { name: 'Pimento Cheese', price: 10, displayOrder: 0, isAvailable: true },
-            { name: 'Antipasto', price: 10, displayOrder: 1, isAvailable: true },
-          ],
+  for (const [slug, items] of Object.entries(SNACKS_SEED)) {
+    try {
+      const loc = await prisma.location.findFirst({ where: { slug, isActive: true } });
+      if (!loc) continue;
+      const existing = await prisma.menuCategory.findFirst({ where: { locationId: loc.id, name: 'Snacks' } });
+      if (existing) continue;
+      const cats = await prisma.menuCategory.findMany({ where: { locationId: loc.id }, orderBy: { displayOrder: 'desc' }, take: 1 });
+      const nextOrder = cats.length > 0 ? cats[0].displayOrder + 1 : 0;
+      await prisma.menuCategory.create({
+        data: {
+          locationId: loc.id,
+          name: 'Snacks',
+          displayOrder: nextOrder,
+          isActive: true,
+          items: { create: items.map(i => ({ ...i, isAvailable: true })) },
         },
-      },
-    });
-    console.log('Seeded Cary Snacks menu category.');
-  } catch (err) {
-    console.warn('Cary snacks seed skipped:', err.message);
+      });
+      console.log(`Seeded ${slug} Snacks menu category.`);
+    } catch (err) {
+      console.warn(`${slug} snacks seed skipped:`, err.message);
+    }
   }
 }
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Dram & Draught server running on port ${PORT}`);
   console.log('Ready to serve location pages!');
-  seedCarySnacks();
+  seedSnacks();
 });

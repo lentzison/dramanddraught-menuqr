@@ -295,6 +295,7 @@ function generateLubricationCupPage(location) {
           <div class="cup-title">Lubrication Cup</div>
           <div class="cup-subtitle">Bartender Speed Competition</div>
           <div class="divider"></div>
+          <p style="color:var(--cream); font-size:0.92rem; font-weight:700; margin-bottom:4px;">Sunday, April 20th &middot; 7:00 PM</p>
           <p style="color:var(--muted); font-size:0.82rem;">${escHTML(location.name)}</p>
         </div>
 
@@ -363,6 +364,7 @@ function generateLubricationCupPage(location) {
           <div class="signup-title">Compete in the Lubrication Cup</div>
           <div class="signup-note">
             We&rsquo;re looking for <strong>8 bartenders</strong> to compete.<br>
+            Competitors arrive at <strong>6:30 PM</strong> &middot; Competition starts at <strong>7:00 PM</strong><br>
             Sign up below and Jax will be in touch with those selected.
           </div>
 

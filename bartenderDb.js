@@ -1,4 +1,5 @@
 const { Pool } = require('pg');
+const { buildGuestBottleNotesForCatalog } = require('./helpers');
 
 const BARTENDER_DB_URL = process.env.BARTENDER_DB_URL || 'postgresql://bartenderuser:asswipe12@srv-captain--bartender:5432/postgres';
 
@@ -242,6 +243,17 @@ async function getSpiritFlight(locationSlug) {
     const fridayPrice = Math.max(regularPrice - FRIDAY_FLIGHT_DISCOUNT, 0);
 
     const first = result.rows[0];
+    const guestNotesSeed = result.rows.map((row) => ({
+      name: row.spiritName,
+      bottleSize: `${parseFloat(row.pourSizeOz || '1').toFixed(0)} oz pour`,
+      costPerOz: row.oneOzPrice ? formatCurrency(row.oneOzPrice) : null,
+      notes: row.tastingNotes || '',
+    }));
+    const enhancedPours = await buildGuestBottleNotesForCatalog(
+      guestNotesSeed,
+      Boolean(process.env.OPENAI_API_KEY)
+    ).catch(() => guestNotesSeed);
+
     return {
       item: {
         id: first.id,
@@ -252,11 +264,12 @@ async function getSpiritFlight(locationSlug) {
         fridayPriceLabel: formatCurrency(fridayPrice),
         regularPriceLabel: formatCurrency(regularPrice),
         builderUrl: buildSpiritFlightBuilderUrl(locationId, flightDate),
-        pours: result.rows.map((row) => ({
+        pours: result.rows.map((row, index) => ({
           spiritName: row.spiritName,
           pourSize: `${parseFloat(row.pourSizeOz || '1').toFixed(0)} oz`,
           description: row.pourDescription || null,
           tastingNotes: row.tastingNotes || null,
+          guestNotes: enhancedPours[index]?.guestNotes || null,
           displayOrder: row.displayOrder,
         })),
       },

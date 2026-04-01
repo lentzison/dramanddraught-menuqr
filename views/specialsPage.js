@@ -270,7 +270,12 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
               <div class="pour-info">
                 <div class="pour-name">${escHTML(p.spiritName)}</div>
                 ${p.description ? `<div class="pour-origin">${escHTML(p.description)}</div>` : ''}
-                ${p.tastingNotes ? `<div class="pour-notes">${escHTML(p.tastingNotes)}</div>` : ''}
+                ${p.guestNotes || p.tastingNotes
+                  ? renderBottleTastingNotes({
+                      guestNotes: p.guestNotes || null,
+                      notes: p.tastingNotes || '',
+                    })
+                  : ''}
                 ${p.pourSize ? `<div class="pour-size">${escHTML(p.pourSize)}</div>` : ''}
               </div>
             </div>
@@ -813,7 +818,22 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         .pour-info { flex: 1; min-width: 0; }
         .pour-name { font-weight: 700; color: var(--cream); }
         .pour-origin { color: var(--gold); font-size: 0.82rem; }
-        .pour-notes { color: var(--muted); font-size: 0.82rem; margin-top: 3px; font-style: italic; }
+        .pour .bottle-note-block {
+          margin-top: 8px;
+          padding-top: 8px;
+          border-top: 1px solid rgba(245,232,204,0.08);
+        }
+        .pour .bottle-note-summary {
+          font-size: 0.74rem;
+          margin-bottom: 5px;
+        }
+        .pour .bottle-note-item {
+          font-size: 0.76rem;
+          gap: 7px;
+        }
+        .pour .bottle-note-label {
+          min-width: 54px;
+        }
         .pour-size { color: #8d9299; font-size: 0.75rem; margin-top: 2px; }
         .teaser-card {
           background: linear-gradient(180deg, rgba(20, 21, 24, 0.9), rgba(9, 9, 10, 0.95));

@@ -49,6 +49,8 @@ async function getUserRoles(userId) {
 
 const ALLOWED_SUPPORT_ROLES = ['FOUNDER', 'MANAGING_DIRECTOR', 'HR', 'TRAINING', 'FINANCE', 'MARKETING'];
 const ALLOWED_LOCATION_ROLES = ['ADMIN', 'GENERAL_MANAGER', 'HEAD_BARTENDER'];
+const FRIDAY_FLIGHT_DISCOUNT = 5;
+const BARTENDER_FLIGHT_BUILDER_URL = process.env.BARTENDER_FLIGHT_BUILDER_URL || 'https://bartender.dramanddraught.com/admin/spirits/flights';
 
 async function getBarSupportEmails() {
   return getBarSupportEmailsForLocation(null);
@@ -155,6 +157,179 @@ async function getBreakEvenBottles(locationSlug) {
   } catch (err) {
     console.error('Error fetching break-even bottles:', err.message);
     return { items: [], error: err.message };
+  }
+}
+
+function getEasternDate() {
+  return new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+}
+
+function getUpcomingFridayDate(from = getEasternDate()) {
+  const base = new Date(from);
+  base.setHours(0, 0, 0, 0);
+  const day = base.getDay();
+  const daysUntilFriday = day === 5 ? 0 : ((5 - day + 7) % 7);
+  base.setDate(base.getDate() + daysUntilFriday);
+  return base;
+}
+
+function toDateOnlySql(date) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function normalizeDbDate(value) {
+  if (!value) return '';
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return String(value).slice(0, 10);
+}
+
+function formatCurrency(value) {
+  const numeric = typeof value === 'number' ? value : parseFloat(value);
+  if (!Number.isFinite(numeric)) return null;
+  const fixed = numeric % 1 === 0 ? numeric.toFixed(0) : numeric.toFixed(2);
+  return `$${fixed}`;
+}
+
+function buildSpiritFlightBuilderUrl(locationId = '', flightDate = '') {
+  const params = new URLSearchParams();
+  if (locationId) params.set('locationId', locationId);
+  if (flightDate) params.set('flightDate', flightDate);
+  const query = params.toString();
+  return `${BARTENDER_FLIGHT_BUILDER_URL}${query ? `?${query}` : ''}`;
+}
+
+async function getSpiritFlight(locationSlug) {
+  try {
+    const db = getPool();
+    const locationId = await getLocationIdByMenuqrSlug(locationSlug);
+    if (!locationId) return { item: null, error: `Unknown or inactive location: ${locationSlug}` };
+
+    const flightDate = toDateOnlySql(getUpcomingFridayDate());
+    const result = await db.query(`
+      SELECT
+        f.id,
+        f.theme,
+        f.description,
+        f."flightDate",
+        p."displayOrder",
+        COALESCE(NULLIF(TRIM(p."displayName"), ''), sp.name) AS "spiritName",
+        NULLIF(TRIM(p.description), '') AS "pourDescription",
+        COALESCE(NULLIF(TRIM(p."tastingNotes"), ''), NULLIF(TRIM(sd."tastingNotes"), ''), NULLIF(TRIM(sd.description), '')) AS "tastingNotes",
+        COALESCE(p."pourSizeOz", 1) AS "pourSizeOz",
+        slp."oneOzPrice"
+      FROM "SpiritFlight" f
+      JOIN "SpiritFlightPour" p ON p."flightId" = f.id
+      JOIN "SpiritLocationPrice" slp ON slp."locationProductId" = p."locationProductId"
+      JOIN "SpiritProduct" sp ON sp."productId" = slp."productId"
+      LEFT JOIN "SpiritDetail" sd ON sd."productId" = sp."productId"
+      WHERE f."locationId" = $1
+        AND f.status = 'ACTIVE'
+        AND f."flightDate" = $2::date
+      ORDER BY p."displayOrder" ASC
+    `, [locationId, flightDate]);
+
+    if (!result.rows.length) {
+      return { item: null, error: null };
+    }
+
+    const regularPrice = result.rows.reduce((sum, row) => {
+      const price = row.oneOzPrice ? parseFloat(row.oneOzPrice) : 0;
+      return sum + (Number.isFinite(price) ? price : 0);
+    }, 0);
+    const fridayPrice = Math.max(regularPrice - FRIDAY_FLIGHT_DISCOUNT, 0);
+
+    const first = result.rows[0];
+    return {
+      item: {
+        id: first.id,
+        theme: first.theme,
+        description: first.description || null,
+        flightDate: normalizeDbDate(first.flightDate),
+        price: formatCurrency(fridayPrice),
+        fridayPriceLabel: formatCurrency(fridayPrice),
+        regularPriceLabel: formatCurrency(regularPrice),
+        builderUrl: buildSpiritFlightBuilderUrl(locationId, flightDate),
+        pours: result.rows.map((row) => ({
+          spiritName: row.spiritName,
+          pourSize: `${parseFloat(row.pourSizeOz || '1').toFixed(0)} oz`,
+          description: row.pourDescription || null,
+          tastingNotes: row.tastingNotes || null,
+          displayOrder: row.displayOrder,
+        })),
+      },
+      error: null,
+    };
+  } catch (err) {
+    console.error('Error fetching spirit flight:', err.message);
+    return { item: null, error: err.message };
+  }
+}
+
+async function getUpcomingSpiritFlightsAdmin() {
+  try {
+    const db = getPool();
+    const start = getUpcomingFridayDate();
+    const end = new Date(start);
+    end.setDate(end.getDate() + (7 * 7));
+    const fromDate = toDateOnlySql(start);
+    const toDate = toDateOnlySql(end);
+
+    const [locationsResult, flightsResult] = await Promise.all([
+      db.query(
+        'SELECT id, name FROM "Location" WHERE "isActive" = true AND "isBarSupport" = false ORDER BY name ASC'
+      ),
+      db.query(`
+        SELECT
+          f.id,
+          f."locationId",
+          l.name AS "locationName",
+          f.theme,
+          f.description,
+          f."flightDate",
+          COUNT(p.id)::int AS "pourCount",
+          COALESCE(SUM(slp."oneOzPrice"), 0) AS "regularPrice"
+        FROM "SpiritFlight" f
+        JOIN "Location" l ON l.id = f."locationId"
+        LEFT JOIN "SpiritFlightPour" p ON p."flightId" = f.id
+        LEFT JOIN "SpiritLocationPrice" slp ON slp."locationProductId" = p."locationProductId"
+        WHERE f.status = 'ACTIVE'
+          AND f."flightDate" BETWEEN $1::date AND $2::date
+        GROUP BY f.id, l.name
+        ORDER BY f."flightDate" ASC, l.name ASC
+      `, [fromDate, toDate]),
+    ]);
+
+    return {
+      locations: locationsResult.rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        builderUrl: buildSpiritFlightBuilderUrl(row.id),
+      })),
+      items: flightsResult.rows.map((row) => {
+        const regularPrice = row.regularPrice ? parseFloat(row.regularPrice) : 0;
+        const fridayPrice = Math.max(regularPrice - FRIDAY_FLIGHT_DISCOUNT, 0);
+        const flightDate = normalizeDbDate(row.flightDate);
+        return {
+          id: row.id,
+          locationId: row.locationId,
+          locationName: row.locationName,
+          theme: row.theme,
+          description: row.description || null,
+          flightDate,
+          pourCount: row.pourCount || 0,
+          regularPriceLabel: formatCurrency(regularPrice),
+          fridayPriceLabel: formatCurrency(fridayPrice),
+          builderUrl: buildSpiritFlightBuilderUrl(row.locationId, flightDate),
+        };
+      }),
+      error: null,
+    };
+  } catch (err) {
+    console.error('Error fetching spirit flight admin overview:', err.message);
+    return { locations: [], items: [], error: err.message };
   }
 }
 
@@ -381,4 +556,8 @@ module.exports = {
   getSpiritCategories,
   getSpiritCatalog,
   getHalfPriceSpirits,
+  getLocationIdByMenuqrSlug,
+  getSpiritFlight,
+  getUpcomingSpiritFlightsAdmin,
+  buildSpiritFlightBuilderUrl,
 };

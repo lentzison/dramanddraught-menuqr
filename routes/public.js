@@ -29,6 +29,7 @@ const {
   getBarSupportEmails,
   getBarSupportEmailsForLocation,
   getHalfPriceSpirits,
+  getSpiritFlight,
 } = require('../bartenderDb');
 const { generateDraftPage } = require('../views/draftPage');
 const { generateMenuPage } = require('../views/menuPage');
@@ -412,6 +413,7 @@ async function handleSpecials(req, res, prisma, parsedUrl, location) {
   let fridayFlight = null;
   let bottles = [];
   let halfPriceSpirits = [];
+  let bartenderFlightState = { item: null, error: null };
 
   if (prisma) {
     const loaded = await loadLocationSpecials(prisma, loc, viewingDay, warnings);
@@ -420,19 +422,35 @@ async function handleSpecials(req, res, prisma, parsedUrl, location) {
     nextAvailable = loaded.nextAvailable;
     tomorrowTheme = loaded.tomorrowTheme;
 
+    try {
+      bartenderFlightState = await getSpiritFlight(loc.slug);
+      warnings.flight = !!bartenderFlightState.error;
+    } catch (err) {
+      warnings.flight = true;
+      console.warn('Bartender DB error loading Friday flight:', err.message);
+    }
+
     if (viewingDay === 'FRIDAY') {
-      try {
-        flight = await loadFlightForLocation(prisma, loc, month, year, true);
-      } catch (err) {
-        warnings.flight = true;
-        console.warn('DB error loading Friday flight:', err.message);
+      flight = bartenderFlightState.item;
+
+      if (!flight) {
+        try {
+          flight = await loadFlightForLocation(prisma, loc, month, year, true);
+        } catch (err) {
+          warnings.flight = true;
+          console.warn('DB error loading legacy Friday flight:', err.message);
+        }
       }
     } else {
-      try {
-        fridayFlight = await loadFlightForLocation(prisma, loc, month, year, false);
-      } catch (err) {
-        warnings.flight = true;
-        console.warn('DB error loading Friday flight tease:', err.message);
+      fridayFlight = bartenderFlightState.item;
+
+      if (!fridayFlight) {
+        try {
+          fridayFlight = await loadFlightForLocation(prisma, loc, month, year, false);
+        } catch (err) {
+          warnings.flight = true;
+          console.warn('DB error loading legacy Friday flight tease:', err.message);
+        }
       }
     }
 

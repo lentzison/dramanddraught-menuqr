@@ -252,12 +252,17 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
   const flightSection = (isFriday && flight) ? `
     <div class="section">
       <div class="section-header">
-        <h2>This Month's Flight</h2>
+        <h2>This Friday's Flight</h2>
       </div>
       <div class="flight-card">
         <div class="flight-theme">${escHTML(flight.theme)}</div>
         ${flight.description ? `<div class="flight-desc">${escHTML(flight.description)}</div>` : ''}
-        ${flight.price ? `<div class="flight-price">${escHTML(flight.price)}</div>` : ''}
+        ${(flight.fridayPriceLabel || flight.price || flight.regularPriceLabel) ? `
+          <div class="flight-price-wrap">
+            ${flight.fridayPriceLabel || flight.price ? `<div class="flight-price">${escHTML(flight.fridayPriceLabel || flight.price)}</div>` : ''}
+            ${flight.regularPriceLabel ? `<div class="flight-price-regular">Regular ${escHTML(flight.regularPriceLabel)} during the week</div>` : ''}
+          </div>
+        ` : ''}
         <div class="pours">
           ${(flight.pours || []).sort((a,b) => a.displayOrder - b.displayOrder).map((p, i) => `
             <div class="pour">
@@ -364,6 +369,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
       <div class="teaser-label">This Friday</div>
       <div class="teaser-title">Flight Night</div>
       <div class="teaser-tagline">${escHTML(fridayFlight.theme)}</div>
+      ${fridayFlight.fridayPriceLabel ? `<div class="teaser-copy" style="margin-top:6px">${escHTML(fridayFlight.fridayPriceLabel)} on Friday${fridayFlight.regularPriceLabel ? ` • ${escHTML(fridayFlight.regularPriceLabel)} during the week` : ''}</div>` : ''}
       <a href="/${location.slug}/specials?day=FRIDAY" class="teaser-link">See Friday's lineup →</a>
     </div>
   ` : '';
@@ -770,6 +776,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         }
         .flight-theme { font-size: 1.17rem; font-weight: 800; color: var(--cream); margin-bottom: 4px; }
         .flight-desc { color: var(--muted); font-size: 0.88rem; margin-bottom: 8px; }
+        .flight-price-wrap { margin-bottom: 16px; }
         .flight-price {
           display: inline-block;
           background: linear-gradient(180deg, var(--accent-light), var(--gold) 64%, var(--amber));
@@ -778,8 +785,8 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           padding: 4px 14px;
           border-radius: 8px;
           font-size: 0.95rem;
-          margin-bottom: 16px;
         }
+        .flight-price-regular { margin-top: 6px; color: var(--muted); font-size: 0.82rem; }
         .pours { display: flex; flex-direction: column; gap: 10px; }
         .pour {
           display: flex;

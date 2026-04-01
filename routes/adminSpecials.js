@@ -149,48 +149,92 @@ function buildGuestFeedbackWhere(rawUrl) {
   };
 }
 
-function renderFeedbackRows(rows) {
-  if (!rows.length) {
-    return `<p class="empty-state">No guest feedback has been submitted yet.</p>`;
+function renderStars(rating) {
+  const n = Number(rating) || 0;
+  let s = '';
+  for (let i = 1; i <= 5; i++) s += `<span style="color:${i <= n ? '#d4af37' : '#333'};font-size:1rem;">★</span>`;
+  return s;
+}
+
+function renderFeedbackDashboard(rows) {
+  // Summary stats
+  const total = rows.length;
+  const withEmail = rows.filter(r => r.guestEmail).length;
+  const newsletterCount = rows.filter(r => r.newsletterOptIn).length;
+  const giftCardCount = rows.filter(r => r.giftCardOptIn).length;
+  const ratings = rows.filter(r => r.rating > 0);
+  const avgRating = ratings.length > 0 ? (ratings.reduce((s, r) => s + r.rating, 0) / ratings.length).toFixed(1) : '—';
+
+  // Star distribution
+  const starCounts = [0, 0, 0, 0, 0];
+  ratings.forEach(r => { if (r.rating >= 1 && r.rating <= 5) starCounts[r.rating - 1]++; });
+  const maxStarCount = Math.max(...starCounts, 1);
+
+  function statCard(label, value, color) {
+    return `<div style="background:#1a1a1d;border:1px solid #333;border-radius:12px;padding:16px;text-align:center;min-width:100px;">
+      <div style="font-size:1.6rem;font-weight:800;color:${color || '#d4af37'};">${escapeHtml(String(value))}</div>
+      <div style="font-size:0.76rem;color:#999;margin-top:4px;">${escapeHtml(label)}</div>
+    </div>`;
   }
 
-  const body = rows
-    .map((entry) => {
-      const feedbackText = normalizeText(entry.feedbackText).replace(/\n/g, ' ');
-      return `
-        <tr>
-          <td>${escapeHtml(formatDate(entry.createdAt))}</td>
-          <td>${escapeHtml(entry.locationName || 'Unknown location')}</td>
-          <td>${escapeHtml(entry.locationSlug || '')}</td>
-          <td>${escapeHtml(entry.guestName || 'Guest')}</td>
-          <td>${escapeHtml(entry.guestEmail || '')}</td>
-          <td>${escapeHtml(entry.rating || 0)}/5</td>
-          <td>${entry.newsletterOptIn ? 'Yes' : 'No'}</td>
-          <td>${escapeHtml(feedbackText)}</td>
-        </tr>
-      `;
-    })
-    .join('');
+  const summaryCards = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:12px;margin-bottom:20px;">
+      ${statCard('Total Reviews', total, '#d4af37')}
+      ${statCard('Avg Rating', avgRating, '#d4af37')}
+      ${statCard('With Email', withEmail, '#7ecf8a')}
+      ${statCard('Newsletter', newsletterCount, '#7ecf8a')}
+      ${statCard('Gift Card', giftCardCount, '#7ecf8a')}
+    </div>`;
 
-  return `
-    <table>
-      <thead>
-        <tr>
-          <th>Date</th>
-          <th>Location</th>
-          <th>Slug</th>
-          <th>Guest Name</th>
-          <th>Guest Email</th>
-          <th>Rating</th>
-          <th>Newsletter</th>
-          <th>Feedback</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${body}
-      </tbody>
-    </table>
-  `;
+  const starDist = `
+    <div style="background:#111;border:1px solid #333;border-radius:12px;padding:16px;margin-bottom:20px;">
+      <h3 style="color:#d4af37;font-size:0.82rem;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:12px;">Rating Distribution</h3>
+      ${[5,4,3,2,1].map(star => `
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+          <span style="min-width:50px;font-size:0.85rem;color:#d4af37;text-align:right;">${star} ★</span>
+          <div style="flex:1;background:#1a1a1d;border-radius:4px;height:22px;overflow:hidden;">
+            <div style="width:${Math.round((starCounts[star-1] / maxStarCount) * 100)}%;background:linear-gradient(90deg,#d4af37,#b8913e);height:100%;border-radius:4px;min-width:${starCounts[star-1] > 0 ? '2' : '0'}px;"></div>
+          </div>
+          <span style="min-width:30px;font-size:0.82rem;color:#ccc;">${starCounts[star-1]}</span>
+        </div>
+      `).join('')}
+    </div>`;
+
+  if (!rows.length) {
+    return summaryCards + '<p style="color:#666;text-align:center;padding:40px;">No feedback yet.</p>';
+  }
+
+  const feedbackCards = rows.map(entry => {
+    const feedbackText = normalizeText(entry.feedbackText).replace(/\n/g, '<br>');
+    const date = entry.createdAt ? new Date(entry.createdAt).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+    const name = entry.guestName || 'Anonymous';
+    const email = entry.guestEmail || '';
+    const badges = [
+      entry.newsletterOptIn ? '<span style="background:#2a3a2a;color:#7ecf8a;padding:2px 8px;border-radius:6px;font-size:0.72rem;font-weight:700;">Newsletter</span>' : '',
+      entry.giftCardOptIn ? '<span style="background:#3a352a;color:#d4af37;padding:2px 8px;border-radius:6px;font-size:0.72rem;font-weight:700;">Gift Card</span>' : '',
+    ].filter(Boolean).join(' ');
+
+    return `
+      <div style="background:#111;border:1px solid #333;border-radius:12px;padding:16px;margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
+          <div>
+            <span style="font-weight:700;color:#eee;">${escapeHtml(name)}</span>
+            ${email ? `<span style="color:#666;font-size:0.82rem;margin-left:8px;"><a href="mailto:${escapeHtml(email)}" style="color:#888;text-decoration:none;">${escapeHtml(email)}</a></span>` : ''}
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            ${badges}
+            <span style="color:#666;font-size:0.78rem;">${escapeHtml(date)}</span>
+          </div>
+        </div>
+        <div style="margin-bottom:8px;">${renderStars(entry.rating)}</div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+          <p style="color:#bbb;font-size:0.88rem;line-height:1.5;margin:0;flex:1;">${feedbackText || '<span style="color:#555;">No message</span>'}</p>
+          <span style="color:#555;font-size:0.75rem;white-space:nowrap;">${escapeHtml(entry.locationName || '')}</span>
+        </div>
+      </div>`;
+  }).join('');
+
+  return summaryCards + starDist + feedbackCards;
 }
 
 function buildFeedbackExportUrl({ includeOptInOnly, locationSlug }) {
@@ -461,33 +505,28 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
         ? `&nbsp;for <strong>${escapeHtml(selectedLocation.name)}</strong>`
         : '';
 
+      const locationOptions = locations.map((loc) => `<option value="${escapeHtml(loc.slug)}"${locationSlug === loc.slug ? ' selected' : ''}>${escapeHtml(loc.name)}</option>`).join('');
+
       const filterControls = `
-        <div style="margin-bottom: 18px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
-          <a href="/admin/feedback" class="btn ${includeOptInOnly ? 'btn-secondary' : 'btn-primary'} btn-sm">All feedback</a>
-          <a href="/admin/feedback?newsletter=1" class="btn ${includeOptInOnly ? 'btn-primary' : 'btn-secondary'} btn-sm">Newsletter opt-ins only</a>
-          <a href="${buildFeedbackExportUrl({ includeOptInOnly, locationSlug })}" class="btn btn-secondary btn-sm">Export CSV</a>
-          <span class="nav-user">Showing ${rows.length} entries${filterLabel}</span>
-        </div>
-        <form method="GET" action="/admin/feedback" style="margin-bottom: 16px;">
-          ${includeOptInOnly ? '<input type="hidden" name="newsletter" value="1" />' : ''}
-          <label>Filter by location</label>
-          <div style="display:flex;gap:10px;max-width:420px;">
-            <select name="location" style="flex:1;">
-              <option value="">All Locations</option>
-              ${locations.map((loc) => `<option value="${escapeHtml(loc.slug)}"${locationSlug === loc.slug ? ' selected' : ''}>${escapeHtml(loc.name)}</option>`).join('')}
-            </select>
-            <button class="btn btn-secondary btn-sm" type="submit">Filter</button>
-            ${locationSlug ? `<a href="${buildFeedbackPageUrl({ includeOptInOnly, locationSlug: '' })}" class="btn btn-secondary btn-sm">Reset</a>` : ''}
+        <form method="GET" action="/admin/feedback" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:20px;">
+          <select name="location" style="padding:8px 12px;background:#1a1a1d;color:#ccc;border:1px solid #333;border-radius:8px;font-size:0.88rem;">
+            <option value="">All Locations</option>${locationOptions}
+          </select>
+          <div style="display:flex;gap:4px;">
+            <a href="/admin/feedback${locationSlug ? '?location=' + escapeHtml(locationSlug) : ''}" style="padding:8px 14px;background:${!includeOptInOnly ? '#d4af37' : '#333'};color:${!includeOptInOnly ? '#0e0d0b' : '#ccc'};border-radius:8px;text-decoration:none;font-size:0.82rem;font-weight:700;">All</a>
+            <a href="/admin/feedback?newsletter=1${locationSlug ? '&location=' + escapeHtml(locationSlug) : ''}" style="padding:8px 14px;background:${includeOptInOnly ? '#d4af37' : '#333'};color:${includeOptInOnly ? '#0e0d0b' : '#ccc'};border-radius:8px;text-decoration:none;font-size:0.82rem;font-weight:700;">Newsletter</a>
           </div>
-        </form>
-      `;
+          <button type="submit" style="padding:8px 16px;background:#d4af37;color:#0e0d0b;border:none;border-radius:8px;font-weight:700;cursor:pointer;">Filter</button>
+          <a href="${buildFeedbackExportUrl({ includeOptInOnly, locationSlug })}" style="padding:8px 16px;background:#333;color:#ccc;border-radius:8px;text-decoration:none;font-size:0.82rem;">Export CSV</a>
+          <span style="color:#666;font-size:0.82rem;">Showing ${rows.length} entries${filterLabel}</span>
+        </form>`;
 
       sendHTML(
         res,
         200,
         adminLayout(
           'Guest Feedback',
-          `<h1>Guest Feedback</h1>${filterControls}${renderFeedbackRows(rows)}`,
+          `<h1>Guest Feedback</h1>${filterControls}${renderFeedbackDashboard(rows)}`,
           user,
           { pathname: '/admin/feedback' },
         ),

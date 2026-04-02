@@ -873,7 +873,10 @@ function buildGmailHeaders({
   return headers;
 }
 
-function buildRawGmailMessage({ from, to, cc, bcc, subject, body, html = false }) {
+function buildRawGmailMessage({ from, to, cc, bcc, subject, body, html = false, attachments }) {
+  if (Array.isArray(attachments) && attachments.length > 0) {
+    return buildRawGmailMessageWithAttachments({ from, to, cc, bcc, subject, body, html, attachments });
+  }
   const content = String(body || '').trim();
   const headers = buildGmailHeaders({
     from,
@@ -884,6 +887,51 @@ function buildRawGmailMessage({ from, to, cc, bcc, subject, body, html = false }
     html,
   });
   return base64url(`${headers.join('\r\n')}\r\n\r\n${content}`);
+}
+
+function buildRawGmailMessageWithAttachments({ from, to, cc, bcc, subject, body, html = false, attachments }) {
+  const boundary = '__attachment_boundary_' + Date.now() + '__';
+  const sanitizeAddress = (value) => String(value || '').replace(/\r|\n/g, ' ').trim();
+  const cleanList = (value) => {
+    if (!value) return '';
+    if (Array.isArray(value)) return value.map(e => String(e || '').replace(/\r|\n/g, ' ').trim()).filter(Boolean).join(', ');
+    return String(value).split(',').map(e => e.trim()).filter(Boolean).join(', ');
+  };
+  const safeSubject = String(subject || '').replace(/\r|\n/g, ' ').trim();
+  const encodedSubject = /^[\x00-\x7F]*$/.test(safeSubject) ? safeSubject : `=?UTF-8?B?${Buffer.from(safeSubject).toString('base64')}?=`;
+
+  const headers = [`From: ${sanitizeAddress(from)}`, `To: ${cleanList(to)}`];
+  const ccStr = cleanList(cc);
+  const bccStr = cleanList(bcc);
+  if (ccStr) headers.push(`Cc: ${ccStr}`);
+  if (bccStr) headers.push(`Bcc: ${bccStr}`);
+  if (encodedSubject) headers.push(`Subject: ${encodedSubject}`);
+  headers.push('MIME-Version: 1.0');
+  headers.push(`Content-Type: multipart/mixed; boundary="${boundary}"`);
+  headers.push(`Date: ${new Date().toUTCString()}`);
+
+  const contentType = html ? 'text/html' : 'text/plain';
+  const content = String(body || '').trim();
+
+  let message = headers.join('\r\n') + '\r\n\r\n';
+  message += `--${boundary}\r\n`;
+  message += `Content-Type: ${contentType}; charset="UTF-8"\r\n`;
+  message += 'Content-Transfer-Encoding: 8bit\r\n\r\n';
+  message += content + '\r\n';
+
+  for (const att of attachments) {
+    const mimeType = att.mimeType || 'application/octet-stream';
+    const filename = att.filename || 'attachment';
+    const data = att.base64Data || '';
+    message += `--${boundary}\r\n`;
+    message += `Content-Type: ${mimeType}; name="${filename}"\r\n`;
+    message += 'Content-Transfer-Encoding: base64\r\n';
+    message += `Content-Disposition: attachment; filename="${filename}"\r\n\r\n`;
+    message += data + '\r\n';
+  }
+  message += `--${boundary}--`;
+
+  return base64url(message);
 }
 
 function getGmailClient() {
@@ -943,7 +991,7 @@ function getGmailClient() {
   }
 }
 
-async function sendEmailViaGoogle({ to, cc, bcc, subject, body, html = false }) {
+async function sendEmailViaGoogle({ to, cc, bcc, subject, body, html = false, attachments }) {
   const sender = getGoogleServiceAccountSubjectEmail();
   const normalizedTo = normalizeEmailRecipientList(to);
   if (!normalizedTo.length) {
@@ -1022,6 +1070,7 @@ async function sendEmailViaGoogle({ to, cc, bcc, subject, body, html = false }) 
     bcc: bccList,
     subject,
     body,
+    attachments,
   });
 
   try {
@@ -1940,10 +1989,15 @@ function getLinkButtons(location) {
   return getDefaultLinks(location || {}).map((link) => ({ ...link, icon: getIcon(link.label) }));
 }
 
-function parseBody(req) {
-  return new Promise((resolve) => {
+function parseBody(req, { maxBytes = 4 * 1024 * 1024 } = {}) {
+  return new Promise((resolve, reject) => {
     let data = '';
-    req.on('data', (c) => (data += c));
+    let bytes = 0;
+    req.on('data', (c) => {
+      bytes += c.length;
+      if (bytes > maxBytes) { req.destroy(); return reject(new Error('Body too large')); }
+      data += c;
+    });
     req.on('end', () => {
       const ct = req.headers['content-type'] || '';
       if (ct.includes('application/x-www-form-urlencoded')) return resolve(querystring.parse(data));

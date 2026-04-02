@@ -225,6 +225,64 @@ function generateLubricationCupPage(location) {
           background: #1a1a1d;
           color: var(--text);
         }
+        .photo-upload-area {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+        }
+        .photo-preview {
+          width: 80px;
+          height: 80px;
+          border-radius: 50%;
+          border: 2px dashed var(--line);
+          overflow: hidden;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-shrink: 0;
+          background: rgba(255,255,255,0.03);
+          transition: border-color 0.2s;
+        }
+        .photo-preview.has-photo {
+          border-style: solid;
+          border-color: var(--gold);
+        }
+        .photo-preview img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+        .photo-preview-icon {
+          color: var(--line);
+          font-size: 1.8rem;
+          line-height: 1;
+        }
+        .photo-upload-right {
+          flex: 1;
+          min-width: 0;
+        }
+        .photo-upload-btn {
+          display: inline-block;
+          padding: 8px 16px;
+          background: rgba(255,255,255,0.06);
+          border: 1px solid var(--line);
+          border-radius: 8px;
+          color: var(--cream);
+          font-family: inherit;
+          font-size: 0.82rem;
+          font-weight: 600;
+          cursor: pointer;
+          transition: border-color 0.2s, background 0.2s;
+        }
+        .photo-upload-btn:hover {
+          border-color: var(--gold);
+          background: rgba(210,170,103,0.08);
+        }
+        .photo-hint {
+          color: var(--muted);
+          font-size: 0.72rem;
+          margin-top: 6px;
+        }
         .submit-btn {
           display: block;
           width: 100%;
@@ -374,6 +432,19 @@ function generateLubricationCupPage(location) {
               <input type="text" id="name" name="name" required autocomplete="name" placeholder="Your name">
             </div>
             <div class="form-group">
+              <label>Your Photo <span style="font-weight:400; text-transform:none; letter-spacing:0;">(optional)</span></label>
+              <div class="photo-upload-area">
+                <div class="photo-preview" id="photo-preview">
+                  <span class="photo-preview-icon">&#128247;</span>
+                </div>
+                <div class="photo-upload-right">
+                  <label class="photo-upload-btn" for="photo-input">Choose Photo</label>
+                  <input type="file" id="photo-input" accept="image/*" capture="user" style="display:none;" />
+                  <div class="photo-hint">Headshot for the competition card. Max 2 MB.</div>
+                </div>
+              </div>
+            </div>
+            <div class="form-group">
               <label for="email">Email</label>
               <input type="email" id="email" name="email" required autocomplete="email" placeholder="you@example.com">
             </div>
@@ -415,6 +486,61 @@ function generateLubricationCupPage(location) {
           var form = document.getElementById('signup-form');
           var btn = document.getElementById('submit-btn');
           var status = document.getElementById('form-status');
+          var photoInput = document.getElementById('photo-input');
+          var photoPreview = document.getElementById('photo-preview');
+          var photoData = '';
+
+          function resizeImage(file, maxSize, quality, callback) {
+            var reader = new FileReader();
+            reader.onload = function(e) {
+              var img = new Image();
+              img.onload = function() {
+                var w = img.width;
+                var h = img.height;
+                if (w > maxSize || h > maxSize) {
+                  if (w > h) { h = Math.round(h * maxSize / w); w = maxSize; }
+                  else { w = Math.round(w * maxSize / h); h = maxSize; }
+                }
+                var canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
+                var ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, w, h);
+                callback(canvas.toDataURL('image/jpeg', quality));
+              };
+              img.onerror = function() { callback(''); };
+              img.src = e.target.result;
+            };
+            reader.onerror = function() { callback(''); };
+            reader.readAsDataURL(file);
+          }
+
+          photoInput.addEventListener('change', function() {
+            var file = photoInput.files && photoInput.files[0];
+            if (!file) return;
+            if (!file.type.match(/^image\\//)) {
+              status.className = 'form-status error';
+              status.textContent = 'Please select an image file.';
+              return;
+            }
+            if (file.size > 10 * 1024 * 1024) {
+              status.className = 'form-status error';
+              status.textContent = 'Image is too large. Please choose a smaller photo.';
+              return;
+            }
+            status.className = 'form-status';
+            status.textContent = '';
+            resizeImage(file, 800, 0.8, function(dataUrl) {
+              if (!dataUrl) {
+                status.className = 'form-status error';
+                status.textContent = 'Could not process image. Try a different photo.';
+                return;
+              }
+              photoData = dataUrl;
+              photoPreview.innerHTML = '<img src="' + dataUrl + '" alt="Your photo">';
+              photoPreview.classList.add('has-photo');
+            });
+          });
 
           form.addEventListener('submit', function(e) {
             e.preventDefault();
@@ -432,6 +558,7 @@ function generateLubricationCupPage(location) {
               why: form.why.value.trim(),
               location: '${escHTML(location.slug)}'
             };
+            if (photoData) data.photo = photoData;
 
             fetch('/api/lubrication-cup-signup', {
               method: 'POST',
@@ -444,6 +571,9 @@ function generateLubricationCupPage(location) {
                 status.className = 'form-status success';
                 status.textContent = 'You\\u2019re signed up! Jax will be in touch if you\\u2019re selected.';
                 form.reset();
+                photoData = '';
+                photoPreview.innerHTML = '<span class="photo-preview-icon">&#128247;</span>';
+                photoPreview.classList.remove('has-photo');
               } else {
                 status.className = 'form-status error';
                 status.textContent = res.error || 'Something went wrong. Please try again.';

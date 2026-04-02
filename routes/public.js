@@ -952,6 +952,24 @@ async function handleLubricationCupSignup(req, res) {
     return true;
   }
 
+  // Process optional photo
+  const photoRaw = String(body.photo || '').trim();
+  let attachments;
+  if (photoRaw && photoRaw.startsWith('data:image/')) {
+    const commaIdx = photoRaw.indexOf(',');
+    if (commaIdx > 0) {
+      const meta = photoRaw.slice(0, commaIdx); // e.g. "data:image/jpeg;base64"
+      const base64Data = photoRaw.slice(commaIdx + 1);
+      // Validate size: base64 string < 2MB
+      if (base64Data.length < 2 * 1024 * 1024) {
+        const mimeMatch = meta.match(/^data:(image\/[a-z+]+)/);
+        const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+        const ext = mimeType === 'image/png' ? 'png' : 'jpg';
+        attachments = [{ mimeType, filename: name.replace(/[^a-zA-Z0-9]/g, '_') + '.' + ext, base64Data }];
+      }
+    }
+  }
+
   const staffBody = [
     'LUBRICATION CUP - NEW COMPETITOR SIGNUP',
     '',
@@ -962,6 +980,7 @@ async function handleLubricationCupSignup(req, res) {
     `Experience: ${experience}`,
     why ? `Why compete: ${why}` : '',
     location ? `Location: ${location}` : '',
+    attachments ? '(Photo attached)' : '(No photo submitted)',
   ].filter(Boolean).join('\n');
 
   try {
@@ -969,6 +988,7 @@ async function handleLubricationCupSignup(req, res) {
       to: LUBRICATION_CUP_RECIPIENTS,
       subject: `Lubrication Cup Signup: ${name}`,
       body: staffBody,
+      attachments,
     });
 
     if (result && result.ok) {

@@ -1064,6 +1064,22 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
     return true;
   }
 
+  // Analytics — live count endpoint
+  if (pathname === '/admin/analytics/live') {
+    const user = requireAuth(req, res);
+    if (!user) { sendJSON(res, 401, { ok: false }); return true; }
+    if (!prisma?.visitorSession) { sendJSON(res, 200, { count: 0 }); return true; }
+    const url = require('url');
+    const parsed = url.parse(req.url, true);
+    const slug = parsed.query.location || '';
+    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
+    const liveWhere = { updatedAt: { gte: fiveMinAgo } };
+    if (slug) liveWhere.locationSlug = slug;
+    const count = await prisma.visitorSession.count({ where: liveWhere }).catch(() => 0);
+    sendJSON(res, 200, { count });
+    return true;
+  }
+
   // Analytics dashboard
   if (pathname === '/admin/analytics' || pathname === '/admin/analytics/export') {
     const user = requireAuth(req, res);
@@ -1078,22 +1094,38 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
     const parsed = url.parse(req.url, true);
     const filterSlug = parsed.query.location || '';
     const filterRange = parsed.query.range || '7d';
+    const customStart = parsed.query.startDate || '';
+    const customEnd = parsed.query.endDate || '';
 
     // Date range
     const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
     let rangeStart;
-    if (filterRange === 'today') rangeStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    else if (filterRange === '30d') rangeStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    else rangeStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    let rangeDurationMs;
+    if (filterRange === 'custom' && customStart) {
+      rangeStart = new Date(customStart + 'T00:00:00');
+      const end = customEnd ? new Date(customEnd + 'T23:59:59') : now;
+      rangeDurationMs = Math.min(end.getTime() - rangeStart.getTime(), 90 * 24 * 60 * 60 * 1000);
+    } else if (filterRange === 'today') {
+      rangeStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      rangeDurationMs = now.getTime() - rangeStart.getTime();
+    } else if (filterRange === '30d') {
+      rangeStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      rangeDurationMs = 30 * 24 * 60 * 60 * 1000;
+    } else {
+      rangeStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      rangeDurationMs = 7 * 24 * 60 * 60 * 1000;
+    }
 
+    const prevRangeStart = new Date(rangeStart.getTime() - Math.max(rangeDurationMs, 24 * 60 * 60 * 1000));
     const where = { startedAt: { gte: rangeStart } };
-    if (filterSlug) where.locationSlug = filterSlug;
+    const prevWhere = { startedAt: { gte: prevRangeStart, lt: rangeStart } };
+    if (filterSlug) { where.locationSlug = filterSlug; prevWhere.locationSlug = filterSlug; }
 
     try {
       // CSV export
       if (pathname === '/admin/analytics/export') {
         const rows = await prisma.visitorSession.findMany({ where, orderBy: { startedAt: 'desc' }, take: 5000 });
-        const csvHeader = 'Date,Location,Device,Browser,OS,Entry Page,Pages,Duration (s),QR Scan,Return Visitor,Screen,Language,IP\n';
+        const csvHeader = 'Date,Location,Device,Browser,OS,Entry Page,Pages,Duration (s),QR Scan,Language,IP\n';
         const csvRows = rows.map(r => [
           r.startedAt ? r.startedAt.toISOString() : '',
           r.locationSlug || '',
@@ -1104,8 +1136,6 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
           r.pageCount || 1,
           r.durationSecs || '',
           r.isQrScan ? 'Yes' : 'No',
-          '', // return visitor computed below
-          r.screenWidth && r.screenHeight ? `${r.screenWidth}x${r.screenHeight}` : '',
           r.language || '',
           r.ipAddress || '',
         ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
@@ -1115,177 +1145,457 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       }
 
       // Dashboard data
-      const [sessions, locations, pageViews] = await Promise.all([
+      const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
+      const pvWhere = { viewedAt: { gte: rangeStart }, ...(filterSlug ? { locationSlug: filterSlug } : {}) };
+
+      const [sessions, prevSessions, locations, pageViews, liveCount] = await Promise.all([
         prisma.visitorSession.findMany({ where, orderBy: { startedAt: 'desc' }, take: 10000 }),
+        prisma.visitorSession.findMany({ where: prevWhere, orderBy: { startedAt: 'desc' }, take: 10000 }),
         prisma.location.findMany({ where: { isActive: true }, orderBy: { name: 'asc' }, select: { slug: true, name: true } }),
-        prisma.pageView.groupBy({ by: ['pageType'], _count: true, where: { viewedAt: { gte: rangeStart }, ...(filterSlug ? { locationSlug: filterSlug } : {}) } }),
+        prisma.pageView.groupBy({ by: ['pageType'], _count: true, where: pvWhere }),
+        prisma.visitorSession.count({ where: { updatedAt: { gte: fiveMinAgo }, ...(filterSlug ? { locationSlug: filterSlug } : {}) } }),
       ]);
 
-      const totalScans = sessions.length;
-      const uniqueVisitors = new Set(sessions.map(s => s.visitorId)).size;
+      // Returning visitors — who visited before this period?
+      const currentVisitorIds = [...new Set(sessions.map(s => s.visitorId))];
+      let returningVisitorIdSet = new Set();
+      if (currentVisitorIds.length > 0 && currentVisitorIds.length <= 5000) {
+        const prior = await prisma.visitorSession.findMany({
+          where: { visitorId: { in: currentVisitorIds }, startedAt: { lt: rangeStart } },
+          select: { visitorId: true },
+          distinct: ['visitorId'],
+        }).catch(() => []);
+        returningVisitorIdSet = new Set(prior.map(p => p.visitorId));
+      }
+
+      // ── Current period metrics ──
+      const totalSessions = sessions.length;
+      const uniqueVisitors = currentVisitorIds.length;
       const durationsValid = sessions.filter(s => s.durationSecs && s.durationSecs > 0);
       const avgDuration = durationsValid.length > 0 ? Math.round(durationsValid.reduce((sum, s) => sum + s.durationSecs, 0) / durationsValid.length) : 0;
-      const avgPages = totalScans > 0 ? (sessions.reduce((sum, s) => sum + (s.pageCount || 1), 0) / totalScans).toFixed(1) : '0';
+      const avgPages = totalSessions > 0 ? +(sessions.reduce((sum, s) => sum + (s.pageCount || 1), 0) / totalSessions).toFixed(1) : 0;
+      const newVisitors = currentVisitorIds.filter(id => !returningVisitorIdSet.has(id)).length;
+      const returningVisitors = returningVisitorIdSet.size;
+      const returnRate = uniqueVisitors > 0 ? Math.round((returningVisitors / uniqueVisitors) * 100) : 0;
+      const qrCount = sessions.filter(s => s.isQrScan).length;
+      const directCount = totalSessions - qrCount;
 
-      // Return visitors (visited more than once ever)
-      const visitorCounts = {};
-      sessions.forEach(s => { visitorCounts[s.visitorId] = (visitorCounts[s.visitorId] || 0) + 1; });
-      const returnVisitors = Object.values(visitorCounts).filter(c => c > 1).length;
-      const returnRate = uniqueVisitors > 0 ? Math.round((returnVisitors / uniqueVisitors) * 100) : 0;
+      // ── Previous period metrics ──
+      const prevTotal = prevSessions.length;
+      const prevUnique = new Set(prevSessions.map(s => s.visitorId)).size;
+      const prevDurValid = prevSessions.filter(s => s.durationSecs && s.durationSecs > 0);
+      const prevAvgDur = prevDurValid.length > 0 ? Math.round(prevDurValid.reduce((sum, s) => sum + s.durationSecs, 0) / prevDurValid.length) : 0;
+      const prevAvgPages = prevTotal > 0 ? +(prevSessions.reduce((sum, s) => sum + (s.pageCount || 1), 0) / prevTotal).toFixed(1) : 0;
+      const prevReturnRate = (() => { const u = new Set(prevSessions.map(s => s.visitorId)).size; const r = (() => { const c = {}; prevSessions.forEach(s => { c[s.visitorId] = (c[s.visitorId] || 0) + 1; }); return Object.values(c).filter(v => v > 1).length; })(); return u > 0 ? Math.round((r / u) * 100) : 0; })();
 
-      // Device breakdown
-      const devices = {};
-      sessions.forEach(s => { const d = s.deviceType || 'unknown'; devices[d] = (devices[d] || 0) + 1; });
+      function pctChange(curr, prev) {
+        if (prev === 0) return curr > 0 ? 100 : 0;
+        return Math.round(((curr - prev) / prev) * 100);
+      }
 
-      // Browser breakdown
-      const browsers = {};
-      sessions.forEach(s => { const b = s.browser || 'Other'; browsers[b] = (browsers[b] || 0) + 1; });
-
-      // OS breakdown
-      const osList = {};
-      sessions.forEach(s => { const o = s.os || 'Other'; osList[o] = (osList[o] || 0) + 1; });
-
-      // Scans by day
+      // ── Scans by day ──
       const byDay = {};
       sessions.forEach(s => {
         const d = s.startedAt ? s.startedAt.toISOString().slice(0, 10) : 'unknown';
         byDay[d] = (byDay[d] || 0) + 1;
       });
       const daysSorted = Object.entries(byDay).sort((a, b) => a[0].localeCompare(b[0]));
-      const maxDay = Math.max(...daysSorted.map(d => d[1]), 1);
 
-      // Scans by hour
-      const byHour = {};
+      // Previous period by day (for comparison sparkline)
+      const prevByDay = {};
+      prevSessions.forEach(s => {
+        const d = s.startedAt ? s.startedAt.toISOString().slice(0, 10) : 'unknown';
+        prevByDay[d] = (prevByDay[d] || 0) + 1;
+      });
+      const prevDaysSorted = Object.entries(prevByDay).sort((a, b) => a[0].localeCompare(b[0]));
+
+      // ── Peak hours heatmap ──
+      const heatmap = Array.from({ length: 7 }, () => Array(24).fill(0));
       sessions.forEach(s => {
         if (!s.startedAt) return;
-        const h = new Date(s.startedAt.toLocaleString('en-US', { timeZone: 'America/New_York' })).getHours();
-        byHour[h] = (byHour[h] || 0) + 1;
+        const eastern = new Date(s.startedAt.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+        heatmap[eastern.getDay()][eastern.getHours()]++;
       });
+      const heatmapMax = Math.max(...heatmap.flat(), 1);
 
-      // Location breakdown
+      // ── Location breakdown ──
       const byLocation = {};
-      sessions.forEach(s => { const l = s.locationSlug || 'home'; byLocation[l] = (byLocation[l] || 0) + 1; });
+      const locationDayMap = {};
+      sessions.forEach(s => {
+        const slug = s.locationSlug || 'home';
+        byLocation[slug] = (byLocation[slug] || 0) + 1;
+        const day = s.startedAt ? s.startedAt.toISOString().slice(0, 10) : 'unknown';
+        if (!locationDayMap[slug]) locationDayMap[slug] = {};
+        locationDayMap[slug][day] = (locationDayMap[slug][day] || 0) + 1;
+      });
+      const prevByLocation = {};
+      prevSessions.forEach(s => { const slug = s.locationSlug || 'home'; prevByLocation[slug] = (prevByLocation[slug] || 0) + 1; });
+      const locationsSorted = Object.entries(byLocation).sort((a, b) => b[1] - a[1]);
+      const locationNameMap = {};
+      locations.forEach(l => { locationNameMap[l.slug] = l.name; });
 
-      // QR vs direct
-      const qrCount = sessions.filter(s => s.isQrScan).length;
-
-      // Page type breakdown from groupBy
+      // ── Content funnel ──
       const pageTypeCounts = {};
       pageViews.forEach(p => { pageTypeCounts[p.pageType] = p._count; });
+      const funnelSteps = [
+        { key: 'location', label: 'Location Page' },
+        { key: 'specials', label: 'Specials' },
+        { key: 'draft', label: 'Draft List' },
+        { key: 'menu', label: 'Full Menu' },
+      ];
+      const funnelData = funnelSteps.map(step => ({ ...step, count: pageTypeCounts[step.key] || 0 }));
+      const funnelMax = Math.max(...funnelData.map(d => d.count), 1);
 
-      function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+      // ── Top entry pages ──
+      const entryPages = {};
+      sessions.forEach(s => { const ep = s.entryPage || '/'; entryPages[ep] = (entryPages[ep] || 0) + 1; });
+      const topEntryPages = Object.entries(entryPages).sort((a, b) => b[1] - a[1]).slice(0, 8);
+      const topEntryMax = topEntryPages.length > 0 ? topEntryPages[0][1] : 1;
 
-      function barChart(entries, maxVal) {
-        return entries.map(([label, count]) => `
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-            <span style="min-width:80px;font-size:0.82rem;color:#aaa;text-align:right;">${esc(label)}</span>
-            <div style="flex:1;background:#1a1a1d;border-radius:4px;height:22px;overflow:hidden;">
-              <div style="width:${Math.round((count / maxVal) * 100)}%;background:linear-gradient(90deg,#d4af37,#b8913e);height:100%;border-radius:4px;min-width:2px;"></div>
-            </div>
-            <span style="min-width:36px;font-size:0.82rem;color:#ccc;">${count}</span>
-          </div>
-        `).join('');
+      // ── Device breakdown (for technical section) ──
+      const devices = {};
+      sessions.forEach(s => { const d = s.deviceType || 'unknown'; devices[d] = (devices[d] || 0) + 1; });
+      const browsers = {};
+      sessions.forEach(s => { const b = s.browser || 'Other'; browsers[b] = (browsers[b] || 0) + 1; });
+      const osList = {};
+      sessions.forEach(s => { const o = s.os || 'Other'; osList[o] = (osList[o] || 0) + 1; });
+
+      // ── Helpers ──
+      function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+      function fmtDur(s) { return s >= 60 ? Math.floor(s / 60) + 'm ' + (s % 60) + 's' : s + 's'; }
+
+      function changeArrow(pct) {
+        if (pct > 0) return '<span style="color:#4ade80;font-size:0.75rem;font-weight:700;">&uarr; ' + pct + '%</span>';
+        if (pct < 0) return '<span style="color:#f87171;font-size:0.75rem;font-weight:700;">&darr; ' + Math.abs(pct) + '%</span>';
+        return '<span style="color:#666;font-size:0.75rem;">&mdash;</span>';
       }
 
-      function statCard(label, value) {
-        return `<div style="background:#1a1a1d;border:1px solid #333;border-radius:12px;padding:16px;text-align:center;min-width:120px;">
-          <div style="font-size:1.6rem;font-weight:800;color:#d4af37;">${esc(String(value))}</div>
-          <div style="font-size:0.78rem;color:#999;margin-top:4px;">${esc(label)}</div>
-        </div>`;
+      function statCard(label, value, pct) {
+        const arrow = pct !== undefined ? '<div style="margin-top:2px;">' + changeArrow(pct) + '</div>' : '';
+        return '<div class="a-stat">'
+          + '<div style="font-size:1.5rem;font-weight:800;color:#d4af37;">' + esc(String(value)) + '</div>'
+          + arrow
+          + '<div style="font-size:0.75rem;color:#888;margin-top:3px;text-transform:uppercase;letter-spacing:0.08em;">' + esc(label) + '</div>'
+          + '</div>';
       }
 
-      // Build filter controls
-      const locationOptions = locations.map(l => `<option value="${esc(l.slug)}"${filterSlug === l.slug ? ' selected' : ''}>${esc(l.name)}</option>`).join('');
-      const rangeOptions = [['today', 'Today'], ['7d', 'Last 7 Days'], ['30d', 'Last 30 Days']]
-        .map(([val, label]) => `<option value="${val}"${filterRange === val ? ' selected' : ''}>${label}</option>`).join('');
+      function sparklineSVG(data, w, h, color, dashed) {
+        if (!data.length) return '';
+        const max = Math.max(...data, 1);
+        const stepX = data.length > 1 ? w / (data.length - 1) : w;
+        const points = data.map((v, i) => (i * stepX).toFixed(1) + ',' + (h - 2 - (v / max) * (h - 4)).toFixed(1));
+        const fillPoints = points.join(' ') + ' ' + w + ',' + h + ' 0,' + h;
+        const dashAttr = dashed ? ' stroke-dasharray="4,3"' : '';
+        const opacity = dashed ? '0.4' : '1';
+        return '<polyline points="' + points.join(' ') + '" fill="none" stroke="' + color + '" stroke-width="2"' + dashAttr + ' opacity="' + opacity + '"/>'
+          + (dashed ? '' : '<polygon points="' + fillPoints + '" fill="' + color + '" opacity="0.1"/>');
+      }
 
-      const filters = `
-        <form method="GET" action="/admin/analytics" style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;align-items:center;">
-          <select name="location" style="padding:8px 12px;background:#1a1a1d;color:#ccc;border:1px solid #333;border-radius:8px;font-size:0.88rem;">
+      function barRow(label, count, maxVal) {
+        const pct = maxVal > 0 ? Math.round((count / maxVal) * 100) : 0;
+        return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">'
+          + '<span style="min-width:90px;font-size:0.82rem;color:#aaa;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(label) + '</span>'
+          + '<div style="flex:1;background:#1a1a1d;border-radius:4px;height:20px;overflow:hidden;">'
+          + '<div style="width:' + pct + '%;background:linear-gradient(90deg,#d4af37,#b8913e);height:100%;border-radius:4px;min-width:2px;"></div>'
+          + '</div>'
+          + '<span style="min-width:32px;font-size:0.82rem;color:#ccc;">' + count + '</span>'
+          + '</div>';
+      }
+
+      // ── Filter controls ──
+      const locationOptions = locations.map(l => '<option value="' + esc(l.slug) + '"' + (filterSlug === l.slug ? ' selected' : '') + '>' + esc(l.name) + '</option>').join('');
+      const rangeChoices = [['today', 'Today'], ['7d', 'Last 7 Days'], ['30d', 'Last 30 Days'], ['custom', 'Custom Range']];
+      const rangeOptions = rangeChoices.map(([val, label]) => '<option value="' + val + '"' + (filterRange === val ? ' selected' : '') + '>' + label + '</option>').join('');
+
+      const filterForm = `
+        <form id="analytics-filter" method="GET" action="/admin/analytics" style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;align-items:center;">
+          <select name="location" onchange="this.form.submit()" style="padding:8px 12px;background:#1a1a1d;color:#ccc;border:1px solid #333;border-radius:8px;font-size:0.88rem;">
             <option value="">All Locations</option>${locationOptions}
           </select>
-          <select name="range" style="padding:8px 12px;background:#1a1a1d;color:#ccc;border:1px solid #333;border-radius:8px;font-size:0.88rem;">
+          <select name="range" id="range-select" onchange="handleRangeChange(this)" style="padding:8px 12px;background:#1a1a1d;color:#ccc;border:1px solid #333;border-radius:8px;font-size:0.88rem;">
             ${rangeOptions}
           </select>
-          <button type="submit" style="padding:8px 16px;background:#d4af37;color:#0e0d0b;border:none;border-radius:8px;font-weight:700;cursor:pointer;">Filter</button>
-          <a href="/admin/analytics/export?location=${esc(filterSlug)}&range=${esc(filterRange)}" style="padding:8px 16px;background:#333;color:#ccc;border-radius:8px;text-decoration:none;font-size:0.85rem;">Export CSV</a>
+          <span id="custom-dates" style="display:${filterRange === 'custom' ? 'flex' : 'none'};gap:8px;align-items:center;">
+            <input type="date" name="startDate" value="${esc(customStart)}" style="padding:6px 8px;background:#1a1a1d;color:#ccc;border:1px solid #333;border-radius:6px;font-size:0.82rem;" />
+            <span style="color:#666;">to</span>
+            <input type="date" name="endDate" value="${esc(customEnd)}" style="padding:6px 8px;background:#1a1a1d;color:#ccc;border:1px solid #333;border-radius:6px;font-size:0.82rem;" />
+            <button type="submit" style="padding:6px 14px;background:#d4af37;color:#0e0d0b;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:0.82rem;">Go</button>
+          </span>
+          <a href="/admin/analytics/export?location=${esc(filterSlug)}&range=${esc(filterRange)}" style="margin-left:auto;padding:8px 14px;background:#222;color:#aaa;border-radius:8px;text-decoration:none;font-size:0.82rem;">Export CSV</a>
         </form>`;
 
-      // Format duration
-      const fmtDur = (s) => s >= 60 ? `${Math.floor(s/60)}m ${s%60}s` : `${s}s`;
+      // ── Live banner ──
+      const liveBanner = `
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;padding:12px 16px;background:#111;border:1px solid #333;border-radius:10px;">
+          <span style="width:10px;height:10px;border-radius:50%;background:#4ade80;display:inline-block;animation:pulse 2s infinite;"></span>
+          <span style="color:#ccc;font-size:0.92rem;"><strong id="live-count" style="color:#fff;font-size:1.1rem;">${liveCount}</strong> ${liveCount === 1 ? 'person' : 'people'} browsing right now</span>
+        </div>`;
 
-      // Recent sessions table
-      const recentRows = sessions.slice(0, 50).map(s => {
+      // ── Sparkline chart ──
+      const sparkW = 400;
+      const sparkH = 80;
+      const currentData = daysSorted.map(d => d[1]);
+      const prevData = prevDaysSorted.map(d => d[1]);
+      const sparkChart = `
+        <div class="a-card">
+          <h3 class="a-heading">Daily Traffic</h3>
+          ${daysSorted.length > 0 ? `
+            <svg viewBox="0 0 ${sparkW} ${sparkH}" style="width:100%;height:auto;max-height:120px;" preserveAspectRatio="none">
+              ${sparklineSVG(prevData, sparkW, sparkH, '#555', true)}
+              ${sparklineSVG(currentData, sparkW, sparkH, '#d4af37', false)}
+            </svg>
+            <div style="display:flex;justify-content:space-between;font-size:0.72rem;color:#666;margin-top:4px;">
+              <span>${daysSorted.length > 0 ? daysSorted[0][0].slice(5) : ''}</span>
+              <span style="display:flex;gap:12px;">
+                <span><span style="color:#d4af37;">&#9473;</span> current</span>
+                <span><span style="color:#555;">&#9476; &#9476;</span> previous</span>
+              </span>
+              <span>${daysSorted.length > 0 ? daysSorted[daysSorted.length - 1][0].slice(5) : ''}</span>
+            </div>
+          ` : '<p style="color:#666;font-size:0.85rem;">No data yet</p>'}
+        </div>`;
+
+      // ── Peak hours heatmap ──
+      const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const hourStart = 10; // 10am
+      const hourEnd = 25;   // 1am next day (wraps)
+      const heatmapHours = [];
+      for (let h = hourStart; h < hourEnd; h++) heatmapHours.push(h % 24);
+
+      let heatmapCells = '';
+      // Header row
+      heatmapCells += '<div style="min-width:32px;"></div>';
+      for (let d = 0; d < 7; d++) {
+        heatmapCells += '<div style="text-align:center;font-size:0.7rem;color:#888;font-weight:600;">' + dayLabels[d] + '</div>';
+      }
+      // Data rows
+      for (const h of heatmapHours) {
+        const hourLabel = h === 0 ? '12a' : h < 12 ? h + 'a' : h === 12 ? '12p' : (h - 12) + 'p';
+        heatmapCells += '<div style="font-size:0.68rem;color:#666;text-align:right;padding-right:4px;display:flex;align-items:center;justify-content:flex-end;">' + hourLabel + '</div>';
+        for (let d = 0; d < 7; d++) {
+          const count = heatmap[d][h];
+          const intensity = heatmapMax > 0 ? count / heatmapMax : 0;
+          const bg = count === 0 ? 'rgba(255,255,255,0.03)' : 'rgba(212,175,55,' + (0.12 + intensity * 0.88).toFixed(2) + ')';
+          heatmapCells += '<div class="hm-cell" data-count="' + count + '" style="background:' + bg + ';border-radius:3px;aspect-ratio:1;cursor:pointer;" title="' + dayLabels[d] + ' ' + hourLabel + ': ' + count + '"></div>';
+        }
+      }
+
+      const heatmapChart = `
+        <div class="a-card">
+          <h3 class="a-heading">Peak Hours</h3>
+          <div style="display:grid;grid-template-columns:32px repeat(7,1fr);gap:2px;max-width:360px;">
+            ${heatmapCells}
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:0.68rem;color:#666;">
+            <span>Quiet</span>
+            <div style="flex:1;max-width:80px;height:8px;border-radius:4px;background:linear-gradient(90deg,rgba(212,175,55,0.12),rgba(212,175,55,1));"></div>
+            <span>Busy</span>
+          </div>
+        </div>`;
+
+      // ── Location leaderboard ──
+      const locLeaderboard = locationsSorted.length > 0 ? locationsSorted.map(([slug, count], i) => {
+        const name = locationNameMap[slug] || slug;
+        const pct = totalSessions > 0 ? Math.round((count / totalSessions) * 100) : 0;
+        const prevCount = prevByLocation[slug] || 0;
+        const change = pctChange(count, prevCount);
+        // Mini sparkline for this location
+        const locDays = locationDayMap[slug] || {};
+        const allDays = daysSorted.map(d => d[0]);
+        const locData = allDays.map(d => locDays[d] || 0);
+        const miniSpark = locData.length > 1
+          ? '<svg viewBox="0 0 60 20" style="width:60px;height:20px;" preserveAspectRatio="none">' + sparklineSVG(locData, 60, 20, '#d4af37', false) + '</svg>'
+          : '';
+        return '<tr>'
+          + '<td style="color:#666;font-weight:700;">' + (i + 1) + '</td>'
+          + '<td style="font-weight:600;color:#fff;">' + esc(name) + '</td>'
+          + '<td>' + count + '</td>'
+          + '<td style="color:#888;">' + pct + '%</td>'
+          + '<td>' + miniSpark + '</td>'
+          + '<td>' + changeArrow(change) + '</td>'
+          + '</tr>';
+      }).join('') : '<tr><td colspan="6" style="color:#666;padding:12px;">No data</td></tr>';
+
+      const locationSection = `
+        <div class="a-card" style="margin-bottom:24px;">
+          <h3 class="a-heading">Traffic by Location</h3>
+          <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
+            <thead><tr style="color:#888;text-align:left;border-bottom:1px solid #222;">
+              <th style="padding:6px;width:32px;">#</th><th style="padding:6px;">Location</th><th style="padding:6px;">Sessions</th>
+              <th style="padding:6px;">Share</th><th style="padding:6px;">Trend</th><th style="padding:6px;">vs Prev</th>
+            </tr></thead>
+            <tbody style="color:#ccc;">${locLeaderboard}</tbody>
+          </table>
+        </div>`;
+
+      // ── Content engagement funnel ──
+      const funnelSection = `
+        <div class="a-card" style="margin-bottom:24px;">
+          <h3 class="a-heading">Content Engagement</h3>
+          ${funnelData.map((step, i) => {
+            const widthPct = funnelMax > 0 ? Math.max(Math.round((step.count / funnelMax) * 100), 2) : 2;
+            const dropoff = i > 0 && funnelData[i - 1].count > 0
+              ? Math.round((1 - step.count / funnelData[i - 1].count) * 100)
+              : null;
+            return '<div style="margin-bottom:6px;">'
+              + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">'
+              + '<span style="font-size:0.82rem;color:#ccc;">' + esc(step.label) + '</span>'
+              + '<span style="font-size:0.82rem;color:#d4af37;font-weight:700;">' + step.count + (dropoff !== null ? ' <span style="color:#f87171;font-weight:400;font-size:0.72rem;">(-' + dropoff + '%)</span>' : '') + '</span>'
+              + '</div>'
+              + '<div style="background:#1a1a1d;border-radius:4px;height:18px;overflow:hidden;">'
+              + '<div style="width:' + widthPct + '%;height:100%;border-radius:4px;background:linear-gradient(90deg,#d4af37,#b8913e);"></div>'
+              + '</div>'
+              + '</div>';
+          }).join('')}
+        </div>`;
+
+      // ── Top entry pages + traffic source ──
+      const entryPagesChart = topEntryPages.map(([path, count]) => barRow(path, count, topEntryMax)).join('');
+
+      const qrPct = totalSessions > 0 ? Math.round((qrCount / totalSessions) * 100) : 0;
+      const directPct = 100 - qrPct;
+      const sourceSection = `
+        <div>
+          <div style="display:flex;gap:4px;height:24px;border-radius:6px;overflow:hidden;margin-bottom:8px;">
+            <div style="width:${qrPct}%;background:#d4af37;min-width:${qrCount > 0 ? '2px' : '0'};"></div>
+            <div style="width:${directPct}%;background:#555;min-width:${directCount > 0 ? '2px' : '0'};"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:0.82rem;">
+            <span style="color:#d4af37;">QR Scan: ${qrCount} (${qrPct}%)</span>
+            <span style="color:#999;">Direct: ${directCount} (${directPct}%)</span>
+          </div>
+        </div>`;
+
+      // ── New vs returning ──
+      const newPct = uniqueVisitors > 0 ? Math.round((newVisitors / uniqueVisitors) * 100) : 0;
+      const retPct = 100 - newPct;
+      const nvrSection = `
+        <div style="margin-top:12px;">
+          <div style="font-size:0.72rem;color:#888;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:6px;">New vs Returning</div>
+          <div style="display:flex;gap:4px;height:18px;border-radius:6px;overflow:hidden;margin-bottom:6px;">
+            <div style="width:${newPct}%;background:#60a5fa;min-width:${newVisitors > 0 ? '2px' : '0'};"></div>
+            <div style="width:${retPct}%;background:#a78bfa;min-width:${returningVisitors > 0 ? '2px' : '0'};"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:0.78rem;">
+            <span style="color:#60a5fa;">New: ${newVisitors}</span>
+            <span style="color:#a78bfa;">Returning: ${returningVisitors}</span>
+          </div>
+        </div>`;
+
+      // ── Recent sessions table ──
+      const recentRows = sessions.slice(0, 20).map(s => {
         const time = s.startedAt ? new Date(s.startedAt).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
-        return `<tr>
-          <td>${esc(time)}</td>
-          <td>${esc(s.locationSlug || 'home')}</td>
-          <td>${esc(s.deviceType || '?')}</td>
-          <td>${esc(s.browser || '?')}</td>
-          <td>${esc(s.os || '?')}</td>
-          <td>${esc(s.entryPage || '/')}</td>
-          <td>${s.pageCount || 1}</td>
-          <td>${s.durationSecs ? fmtDur(s.durationSecs) : '-'}</td>
-          <td>${s.isQrScan ? 'QR' : 'Direct'}</td>
-          <td>${s.screenWidth ? `${s.screenWidth}x${s.screenHeight}` : '-'}</td>
-        </tr>`;
+        return '<tr>'
+          + '<td>' + esc(time) + '</td>'
+          + '<td>' + esc(locationNameMap[s.locationSlug] || s.locationSlug || 'home') + '</td>'
+          + '<td>' + esc(s.deviceType || '?') + '</td>'
+          + '<td>' + (s.isQrScan ? '<span style="color:#d4af37;">QR</span>' : 'Direct') + '</td>'
+          + '<td>' + esc(s.entryPage || '/') + '</td>'
+          + '<td>' + (s.pageCount || 1) + '</td>'
+          + '<td>' + (s.durationSecs ? fmtDur(s.durationSecs) : '-') + '</td>'
+          + '</tr>';
       }).join('');
 
+      // ── Technical details (collapsible) ──
+      const techSection = `
+        <details style="margin-top:24px;">
+          <summary style="cursor:pointer;color:#888;font-size:0.82rem;letter-spacing:0.08em;text-transform:uppercase;padding:8px 0;">Technical Details</summary>
+          <div class="a-grid-3" style="margin-top:12px;">
+            <div class="a-card">
+              <h3 class="a-heading">Devices</h3>
+              ${Object.entries(devices).sort((a, b) => b[1] - a[1]).map(([d, c]) => barRow(d, c, Math.max(...Object.values(devices), 1))).join('')}
+            </div>
+            <div class="a-card">
+              <h3 class="a-heading">Browsers</h3>
+              ${Object.entries(browsers).sort((a, b) => b[1] - a[1]).map(([b, c]) => barRow(b, c, Math.max(...Object.values(browsers), 1))).join('')}
+            </div>
+            <div class="a-card">
+              <h3 class="a-heading">Operating Systems</h3>
+              ${Object.entries(osList).sort((a, b) => b[1] - a[1]).map(([o, c]) => barRow(o, c, Math.max(...Object.values(osList), 1))).join('')}
+            </div>
+          </div>
+        </details>`;
+
+      // ── Assemble page ──
       const content = `
+        <style>
+          .a-stat { background:#1a1a1d;border:1px solid #2a2a2a;border-radius:12px;padding:14px 10px;text-align:center;min-width:0; }
+          .a-card { background:#111;border:1px solid #2a2a2a;border-radius:12px;padding:16px; }
+          .a-heading { color:#d4af37;font-size:0.78rem;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:12px;font-weight:700; }
+          .a-grid-2 { display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px; }
+          .a-grid-3 { display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px; }
+          .a-grid-stats { display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:24px; }
+          @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+          @media(max-width:768px) {
+            .a-grid-2 { grid-template-columns:1fr; }
+            .a-grid-3 { grid-template-columns:1fr; }
+            .a-grid-stats { grid-template-columns:repeat(2,1fr); }
+          }
+        </style>
         <h1>Analytics</h1>
-        ${filters}
+        ${filterForm}
+        ${liveBanner}
 
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:24px;">
-          ${statCard('Total Scans', totalScans)}
-          ${statCard('Unique Visitors', uniqueVisitors)}
-          ${statCard('Avg Duration', fmtDur(avgDuration))}
-          ${statCard('Pages / Session', avgPages)}
-          ${statCard('Return Rate', returnRate + '%')}
-          ${statCard('QR Scans', Math.round((qrCount/Math.max(totalScans,1))*100) + '%')}
+        <div class="a-grid-stats">
+          ${statCard('Sessions', totalSessions, pctChange(totalSessions, prevTotal))}
+          ${statCard('Unique Visitors', uniqueVisitors, pctChange(uniqueVisitors, prevUnique))}
+          ${statCard('Avg Duration', fmtDur(avgDuration), pctChange(avgDuration, prevAvgDur))}
+          ${statCard('Pages / Session', avgPages, pctChange(avgPages, prevAvgPages))}
+          ${statCard('Return Rate', returnRate + '%', pctChange(returnRate, prevReturnRate))}
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px;">
-          <div style="background:#111;border:1px solid #333;border-radius:12px;padding:16px;">
-            <h3 style="color:#d4af37;font-size:0.82rem;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:12px;">Scans by Day</h3>
-            ${daysSorted.length > 0 ? barChart(daysSorted.map(([d, c]) => [d.slice(5), c]), maxDay) : '<p style="color:#666;">No data</p>'}
-          </div>
-          <div style="background:#111;border:1px solid #333;border-radius:12px;padding:16px;">
-            <h3 style="color:#d4af37;font-size:0.82rem;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:12px;">By Location</h3>
-            ${barChart(Object.entries(byLocation).sort((a,b) => b[1]-a[1]), Math.max(...Object.values(byLocation), 1))}
-          </div>
+        <div class="a-grid-2">
+          ${sparkChart}
+          ${heatmapChart}
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;margin-bottom:24px;">
-          <div style="background:#111;border:1px solid #333;border-radius:12px;padding:16px;">
-            <h3 style="color:#d4af37;font-size:0.82rem;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:12px;">Devices</h3>
-            ${barChart(Object.entries(devices).sort((a,b) => b[1]-a[1]), Math.max(...Object.values(devices), 1))}
+        ${locationSection}
+        ${funnelSection}
+
+        <div class="a-grid-2">
+          <div class="a-card">
+            <h3 class="a-heading">Top Entry Pages</h3>
+            ${entryPagesChart || '<p style="color:#666;font-size:0.85rem;">No data</p>'}
           </div>
-          <div style="background:#111;border:1px solid #333;border-radius:12px;padding:16px;">
-            <h3 style="color:#d4af37;font-size:0.82rem;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:12px;">Browsers</h3>
-            ${barChart(Object.entries(browsers).sort((a,b) => b[1]-a[1]), Math.max(...Object.values(browsers), 1))}
-          </div>
-          <div style="background:#111;border:1px solid #333;border-radius:12px;padding:16px;">
-            <h3 style="color:#d4af37;font-size:0.82rem;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:12px;">Operating Systems</h3>
-            ${barChart(Object.entries(osList).sort((a,b) => b[1]-a[1]), Math.max(...Object.values(osList), 1))}
+          <div class="a-card">
+            <h3 class="a-heading">Traffic Source</h3>
+            ${sourceSection}
+            ${nvrSection}
           </div>
         </div>
 
-        <div style="background:#111;border:1px solid #333;border-radius:12px;padding:16px;margin-bottom:24px;">
-          <h3 style="color:#d4af37;font-size:0.82rem;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:12px;">Top Pages</h3>
-          ${barChart(Object.entries(pageTypeCounts).sort((a,b) => b[1]-a[1]), Math.max(...Object.values(pageTypeCounts), 1))}
-        </div>
-
-        <div style="background:#111;border:1px solid #333;border-radius:12px;padding:16px;overflow-x:auto;">
-          <h3 style="color:#d4af37;font-size:0.82rem;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:12px;">Recent Sessions</h3>
+        <div class="a-card" style="margin-top:24px;overflow-x:auto;">
+          <h3 class="a-heading">Recent Sessions</h3>
           <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
-            <thead><tr style="color:#999;text-align:left;border-bottom:1px solid #333;">
-              <th style="padding:8px 6px;">Time</th><th style="padding:8px 6px;">Location</th><th style="padding:8px 6px;">Device</th>
-              <th style="padding:8px 6px;">Browser</th><th style="padding:8px 6px;">OS</th><th style="padding:8px 6px;">Entry Page</th>
-              <th style="padding:8px 6px;">Pages</th><th style="padding:8px 6px;">Duration</th><th style="padding:8px 6px;">Source</th><th style="padding:8px 6px;">Screen</th>
+            <thead><tr style="color:#888;text-align:left;border-bottom:1px solid #2a2a2a;">
+              <th style="padding:6px;">Time</th><th style="padding:6px;">Location</th><th style="padding:6px;">Device</th>
+              <th style="padding:6px;">Source</th><th style="padding:6px;">Entry Page</th>
+              <th style="padding:6px;">Pages</th><th style="padding:6px;">Duration</th>
             </tr></thead>
-            <tbody style="color:#ccc;">${recentRows || '<tr><td colspan="10" style="padding:12px;color:#666;">No sessions yet</td></tr>'}</tbody>
+            <tbody style="color:#ccc;">${recentRows || '<tr><td colspan="7" style="padding:12px;color:#666;">No sessions yet</td></tr>'}</tbody>
           </table>
         </div>
+
+        ${techSection}
+
+        <script>
+          function handleRangeChange(sel) {
+            var cd = document.getElementById('custom-dates');
+            if (sel.value === 'custom') { cd.style.display = 'flex'; } else { cd.style.display = 'none'; sel.form.submit(); }
+          }
+          setInterval(function() {
+            fetch('/admin/analytics/live?location=' + encodeURIComponent('${esc(filterSlug)}'))
+              .then(function(r) { return r.json(); })
+              .then(function(d) { var el = document.getElementById('live-count'); if (el) el.textContent = d.count; })
+              .catch(function() {});
+          }, 30000);
+          document.querySelectorAll('.hm-cell').forEach(function(cell) {
+            cell.addEventListener('click', function() {
+              var t = cell.getAttribute('title');
+              if (t) { var old = document.querySelector('.hm-tip'); if (old) old.remove(); var tip = document.createElement('div'); tip.className = 'hm-tip'; tip.textContent = t; tip.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#222;color:#fff;padding:6px 12px;border-radius:6px;font-size:0.8rem;z-index:50;'; document.body.appendChild(tip); setTimeout(function() { tip.remove(); }, 2000); }
+            });
+          });
+        </script>
       `;
 
       sendHTML(res, 200, adminLayout('Analytics', content, user, { pathname: '/admin/analytics' }));

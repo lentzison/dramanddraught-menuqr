@@ -771,7 +771,7 @@ function generateLocationPage(location, allLocations = [], menuCategories = []) 
             setFieldRequired(false, false);
             setHint(isFiveStar
               ? 'You selected 5/5. Add your email for a chance to win the gift card.'
-              : 'You selected ' + rating + '/5. Share any details you\'d like.');
+              : 'You selected ' + rating + '/5. Share any details you\\\'d like.');
           }
 
           function copyReviewTextToClipboard(reviewText) {

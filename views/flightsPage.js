@@ -16,7 +16,6 @@ function fallbackNoteSections(raw) {
   });
 }
 
-let _noteBlockId = 0;
 function renderTastingNotes(pour) {
   const notes = pour && pour.guestNotes ? pour.guestNotes : null;
   const list = notes && Array.isArray(notes.notes)
@@ -26,13 +25,10 @@ function renderTastingNotes(pour) {
   const summary = notes && notes.summary ? notes.summary : 'Tasting notes';
   if (!list.length) return '';
 
-  const blockId = `notes-${++_noteBlockId}`;
-
   return `
     <div class="bottle-note-block">
       <p class="bottle-note-summary">${escHTML(summary)}</p>
-      <button class="notes-toggle" onclick="var el=document.getElementById('${blockId}');var open=el.classList.toggle('notes-open');this.textContent=open?'Hide tasting notes':'See tasting notes';" aria-expanded="false">See tasting notes</button>
-      <ul class="bottle-note-list" id="${blockId}">
+      <ul class="bottle-note-list">
         ${list.map((item) => `
           <li class="bottle-note-item">
             <span class="bottle-note-label">${escHTML(item.label || 'Note')}</span>
@@ -146,23 +142,31 @@ function generateFlightsPage(location, flights) {
         .pour .bottle-note-item { font-size: 0.76rem; gap: 7px; }
         .pour .bottle-note-label { min-width: 54px; }
         .pour-size { color: #8d9299; font-size: 0.75rem; margin-top: 2px; }
-        .bottle-note-block { margin-top: 10px; }
-        .bottle-note-summary { font-size: 0.78rem; font-style: italic; color: var(--muted); margin-bottom: 6px; }
-        .notes-toggle {
+        .flight-detail { display: none; }
+        .flight-detail.flight-open { display: block; }
+        .flight-expand-btn {
           background: none;
           border: 1px solid rgba(245,232,204,0.18);
           color: var(--gold);
-          font-size: 0.74rem;
+          font-size: 0.78rem;
           font-weight: 600;
-          padding: 5px 12px;
-          border-radius: 6px;
+          padding: 6px 14px;
+          border-radius: 8px;
           cursor: pointer;
-          margin-bottom: 8px;
+          margin-top: 10px;
           letter-spacing: 0.02em;
+          width: 100%;
         }
-        .notes-toggle:hover { background: rgba(245,232,204,0.08); }
-        .bottle-note-list { list-style: none; padding: 0; margin: 0; display: none; flex-direction: column; gap: 4px; }
-        .bottle-note-list.notes-open { display: flex; }
+        .flight-expand-btn:hover { background: rgba(245,232,204,0.08); }
+        .flight-pour-names {
+          color: var(--muted);
+          font-size: 0.82rem;
+          margin-top: 6px;
+          line-height: 1.5;
+        }
+        .bottle-note-block { margin-top: 10px; }
+        .bottle-note-summary { font-size: 0.78rem; font-style: italic; color: var(--muted); margin-bottom: 6px; }
+        .bottle-note-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
         .bottle-note-item { display: flex; gap: 8px; font-size: 0.8rem; color: #c4c8ce; }
         .bottle-note-label { font-weight: 700; color: var(--gold); min-width: 60px; flex-shrink: 0; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.04em; }
         .bottle-note-text { flex: 1; }
@@ -202,7 +206,11 @@ function generateFlightsPage(location, flights) {
       </div>
 
       <div class="container">
-        ${flights.length > 0 ? flights.map((flight) => `
+        ${flights.length > 0 ? flights.map((flight, fi) => {
+          const sortedPours = (flight.pours || []).sort((a, b) => a.displayOrder - b.displayOrder);
+          const pourNames = sortedPours.map((p) => escHTML(p.spiritName)).join(' &bull; ');
+          const detailId = `flight-detail-${fi}`;
+          return `
           <div class="section">
             <div class="flight-card">
               <div class="flight-theme">${escHTML(flight.theme)}</div>
@@ -212,22 +220,26 @@ function generateFlightsPage(location, flights) {
                   <div class="flight-price">${escHTML(flight.priceLabel)}</div>
                 </div>
               ` : ''}
-              <div class="pours">
-                ${(flight.pours || []).sort((a, b) => a.displayOrder - b.displayOrder).map((p, i) => `
-                  <div class="pour">
-                    <div class="pour-number">${i + 1}</div>
-                    <div class="pour-info">
-                      <div class="pour-name">${escHTML(p.spiritName)}</div>
-                      ${p.description ? `<div class="pour-origin">${escHTML(p.description)}</div>` : ''}
-                      ${renderTastingNotes(p)}
-                      ${p.pourSize ? `<div class="pour-size">${escHTML(p.pourSize)}</div>` : ''}
+              <div class="flight-pour-names">${pourNames}</div>
+              <div class="flight-detail" id="${detailId}">
+                <div class="pours">
+                  ${sortedPours.map((p, i) => `
+                    <div class="pour">
+                      <div class="pour-number">${i + 1}</div>
+                      <div class="pour-info">
+                        <div class="pour-name">${escHTML(p.spiritName)}</div>
+                        ${p.description ? `<div class="pour-origin">${escHTML(p.description)}</div>` : ''}
+                        ${renderTastingNotes(p)}
+                        ${p.pourSize ? `<div class="pour-size">${escHTML(p.pourSize)}</div>` : ''}
+                      </div>
                     </div>
-                  </div>
-                `).join('')}
+                  `).join('')}
+                </div>
               </div>
+              <button class="flight-expand-btn" onclick="var el=document.getElementById('${detailId}');var open=el.classList.toggle('flight-open');this.textContent=open?'Hide tasting notes':'See tasting notes';">See tasting notes</button>
             </div>
           </div>
-        `).join('') : `
+        `}).join('') : `
           <div class="empty-state">
             <p>No featured flights right now. Check back soon!</p>
           </div>

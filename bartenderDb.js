@@ -215,6 +215,8 @@ async function getSpiritFlight(locationSlug) {
         f.theme,
         f.description,
         f."flightDate",
+        f."regularPriceOverride",
+        f."fridayPriceOverride",
         p."displayOrder",
         COALESCE(NULLIF(TRIM(p."displayName"), ''), sp.name) AS "spiritName",
         NULLIF(TRIM(p.description), '') AS "pourDescription",
@@ -247,6 +249,8 @@ async function getSpiritFlight(locationSlug) {
           theme: row.theme,
           description: row.description || null,
           flightDate: normalizeDbDate(row.flightDate),
+          regularPriceOverride: row.regularPriceOverride ? parseFloat(row.regularPriceOverride) : null,
+          fridayPriceOverride: row.fridayPriceOverride ? parseFloat(row.fridayPriceOverride) : null,
           pours: [],
         });
       }
@@ -255,11 +259,12 @@ async function getSpiritFlight(locationSlug) {
 
     const items = [];
     for (const flight of flightsMap.values()) {
-      const regularPrice = flight.pours.reduce((sum, row) => {
+      const calculatedRegular = flight.pours.reduce((sum, row) => {
         const price = row.oneOzPrice ? parseFloat(row.oneOzPrice) : 0;
         return sum + (Number.isFinite(price) ? price : 0);
       }, 0);
-      const fridayPrice = Math.max(regularPrice - FRIDAY_FLIGHT_DISCOUNT, 0);
+      const regularPrice = flight.regularPriceOverride != null ? flight.regularPriceOverride : calculatedRegular;
+      const fridayPrice = flight.fridayPriceOverride != null ? flight.fridayPriceOverride : Math.max(regularPrice - FRIDAY_FLIGHT_DISCOUNT, 0);
 
       const guestNotesSeed = flight.pours.map((row) => ({
         name: row.spiritName,
@@ -594,6 +599,7 @@ async function getFeaturedFlights(locationSlug) {
         f.description,
         f."isFridayFlight",
         f."displayOrder",
+        f."regularPriceOverride",
         p."displayOrder" AS "pourDisplayOrder",
         COALESCE(NULLIF(TRIM(p."displayName"), ''), sp.name) AS "spiritName",
         NULLIF(TRIM(p.description), '') AS "pourDescription",
@@ -621,6 +627,7 @@ async function getFeaturedFlights(locationSlug) {
           id: row.id,
           theme: row.theme,
           description: row.description || null,
+          regularPriceOverride: row.regularPriceOverride ? parseFloat(row.regularPriceOverride) : null,
           pours: [],
         });
       }
@@ -629,10 +636,11 @@ async function getFeaturedFlights(locationSlug) {
 
     const flights = [];
     for (const flight of flightsMap.values()) {
-      const regularPrice = flight.pours.reduce((sum, row) => {
+      const calculatedPrice = flight.pours.reduce((sum, row) => {
         const price = row.oneOzPrice ? parseFloat(row.oneOzPrice) : 0;
         return sum + (Number.isFinite(price) ? price : 0);
       }, 0);
+      const regularPrice = flight.regularPriceOverride != null ? flight.regularPriceOverride : calculatedPrice;
 
       // Build guest notes for pours
       const guestNotesSeed = flight.pours.map((row) => ({

@@ -8,7 +8,6 @@ function escHTML(s) {
 
 function generateLocationPage(location, allLocations = [], menuCategories = [], options = {}) {
   const featuredFlights = options.featuredFlights || [];
-  const isFriday = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' })).getDay() === 5;
   const quickLinks = [
     { label: "Today's Specials", url: `/${location.slug}/specials` },
     { label: 'On Draft', url: `/${location.slug}/draft` },
@@ -632,19 +631,18 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
         <span class="event-detail">Bartender Speed Competition &middot; 7 PM</span>
       </a>
       ` : ''}
-      ${featuredFlights.map((ff) => `
+      ${featuredFlights.map((ff) => {
+        const pourNames = (ff.pours || []).map((p) => escHTML(p.spiritName)).join(' &bull; ');
+        return `
       <a href="/${location.slug}/flights" class="featured-flight stagger" style="animation-delay:0.06s;">
-        <span class="ff-label">Featured Flight</span>
+        <span class="ff-label">${ff.isFridayFlight ? 'Friday Flight' : 'Featured Flight'}</span>
         <span class="ff-theme">${escHTML(ff.theme)}</span>
         ${ff.description ? `<span class="ff-pours">${escHTML(ff.description)}</span>` : ''}
-        <span class="ff-pours">${ff.pourNames.map((n) => escHTML(n)).join(' &bull; ')}</span>
-        ${isFriday
-          ? `<span class="ff-price">${escHTML(ff.fridayPrice)}</span>
-             <span class="ff-discount">Friday flight discount applied!</span>`
-          : `<span class="ff-price">${escHTML(ff.regularPrice)}</span>`
-        }
-      </a>
-      `).join('')}
+        <span class="ff-pours">${pourNames}</span>
+        <span class="ff-price">${escHTML(ff.priceLabel)}</span>
+        ${ff.fridayPriceLabel ? '<span class="ff-discount">Friday flight discount applied!</span>' : ''}
+      </a>`;
+      }).join('')}
       ${menuCategories.length > 0 ? menuCategories.map(cat => `
       <div class="menu-section">
         <div class="menu-section-hdr">${escHTML(cat.name)}</div>

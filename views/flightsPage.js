@@ -107,6 +107,14 @@ function generateFlightsPage(location, flights) {
           border-radius: 8px;
           font-size: 0.95rem;
         }
+        .friday-discount-label {
+          display: inline-block;
+          color: var(--gold);
+          font-size: 0.75rem;
+          font-weight: 600;
+          margin-left: 8px;
+          vertical-align: middle;
+        }
         .pours { display: flex; flex-direction: column; gap: 10px; }
         .pour {
           display: flex;
@@ -218,6 +226,7 @@ function generateFlightsPage(location, flights) {
               ${flight.priceLabel ? `
                 <div class="flight-price-wrap">
                   <div class="flight-price">${escHTML(flight.priceLabel)}</div>
+                  ${flight.fridayPriceLabel ? '<span class="friday-discount-label">Friday flight discount!</span>' : ''}
                 </div>
               ` : ''}
               <div class="flight-pour-names">${pourNames}</div>

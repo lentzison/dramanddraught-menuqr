@@ -138,6 +138,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
   const nextAvailable = options.nextAvailable || null;
   const warnings = options.warnings || {};
   const halfPriceSpirits = options.halfPriceSpirits || [];
+  const fridayFlights = options.fridayFlights || (flight ? [flight] : []);
   const isWednesday = activeDay === 'WEDNESDAY';
   const isThursday = activeDay === 'THURSDAY';
   const isHalfPriceDay = isWednesday || isThursday;
@@ -249,39 +250,41 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
     }
   }
 
-  const flightSection = (isFriday && flight) ? `
+  const flightSection = (isFriday && fridayFlights.length > 0) ? `
     <div class="section">
       <div class="section-header">
-        <h2>This Friday's Flight</h2>
+        <h2>This Friday's Flight${fridayFlights.length > 1 ? 's' : ''}</h2>
       </div>
-      <div class="flight-card">
-        <div class="flight-theme">${escHTML(flight.theme)}</div>
-        ${flight.description ? `<div class="flight-desc">${escHTML(flight.description)}</div>` : ''}
-        ${(flight.fridayPriceLabel || flight.price || flight.regularPriceLabel) ? `
-          <div class="flight-price-wrap">
-            ${flight.fridayPriceLabel || flight.price ? `<div class="flight-price">${escHTML(flight.fridayPriceLabel || flight.price)}</div>` : ''}
-            ${flight.regularPriceLabel ? `<div class="flight-price-regular">Regular ${escHTML(flight.regularPriceLabel)} during the week</div>` : ''}
-          </div>
-        ` : ''}
-        <div class="pours">
-          ${(flight.pours || []).sort((a,b) => a.displayOrder - b.displayOrder).map((p, i) => `
-            <div class="pour">
-              <div class="pour-number">${i + 1}</div>
-              <div class="pour-info">
-                <div class="pour-name">${escHTML(p.spiritName)}</div>
-                ${p.description ? `<div class="pour-origin">${escHTML(p.description)}</div>` : ''}
-                ${p.guestNotes || p.tastingNotes
-                  ? renderBottleTastingNotes({
-                      guestNotes: p.guestNotes || null,
-                      notes: p.tastingNotes || '',
-                    })
-                  : ''}
-                ${p.pourSize ? `<div class="pour-size">${escHTML(p.pourSize)}</div>` : ''}
-              </div>
+      ${fridayFlights.map((f) => `
+        <div class="flight-card" ${fridayFlights.length > 1 ? 'style="margin-bottom: 16px;"' : ''}>
+          <div class="flight-theme">${escHTML(f.theme)}</div>
+          ${f.description ? `<div class="flight-desc">${escHTML(f.description)}</div>` : ''}
+          ${(f.fridayPriceLabel || f.price || f.regularPriceLabel) ? `
+            <div class="flight-price-wrap">
+              ${f.fridayPriceLabel || f.price ? `<div class="flight-price">${escHTML(f.fridayPriceLabel || f.price)}</div>` : ''}
+              ${f.regularPriceLabel ? `<div class="flight-price-regular">Regular ${escHTML(f.regularPriceLabel)} during the week</div>` : ''}
             </div>
-          `).join('')}
+          ` : ''}
+          <div class="pours">
+            ${(f.pours || []).sort((a,b) => a.displayOrder - b.displayOrder).map((p, i) => `
+              <div class="pour">
+                <div class="pour-number">${i + 1}</div>
+                <div class="pour-info">
+                  <div class="pour-name">${escHTML(p.spiritName)}</div>
+                  ${p.description ? `<div class="pour-origin">${escHTML(p.description)}</div>` : ''}
+                  ${p.guestNotes || p.tastingNotes
+                    ? renderBottleTastingNotes({
+                        guestNotes: p.guestNotes || null,
+                        notes: p.tastingNotes || '',
+                      })
+                    : ''}
+                  ${p.pourSize ? `<div class="pour-size">${escHTML(p.pourSize)}</div>` : ''}
+                </div>
+              </div>
+            `).join('')}
+          </div>
         </div>
-      </div>
+      `).join('')}
     </div>
   ` : '';
 

@@ -206,7 +206,7 @@ async function getSpiritFlight(locationSlug) {
   try {
     const db = getPool();
     const locationId = await getLocationIdByMenuqrSlug(locationSlug);
-    if (!locationId) return { item: null, error: `Unknown or inactive location: ${locationSlug}` };
+    if (!locationId) return { items: [], item: null, error: `Unknown or inactive location: ${locationSlug}` };
 
     const flightDate = toDateOnlySql(getUpcomingFridayDate());
     const result = await db.query(`
@@ -228,43 +228,60 @@ async function getSpiritFlight(locationSlug) {
       LEFT JOIN "SpiritDetail" sd ON sd."productId" = sp."productId"
       WHERE f."locationId" = $1
         AND f.status = 'ACTIVE'
-        AND f."flightDate" = $2::date
-      ORDER BY p."displayOrder" ASC
+        AND f."isFridayFlight" = true
+        AND f."flightDate" <= $2::date
+        AND (f."flightEndDate" >= $2::date OR (f."flightEndDate" IS NULL AND f."flightDate" = $2::date))
+      ORDER BY f."displayOrder" ASC, f.theme ASC, p."displayOrder" ASC
     `, [locationId, flightDate]);
 
     if (!result.rows.length) {
-      return { item: null, error: null };
+      return { items: [], item: null, error: null };
     }
 
-    const regularPrice = result.rows.reduce((sum, row) => {
-      const price = row.oneOzPrice ? parseFloat(row.oneOzPrice) : 0;
-      return sum + (Number.isFinite(price) ? price : 0);
-    }, 0);
-    const fridayPrice = Math.max(regularPrice - FRIDAY_FLIGHT_DISCOUNT, 0);
+    // Group rows by flight id
+    const flightsMap = new Map();
+    for (const row of result.rows) {
+      if (!flightsMap.has(row.id)) {
+        flightsMap.set(row.id, {
+          id: row.id,
+          theme: row.theme,
+          description: row.description || null,
+          flightDate: normalizeDbDate(row.flightDate),
+          pours: [],
+        });
+      }
+      flightsMap.get(row.id).pours.push(row);
+    }
 
-    const first = result.rows[0];
-    const guestNotesSeed = result.rows.map((row) => ({
-      name: row.spiritName,
-      bottleSize: `${parseFloat(row.pourSizeOz || '1').toFixed(0)} oz pour`,
-      costPerOz: row.oneOzPrice ? formatCurrency(row.oneOzPrice) : null,
-      notes: row.tastingNotes || '',
-    }));
-    const enhancedPours = await buildGuestBottleNotesForCatalog(
-      guestNotesSeed,
-      Boolean(process.env.OPENAI_API_KEY)
-    ).catch(() => guestNotesSeed);
+    const items = [];
+    for (const flight of flightsMap.values()) {
+      const regularPrice = flight.pours.reduce((sum, row) => {
+        const price = row.oneOzPrice ? parseFloat(row.oneOzPrice) : 0;
+        return sum + (Number.isFinite(price) ? price : 0);
+      }, 0);
+      const fridayPrice = Math.max(regularPrice - FRIDAY_FLIGHT_DISCOUNT, 0);
 
-    return {
-      item: {
-        id: first.id,
-        theme: first.theme,
-        description: first.description || null,
-        flightDate: normalizeDbDate(first.flightDate),
+      const guestNotesSeed = flight.pours.map((row) => ({
+        name: row.spiritName,
+        bottleSize: `${parseFloat(row.pourSizeOz || '1').toFixed(0)} oz pour`,
+        costPerOz: row.oneOzPrice ? formatCurrency(row.oneOzPrice) : null,
+        notes: row.tastingNotes || '',
+      }));
+      const enhancedPours = await buildGuestBottleNotesForCatalog(
+        guestNotesSeed,
+        Boolean(process.env.OPENAI_API_KEY)
+      ).catch(() => guestNotesSeed);
+
+      items.push({
+        id: flight.id,
+        theme: flight.theme,
+        description: flight.description,
+        flightDate: flight.flightDate,
         price: formatCurrency(fridayPrice),
         fridayPriceLabel: formatCurrency(fridayPrice),
         regularPriceLabel: formatCurrency(regularPrice),
         builderUrl: buildSpiritFlightBuilderUrl(locationId, flightDate),
-        pours: result.rows.map((row, index) => ({
+        pours: flight.pours.map((row, index) => ({
           spiritName: row.spiritName,
           pourSize: `${parseFloat(row.pourSizeOz || '1').toFixed(0)} oz`,
           description: row.pourDescription || null,
@@ -272,12 +289,18 @@ async function getSpiritFlight(locationSlug) {
           guestNotes: enhancedPours[index]?.guestNotes || null,
           displayOrder: row.displayOrder,
         })),
-      },
+      });
+    }
+
+    // Backward compat: item is the first flight
+    return {
+      items,
+      item: items[0] || null,
       error: null,
     };
   } catch (err) {
     console.error('Error fetching spirit flight:', err.message);
-    return { item: null, error: err.message };
+    return { items: [], item: null, error: err.message };
   }
 }
 

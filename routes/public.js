@@ -413,10 +413,11 @@ async function handleSpecials(req, res, prisma, parsedUrl, location) {
   let nextAvailable = null;
   let tomorrowTheme = null;
   let flight = null;
+  let fridayFlights = [];
   let fridayFlight = null;
   let bottles = [];
   let halfPriceSpirits = [];
-  let bartenderFlightState = { item: null, error: null };
+  let bartenderFlightState = { items: [], item: null, error: null };
 
   if (prisma) {
     const loaded = await loadLocationSpecials(prisma, loc, viewingDay, warnings);
@@ -434,11 +435,16 @@ async function handleSpecials(req, res, prisma, parsedUrl, location) {
     }
 
     if (viewingDay === 'FRIDAY') {
+      fridayFlights = bartenderFlightState.items || [];
       flight = bartenderFlightState.item;
 
-      if (!flight) {
+      if (fridayFlights.length === 0) {
         try {
-          flight = await loadFlightForLocation(prisma, loc, month, year, true);
+          const legacyFlight = await loadFlightForLocation(prisma, loc, month, year, true);
+          if (legacyFlight) {
+            flight = legacyFlight;
+            fridayFlights = [legacyFlight];
+          }
         } catch (err) {
           warnings.flight = true;
           console.warn('DB error loading legacy Friday flight:', err.message);
@@ -495,6 +501,7 @@ async function handleSpecials(req, res, prisma, parsedUrl, location) {
       nextAvailable,
       warnings,
       halfPriceSpirits,
+      fridayFlights,
     }), sid),
   );
   return true;

@@ -881,8 +881,6 @@ function flightEditor(flight, isNew, user, message, flashMsg, options = {}) {
         <input type="text" name="pour${i}_size" value="${escHTML(p.pourSize)}" placeholder="e.g. 1 oz" />
         <label>Description</label>
         <input type="text" name="pour${i}_desc" value="${escHTML(p.description)}" placeholder="e.g. Portland, Oregon — or grape varietal, cocktail style" />
-        <label>Tasting Notes</label>
-        <textarea name="pour${i}_notes" placeholder="e.g. Rich malt, dark fruit, baking spice">${escHTML(p.tastingNotes)}</textarea>
       </div>
     `;
   }).join('');

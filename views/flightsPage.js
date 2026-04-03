@@ -16,6 +16,7 @@ function fallbackNoteSections(raw) {
   });
 }
 
+let _noteBlockId = 0;
 function renderTastingNotes(pour) {
   const notes = pour && pour.guestNotes ? pour.guestNotes : null;
   const list = notes && Array.isArray(notes.notes)
@@ -25,10 +26,13 @@ function renderTastingNotes(pour) {
   const summary = notes && notes.summary ? notes.summary : 'Tasting notes';
   if (!list.length) return '';
 
+  const blockId = `notes-${++_noteBlockId}`;
+
   return `
     <div class="bottle-note-block">
       <p class="bottle-note-summary">${escHTML(summary)}</p>
-      <ul class="bottle-note-list">
+      <button class="notes-toggle" onclick="var el=document.getElementById('${blockId}');var open=el.classList.toggle('notes-open');this.textContent=open?'Hide tasting notes':'See tasting notes';" aria-expanded="false">See tasting notes</button>
+      <ul class="bottle-note-list" id="${blockId}">
         ${list.map((item) => `
           <li class="bottle-note-item">
             <span class="bottle-note-label">${escHTML(item.label || 'Note')}</span>
@@ -144,7 +148,21 @@ function generateFlightsPage(location, flights) {
         .pour-size { color: #8d9299; font-size: 0.75rem; margin-top: 2px; }
         .bottle-note-block { margin-top: 10px; }
         .bottle-note-summary { font-size: 0.78rem; font-style: italic; color: var(--muted); margin-bottom: 6px; }
-        .bottle-note-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; }
+        .notes-toggle {
+          background: none;
+          border: 1px solid rgba(245,232,204,0.18);
+          color: var(--gold);
+          font-size: 0.74rem;
+          font-weight: 600;
+          padding: 5px 12px;
+          border-radius: 6px;
+          cursor: pointer;
+          margin-bottom: 8px;
+          letter-spacing: 0.02em;
+        }
+        .notes-toggle:hover { background: rgba(245,232,204,0.08); }
+        .bottle-note-list { list-style: none; padding: 0; margin: 0; display: none; flex-direction: column; gap: 4px; }
+        .bottle-note-list.notes-open { display: flex; }
         .bottle-note-item { display: flex; gap: 8px; font-size: 0.8rem; color: #c4c8ce; }
         .bottle-note-label { font-weight: 700; color: var(--gold); min-width: 60px; flex-shrink: 0; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.04em; }
         .bottle-note-text { flex: 1; }

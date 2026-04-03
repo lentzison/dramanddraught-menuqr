@@ -70,6 +70,14 @@ const SNACKS_SEED = {
     { name: 'Sopressata & Cheddar Snack Tray', description: 'Sopressata salami, sharp cheddar & crackers', price: 8, displayOrder: 0 },
     { name: 'San Carlo Chips, Lime & Pink Pepper', description: 'Italian-style kettle chips with lime and pink peppercorn', price: 5, displayOrder: 1 },
   ],
+  greensboro: [
+    { name: 'Sopressata & Cheddar Snack Tray', description: 'Sopressata salami, sharp cheddar & crackers', price: 8, displayOrder: 0 },
+    { name: 'San Carlo Chips, Lime & Pink Pepper', description: 'Italian-style kettle chips with lime and pink peppercorn', price: 5, displayOrder: 1 },
+  ],
+  'winston-salem': [
+    { name: 'Sopressata & Cheddar Snack Tray', description: 'Sopressata salami, sharp cheddar & crackers', price: 8, displayOrder: 0 },
+    { name: 'San Carlo Chips, Lime & Pink Pepper', description: 'Italian-style kettle chips with lime and pink peppercorn', price: 5, displayOrder: 1 },
+  ],
 };
 
 async function seedSnacks() {

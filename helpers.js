@@ -638,6 +638,16 @@ function buildFallbackBottleNotes(rawBottle) {
   };
 }
 
+function isAiQualityNotes(notesObj) {
+  if (!notesObj || !Array.isArray(notesObj.notes)) return false;
+  if (notesObj.notes.length < 3) return false;
+  const richLabels = ['history', 'aroma', 'nose', 'palate', 'finish', 'body'];
+  const matchCount = notesObj.notes.filter((n) =>
+    richLabels.includes((n.label || '').toLowerCase())
+  ).length;
+  return matchCount >= 2;
+}
+
 function pickCacheKeyForBottleNotes(bottle) {
   const name = String(bottle.name || '').trim().toLowerCase();
   const size = String(bottle.bottleSize || '').trim().toLowerCase();
@@ -1805,7 +1815,12 @@ async function enhanceBottleNotes(rawBottle) {
 
   // 1. Check in-memory cache (fast path)
   const cached = openAiBottleNotesCache.get(cacheKey);
-  if (cached && cached.expires > Date.now()) return cached.value;
+  if (cached && cached.expires > Date.now()) {
+    // Skip low-quality cached notes when AI is available so we can regenerate
+    if (!process.env.OPENAI_API_KEY || isAiQualityNotes(cached.value)) {
+      return cached.value;
+    }
+  }
 
   // 2. Check DB cache (survives restarts)
   try {
@@ -1814,8 +1829,13 @@ async function enhanceBottleNotes(rawBottle) {
     if (dbCached && dbCached.notesJson) {
       const parsed = JSON.parse(dbCached.notesJson);
       if (parsed && parsed.notes) {
-        openAiBottleNotesCache.set(cacheKey, { value: parsed, expires: Date.now() + OPENAI_CACHE_MS });
-        return parsed;
+        // If AI is available and cached notes are low-quality (non-AI), skip cache to retry AI
+        if (process.env.OPENAI_API_KEY && !isAiQualityNotes(parsed)) {
+          // fall through to AI call
+        } else {
+          openAiBottleNotesCache.set(cacheKey, { value: parsed, expires: Date.now() + OPENAI_CACHE_MS });
+          return parsed;
+        }
       }
     }
   } catch (err) {
@@ -1840,19 +1860,12 @@ async function enhanceBottleNotes(rawBottle) {
     return ai;
   }
 
-  // 4. Fallback: parse existing notes from source
+  // 4. Fallback: parse existing notes from source (in-memory only, not DB-cached,
+  //    so AI can be retried on future requests)
   const parsedNotes = parseBottleNoteSections(rawBottle && rawBottle.notes);
   if (parsedNotes.length > 0 && hasSubstantiveParsedNotes(parsedNotes)) {
     const value = { summary: 'Tasting notes', notes: parsedNotes };
     openAiBottleNotesCache.set(cacheKey, { value, expires: Date.now() + OPENAI_CACHE_MS });
-    try {
-      const prisma = require('./db');
-      await prisma.bottleNotesCache.upsert({
-        where: { cacheKey },
-        update: { notesJson: JSON.stringify(value) },
-        create: { cacheKey, notesJson: JSON.stringify(value) },
-      });
-    } catch (err) { /* ignore */ }
     return value;
   }
 

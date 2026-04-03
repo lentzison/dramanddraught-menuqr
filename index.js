@@ -63,11 +63,11 @@ const SNACKS_SEED = {
     { name: 'Antipasto', price: 10, displayOrder: 1 },
   ],
   durham: [
-    { name: 'Sopressata & Cheddar Snack Tray', description: 'Sopressata salami, sharp cheddar & crackers', price: 12, displayOrder: 0 },
+    { name: 'Sopressata & Cheddar Snack Tray', description: 'Sopressata salami, sharp cheddar & crackers', price: 8, displayOrder: 0 },
     { name: 'San Carlo Chips, Lime & Pink Pepper', description: 'Italian-style kettle chips with lime and pink peppercorn', price: 5, displayOrder: 1 },
   ],
   raleigh: [
-    { name: 'Sopressata & Cheddar Snack Tray', description: 'Sopressata salami, sharp cheddar & crackers', price: 12, displayOrder: 0 },
+    { name: 'Sopressata & Cheddar Snack Tray', description: 'Sopressata salami, sharp cheddar & crackers', price: 8, displayOrder: 0 },
     { name: 'San Carlo Chips, Lime & Pink Pepper', description: 'Italian-style kettle chips with lime and pink peppercorn', price: 5, displayOrder: 1 },
   ],
 };

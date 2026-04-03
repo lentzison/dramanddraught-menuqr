@@ -43,7 +43,7 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
     feedbackEndpoint: '/api/feedback',
     locationSlug: location.slug || '',
     locationResolution: {
-      enabled: String(location.slug || '').toLowerCase() === 'durham' && nearbyLocationCandidates.some(c => c.slug === 'winston-salem'),
+      enabled: false,
       currentSlug: String(location.slug || '').trim(),
       maxDistanceMiles: 15,
       candidates: String(location.slug || '').toLowerCase() === 'durham'

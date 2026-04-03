@@ -30,8 +30,11 @@ const {
   getBarSupportEmailsForLocation,
   getHalfPriceSpirits,
   getSpiritFlight,
+  getFeaturedFlights,
+  hasFeaturedFlights,
 } = require('../bartenderDb');
 const { generateDraftPage } = require('../views/draftPage');
+const { generateFlightsPage } = require('../views/flightsPage');
 const { generateMenuPage } = require('../views/menuPage');
 const { generateLubricationCupPage } = require('../views/lubricationCupPage');
 const { trackPageView, buildTrackingScript } = require('../analytics');
@@ -1117,6 +1120,28 @@ async function handlePublic(req, res, pathname, prisma) {
     return handleMenu(req, res, prisma, slug);
   }
 
+  // Flights page: /{slug}/flights
+  const flightsMatch = pathname.match(/^\/([a-z0-9-]+)\/flights$/);
+  if (flightsMatch) {
+    const slug = flightsMatch[1];
+    const locs = await getLocations(prisma);
+    const location = locs.find((l) => l.slug === slug);
+    if (!location) {
+      sendHTML(res, 404, '<h1>Location not found</h1><p><a href="/">Back to locations</a></p>');
+      return true;
+    }
+    let flights = [];
+    try {
+      const result = await getFeaturedFlights(slug);
+      flights = result.items || [];
+    } catch (err) {
+      console.warn('Error loading featured flights:', err.message);
+    }
+    const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/flights`, null);
+    sendHTML(res, 200, injectTracking(generateFlightsPage(location, flights), sid));
+    return true;
+  }
+
   // Lubrication Cup page: /winston-salem/lubrication-cup
   const cupMatch = pathname.match(/^\/([a-z0-9-]+)\/lubrication-cup$/);
   if (cupMatch) {
@@ -1150,8 +1175,12 @@ async function handlePublic(req, res, pathname, prisma) {
           });
         } catch (err) { console.warn('Menu load error:', err.message); }
       }
+      let showFlightsButton = false;
+      try {
+        showFlightsButton = await hasFeaturedFlights(slug);
+      } catch (err) { console.warn('Featured flights check error:', err.message); }
       const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}`, null);
-      sendHTML(res, 200, injectTracking(generateLocationPage(location, locs, menuCategories), sid));
+      sendHTML(res, 200, injectTracking(generateLocationPage(location, locs, menuCategories, { showFlightsButton }), sid));
       return true;
     }
     sendHTML(res, 404, '<h1>Location not found</h1><p><a href="/">Back to locations</a></p>');

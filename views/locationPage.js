@@ -6,11 +6,14 @@ function escHTML(s) {
   return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function generateLocationPage(location, allLocations = [], menuCategories = []) {
+function generateLocationPage(location, allLocations = [], menuCategories = [], options = {}) {
   const quickLinks = [
     { label: "Today's Specials", url: `/${location.slug}/specials` },
     { label: 'On Draft', url: `/${location.slug}/draft` },
   ];
+  if (options.showFlightsButton) {
+    quickLinks.push({ label: 'Spirit Flights', url: `/${location.slug}/flights` });
+  }
   const dynamicLinks = getLinkButtons(location);
   const buttons = [...quickLinks, ...dynamicLinks].filter((link, index, arr) =>
     arr.findIndex((entry) => entry.url === link.url && entry.label === link.label) === index

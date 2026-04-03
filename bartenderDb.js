@@ -558,6 +558,113 @@ async function getHalfPriceSpirits(locationSlug, config) {
   }
 }
 
+async function getFeaturedFlights(locationSlug) {
+  try {
+    const db = getPool();
+    const locationId = await getLocationIdByMenuqrSlug(locationSlug);
+    if (!locationId) return { items: [], error: `Unknown or inactive location: ${locationSlug}` };
+
+    const result = await db.query(`
+      SELECT
+        f.id,
+        f.theme,
+        f.description,
+        f."isFridayFlight",
+        f."displayOrder",
+        p."displayOrder" AS "pourDisplayOrder",
+        COALESCE(NULLIF(TRIM(p."displayName"), ''), sp.name) AS "spiritName",
+        NULLIF(TRIM(p.description), '') AS "pourDescription",
+        COALESCE(NULLIF(TRIM(p."tastingNotes"), ''), NULLIF(TRIM(sd."tastingNotes"), ''), NULLIF(TRIM(sd.description), '')) AS "tastingNotes",
+        COALESCE(p."pourSizeOz", 1) AS "pourSizeOz",
+        slp."oneOzPrice"
+      FROM "SpiritFlight" f
+      JOIN "SpiritFlightPour" p ON p."flightId" = f.id
+      JOIN "SpiritLocationPrice" slp ON slp."locationProductId" = p."locationProductId"
+      JOIN "SpiritProduct" sp ON sp."productId" = slp."productId"
+      LEFT JOIN "SpiritDetail" sd ON sd."productId" = sp."productId"
+      WHERE f."locationId" = $1
+        AND f.status = 'ACTIVE'
+        AND f."isFridayFlight" = false
+      ORDER BY f."displayOrder" ASC, f.theme ASC, p."displayOrder" ASC
+    `, [locationId]);
+
+    if (!result.rows.length) return { items: [], error: null };
+
+    // Group rows by flight id
+    const flightsMap = new Map();
+    for (const row of result.rows) {
+      if (!flightsMap.has(row.id)) {
+        flightsMap.set(row.id, {
+          id: row.id,
+          theme: row.theme,
+          description: row.description || null,
+          pours: [],
+        });
+      }
+      flightsMap.get(row.id).pours.push(row);
+    }
+
+    const flights = [];
+    for (const flight of flightsMap.values()) {
+      const regularPrice = flight.pours.reduce((sum, row) => {
+        const price = row.oneOzPrice ? parseFloat(row.oneOzPrice) : 0;
+        return sum + (Number.isFinite(price) ? price : 0);
+      }, 0);
+
+      // Build guest notes for pours
+      const guestNotesSeed = flight.pours.map((row) => ({
+        name: row.spiritName,
+        bottleSize: `${parseFloat(row.pourSizeOz || '1').toFixed(0)} oz pour`,
+        costPerOz: row.oneOzPrice ? formatCurrency(row.oneOzPrice) : null,
+        notes: row.tastingNotes || '',
+      }));
+      const enhancedPours = await buildGuestBottleNotesForCatalog(
+        guestNotesSeed,
+        Boolean(process.env.OPENAI_API_KEY)
+      ).catch(() => guestNotesSeed);
+
+      flights.push({
+        id: flight.id,
+        theme: flight.theme,
+        description: flight.description,
+        priceLabel: formatCurrency(regularPrice),
+        pours: flight.pours.map((row, index) => ({
+          spiritName: row.spiritName,
+          pourSize: `${parseFloat(row.pourSizeOz || '1').toFixed(0)} oz`,
+          description: row.pourDescription || null,
+          tastingNotes: row.tastingNotes || null,
+          guestNotes: enhancedPours[index]?.guestNotes || null,
+          displayOrder: row.pourDisplayOrder,
+        })),
+      });
+    }
+
+    return { items: flights, error: null };
+  } catch (err) {
+    console.error('Error fetching featured flights:', err.message);
+    return { items: [], error: err.message };
+  }
+}
+
+async function hasFeaturedFlights(locationSlug) {
+  try {
+    const db = getPool();
+    const locationId = await getLocationIdByMenuqrSlug(locationSlug);
+    if (!locationId) return false;
+
+    const result = await db.query(`
+      SELECT 1 FROM "SpiritFlight"
+      WHERE "locationId" = $1 AND status = 'ACTIVE' AND "isFridayFlight" = false
+      LIMIT 1
+    `, [locationId]);
+
+    return result.rows.length > 0;
+  } catch (err) {
+    console.error('Error checking featured flights:', err.message);
+    return false;
+  }
+}
+
 module.exports = {
   findUserByEmail,
   getUserRoles,
@@ -571,6 +678,8 @@ module.exports = {
   getHalfPriceSpirits,
   getLocationIdByMenuqrSlug,
   getSpiritFlight,
+  getFeaturedFlights,
+  hasFeaturedFlights,
   getUpcomingSpiritFlightsAdmin,
   buildSpiritFlightBuilderUrl,
 };

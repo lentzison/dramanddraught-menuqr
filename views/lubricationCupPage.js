@@ -439,7 +439,7 @@ function generateLubricationCupPage(location) {
                 </div>
                 <div class="photo-upload-right">
                   <label class="photo-upload-btn" for="photo-input">Choose Photo</label>
-                  <input type="file" id="photo-input" accept="image/*" capture="user" style="display:none;" />
+                  <input type="file" id="photo-input" accept="image/*" style="display:none;" />
                   <div class="photo-hint">Headshot for the competition card. Max 2 MB.</div>
                 </div>
               </div>

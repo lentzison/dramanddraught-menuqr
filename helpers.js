@@ -1860,12 +1860,19 @@ async function enhanceBottleNotes(rawBottle) {
     return ai;
   }
 
-  // 4. Fallback: parse existing notes from source (in-memory only, not DB-cached,
-  //    so AI can be retried on future requests)
+  // 4. Fallback: parse existing notes from source
   const parsedNotes = parseBottleNoteSections(rawBottle && rawBottle.notes);
   if (parsedNotes.length > 0 && hasSubstantiveParsedNotes(parsedNotes)) {
     const value = { summary: 'Tasting notes', notes: parsedNotes };
     openAiBottleNotesCache.set(cacheKey, { value, expires: Date.now() + OPENAI_CACHE_MS });
+    try {
+      const prisma = require('./db');
+      await prisma.bottleNotesCache.upsert({
+        where: { cacheKey },
+        update: { notesJson: JSON.stringify(value) },
+        create: { cacheKey, notesJson: JSON.stringify(value) },
+      });
+    } catch (err) { /* ignore */ }
     return value;
   }
 

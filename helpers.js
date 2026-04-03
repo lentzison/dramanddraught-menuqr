@@ -123,7 +123,14 @@ function isUsefulBottleNoteText(text) {
   if (/^in\s+\d+\s*(ml|l|oz|cl|pt|g|kg)\b/i.test(lower)) return false;
   if (/^\d+\s*(ml|l|oz|cl|pt|g|kg)\b/i.test(lower)) return false;
   if (/^tasting\s+notes?\s+in\s+\d+\s*(ml|l|oz|cl|pt|g|kg)\b/i.test(lower)) return false;
-  return true;
+  // Require labeled tasting sections (e.g. "Nose:", "Palate:") or substantial multi-line content;
+  // short descriptions like "A well-balanced bourbon..." should use the creative AI prompt instead
+  const hasSections = /\b(nose|palate|finish|aroma|body|history)\s*[:\-–]/i.test(normalized);
+  if (hasSections) return true;
+  // Multi-line or long text with real detail
+  const hasMultipleLines = (normalized.match(/\n/g) || []).length >= 2;
+  if (hasMultipleLines && normalized.length >= 100) return true;
+  return false;
 }
 
 function truncateToWordBoundary(text, maxLen, minKeepRatio = 0.65) {
@@ -1563,12 +1570,13 @@ async function fetchAiBottleNotes(rawBottle) {
   const hasSourceNotes = isUsefulBottleNoteText(promptPayload.notes);
   const systemPrompt = hasSourceNotes
     ? 'You are a copy editor for a high-end cocktail bar menu. Rewrite tasting notes for restaurant guests in a concise, accurate, and enticing way.'
-      + ' Keep all concrete details from the source notes and do not invent claims. Return strict JSON with keys summary and notes.'
-      + ' notes should be an array of objects with label and text. label should be one of: Aroma, Nose, Palate, Finish, Body, Impressions, Tasting note.'
+      + ' Keep all concrete details from the source notes and do not invent claims. Include a brief history note if possible.'
+      + ' Return strict JSON with keys summary and notes.'
+      + ' notes should be an array of objects with label and text. label should be one of: History, Aroma, Nose, Palate, Finish, Body, Impressions, Tasting note.'
     : 'You are a copy editor for a high-end cocktail bar menu. Create guest-friendly tasting notes for this bottle using known naming conventions only.'
       + ' Include a concise history note for the bottle line (if possible) and a tasting note section. Do not invent verifiable facts; if details are uncertain, keep it general and honest.'
       + ' Return strict JSON with keys summary and notes.'
-      + ' notes should be an array of objects with label and text. label should be one of: Aroma, Nose, Palate, Finish, Body, Impressions, Tasting note, History.';
+      + ' notes should be an array of objects with label and text. label should be one of: History, Aroma, Nose, Palate, Finish, Body, Impressions, Tasting note.';
 
   const maxAttempts = 1 + OPENAI_NOTES_RETRY_ATTEMPTS;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -1583,7 +1591,7 @@ async function fetchAiBottleNotes(rawBottle) {
           body: JSON.stringify({
             model: OPENAI_MODEL,
             temperature: 0.2,
-            max_tokens: hasSourceNotes ? 300 : 500,
+            max_tokens: 500,
             messages: [
               {
                 role: 'system',

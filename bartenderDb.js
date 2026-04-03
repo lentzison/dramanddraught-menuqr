@@ -677,6 +677,84 @@ async function getFeaturedFlights(locationSlug) {
   }
 }
 
+async function getExtendedFridayFlights(locationSlug) {
+  try {
+    const db = getPool();
+    const locationId = await getLocationIdByMenuqrSlug(locationSlug);
+    if (!locationId) return [];
+
+    const today = toDateOnlySql(getEasternDate());
+    const result = await db.query(`
+      SELECT
+        f.id,
+        f.theme,
+        f.description,
+        f."flightDate",
+        f."flightEndDate",
+        f."regularPriceOverride",
+        f."fridayPriceOverride",
+        f."displayOrder",
+        p."displayOrder" AS "pourDisplayOrder",
+        COALESCE(NULLIF(TRIM(p."displayName"), ''), sp.name) AS "spiritName",
+        COALESCE(p."pourSizeOz", 1) AS "pourSizeOz",
+        slp."oneOzPrice"
+      FROM "SpiritFlight" f
+      JOIN "SpiritFlightPour" p ON p."flightId" = f.id
+      JOIN "SpiritLocationPrice" slp ON slp."locationProductId" = p."locationProductId"
+      JOIN "SpiritProduct" sp ON sp."productId" = slp."productId"
+      WHERE f."locationId" = $1
+        AND f.status = 'ACTIVE'
+        AND f."isFridayFlight" = true
+        AND f."flightEndDate" IS NOT NULL
+        AND f."flightDate" <= $2::date
+        AND f."flightEndDate" >= $2::date
+      ORDER BY f."displayOrder" ASC, f.theme ASC, p."displayOrder" ASC
+    `, [locationId, today]);
+
+    if (!result.rows.length) return [];
+
+    const flightsMap = new Map();
+    for (const row of result.rows) {
+      if (!flightsMap.has(row.id)) {
+        flightsMap.set(row.id, {
+          id: row.id,
+          theme: row.theme,
+          description: row.description || null,
+          regularPriceOverride: row.regularPriceOverride ? parseFloat(row.regularPriceOverride) : null,
+          fridayPriceOverride: row.fridayPriceOverride ? parseFloat(row.fridayPriceOverride) : null,
+          pours: [],
+        });
+      }
+      flightsMap.get(row.id).pours.push(row);
+    }
+
+    const flights = [];
+    for (const flight of flightsMap.values()) {
+      const calculatedRegular = flight.pours.reduce((sum, row) => {
+        const price = row.oneOzPrice ? parseFloat(row.oneOzPrice) : 0;
+        return sum + (Number.isFinite(price) ? price : 0);
+      }, 0);
+      const regularPrice = flight.regularPriceOverride != null ? flight.regularPriceOverride : calculatedRegular;
+      const fridayPrice = flight.fridayPriceOverride != null ? flight.fridayPriceOverride : Math.max(regularPrice - FRIDAY_FLIGHT_DISCOUNT, 0);
+      const pourNames = flight.pours.map((r) => r.spiritName);
+
+      flights.push({
+        id: flight.id,
+        theme: flight.theme,
+        description: flight.description,
+        regularPrice: formatCurrency(regularPrice),
+        fridayPrice: formatCurrency(fridayPrice),
+        pourNames,
+      });
+    }
+
+    return flights;
+  } catch (err) {
+    console.error('Error fetching extended Friday flights:', err.message);
+    return [];
+  }
+}
+
 async function hasFeaturedFlights(locationSlug) {
   try {
     const db = getPool();
@@ -711,6 +789,7 @@ module.exports = {
   getSpiritFlight,
   getFeaturedFlights,
   hasFeaturedFlights,
+  getExtendedFridayFlights,
   getUpcomingSpiritFlightsAdmin,
   buildSpiritFlightBuilderUrl,
 };

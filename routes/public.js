@@ -32,6 +32,7 @@ const {
   getSpiritFlight,
   getFeaturedFlights,
   hasFeaturedFlights,
+  getExtendedFridayFlights,
 } = require('../bartenderDb');
 const { generateDraftPage } = require('../views/draftPage');
 const { generateFlightsPage } = require('../views/flightsPage');
@@ -1183,11 +1184,16 @@ async function handlePublic(req, res, pathname, prisma) {
         } catch (err) { console.warn('Menu load error:', err.message); }
       }
       let showFlightsButton = false;
+      let featuredFlights = [];
       try {
         showFlightsButton = await hasFeaturedFlights(slug);
       } catch (err) { console.warn('Featured flights check error:', err.message); }
+      try {
+        featuredFlights = await getExtendedFridayFlights(slug);
+        if (featuredFlights.length > 0) showFlightsButton = true;
+      } catch (err) { console.warn('Extended flights check error:', err.message); }
       const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}`, null);
-      sendHTML(res, 200, injectTracking(generateLocationPage(location, locs, menuCategories, { showFlightsButton }), sid));
+      sendHTML(res, 200, injectTracking(generateLocationPage(location, locs, menuCategories, { showFlightsButton, featuredFlights }), sid));
       return true;
     }
     sendHTML(res, 404, '<h1>Location not found</h1><p><a href="/">Back to locations</a></p>');

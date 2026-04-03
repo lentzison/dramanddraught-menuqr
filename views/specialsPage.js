@@ -251,7 +251,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
   }
 
   let _flightNoteId = 0;
-  const flightSection = fridayFlights.length > 0 ? `
+  const flightSection = (isToday && fridayFlights.length > 0) ? `
     <div class="section">
       <div class="section-header">
         <h2>${isFriday ? "This Friday's" : 'Featured'} Flight${fridayFlights.length > 1 ? 's' : ''}</h2>

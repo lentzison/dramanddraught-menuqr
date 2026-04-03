@@ -78,8 +78,20 @@ async function seedSnacks() {
     try {
       const loc = await prisma.location.findFirst({ where: { slug, isActive: true } });
       if (!loc) continue;
-      const existing = await prisma.menuCategory.findFirst({ where: { locationId: loc.id, name: 'Snacks' } });
-      if (existing) continue;
+      const existing = await prisma.menuCategory.findFirst({ where: { locationId: loc.id, name: 'Snacks' }, include: { items: true } });
+      if (existing) {
+        // Update existing item prices to match seed data
+        for (const seedItem of items) {
+          const match = (existing.items || []).find(i => i.name === seedItem.name);
+          if (match && (Number(match.price) !== seedItem.price || (seedItem.description && match.description !== seedItem.description))) {
+            const data = { price: seedItem.price };
+            if (seedItem.description) data.description = seedItem.description;
+            await prisma.menuItem.update({ where: { id: match.id }, data });
+            console.log(`Updated ${slug} snack "${seedItem.name}" price to $${seedItem.price}.`);
+          }
+        }
+        continue;
+      }
       const cats = await prisma.menuCategory.findMany({ where: { locationId: loc.id }, orderBy: { displayOrder: 'desc' }, take: 1 });
       const nextOrder = cats.length > 0 ? cats[0].displayOrder + 1 : 0;
       await prisma.menuCategory.create({

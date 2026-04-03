@@ -434,10 +434,11 @@ async function handleSpecials(req, res, prisma, parsedUrl, location) {
       console.warn('Bartender DB error loading Friday flight:', err.message);
     }
 
-    if (viewingDay === 'FRIDAY') {
-      fridayFlights = bartenderFlightState.items || [];
-      flight = bartenderFlightState.item;
+    // Always populate fridayFlights from bartender state (extended flights show every day)
+    fridayFlights = bartenderFlightState.items || [];
+    flight = bartenderFlightState.item;
 
+    if (viewingDay === 'FRIDAY') {
       if (fridayFlights.length === 0) {
         try {
           const legacyFlight = await loadFlightForLocation(prisma, loc, month, year, true);
@@ -1183,14 +1184,11 @@ async function handlePublic(req, res, pathname, prisma) {
         } catch (err) { console.warn('Menu load error:', err.message); }
       }
       let showFlightsButton = false;
-      let featuredFlights = [];
       try {
-        const result = await getFeaturedFlights(slug);
-        featuredFlights = result.items || [];
-        showFlightsButton = featuredFlights.length > 0;
+        showFlightsButton = await hasFeaturedFlights(slug);
       } catch (err) { console.warn('Featured flights check error:', err.message); }
       const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}`, null);
-      sendHTML(res, 200, injectTracking(generateLocationPage(location, locs, menuCategories, { showFlightsButton, featuredFlights }), sid));
+      sendHTML(res, 200, injectTracking(generateLocationPage(location, locs, menuCategories, { showFlightsButton }), sid));
       return true;
     }
     sendHTML(res, 404, '<h1>Location not found</h1><p><a href="/">Back to locations</a></p>');

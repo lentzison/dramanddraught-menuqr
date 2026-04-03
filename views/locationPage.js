@@ -7,7 +7,6 @@ function escHTML(s) {
 }
 
 function generateLocationPage(location, allLocations = [], menuCategories = [], options = {}) {
-  const featuredFlights = options.featuredFlights || [];
   const quickLinks = [
     { label: "Today's Specials", url: `/${location.slug}/specials` },
     { label: 'On Draft', url: `/${location.slug}/draft` },
@@ -421,61 +420,6 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
           font-size: 0.78rem;
           margin-top: 2px;
         }
-        .featured-flight {
-          display: block;
-          text-align: center;
-          text-decoration: none;
-          margin: 14px auto 0;
-          max-width: 480px;
-          padding: 14px 20px;
-          border: 1px solid rgba(210,170,103,0.3);
-          border-radius: 14px;
-          background: linear-gradient(180deg, rgba(210,170,103,0.06), rgba(210,170,103,0.02));
-          transition: border-color 0.2s, transform 0.15s, background 0.2s;
-        }
-        .featured-flight:hover {
-          border-color: rgba(210,170,103,0.55);
-          background: linear-gradient(180deg, rgba(210,170,103,0.1), rgba(210,170,103,0.04));
-          transform: translateY(-1px);
-        }
-        .featured-flight .ff-label {
-          display: block;
-          color: var(--gold);
-          font-size: 0.68rem;
-          font-weight: 800;
-          letter-spacing: 0.18em;
-          text-transform: uppercase;
-          margin-bottom: 3px;
-        }
-        .featured-flight .ff-theme {
-          display: block;
-          color: var(--cream);
-          font-size: 1.05rem;
-          font-weight: 800;
-        }
-        .featured-flight .ff-pours {
-          display: block;
-          color: var(--muted);
-          font-size: 0.78rem;
-          margin-top: 4px;
-        }
-        .featured-flight .ff-price {
-          display: inline-block;
-          margin-top: 8px;
-          background: linear-gradient(180deg, var(--accent-light), var(--gold) 64%, var(--amber));
-          color: var(--ink);
-          font-weight: 800;
-          padding: 3px 12px;
-          border-radius: 6px;
-          font-size: 0.85rem;
-        }
-        .featured-flight .ff-discount {
-          display: block;
-          color: var(--gold);
-          font-size: 0.72rem;
-          font-weight: 600;
-          margin-top: 4px;
-        }
         .menu-section {
           max-width: 480px;
           margin: 18px auto 6px;
@@ -631,18 +575,6 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
         <span class="event-detail">Bartender Speed Competition &middot; 7 PM</span>
       </a>
       ` : ''}
-      ${featuredFlights.map((ff) => {
-        const pourNames = (ff.pours || []).map((p) => escHTML(p.spiritName)).join(' &bull; ');
-        return `
-      <a href="/${location.slug}/flights" class="featured-flight stagger" style="animation-delay:0.06s;">
-        <span class="ff-label">${ff.isFridayFlight ? 'Friday Flight' : 'Featured Flight'}</span>
-        <span class="ff-theme">${escHTML(ff.theme)}</span>
-        ${ff.description ? `<span class="ff-pours">${escHTML(ff.description)}</span>` : ''}
-        <span class="ff-pours">${pourNames}</span>
-        <span class="ff-price">${escHTML(ff.priceLabel)}</span>
-        ${ff.fridayPriceLabel ? '<span class="ff-discount">Friday flight discount applied!</span>' : ''}
-      </a>`;
-      }).join('')}
       ${menuCategories.length > 0 ? menuCategories.map(cat => `
       <div class="menu-section">
         <div class="menu-section-hdr">${escHTML(cat.name)}</div>

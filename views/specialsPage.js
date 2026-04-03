@@ -183,8 +183,8 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
     return `<a href="${href}" class="day-tab${isCurrent ? ' active' : ''}${isActualToday ? ' today' : ''}" aria-label="View ${DAY_SHORT[d]} specials">${DAY_SHORT[d]}</a>`;
   }).join('');
 
-  // Search + filter controls
-  const searchSectionUI = specialsForDisplay.length ? `
+  // Search + filter controls (hidden on Friday flight night)
+  const searchSectionUI = (specialsForDisplay.length && !isFriday) ? `
     <div class="section">
       <div class="section-header">
         <h2>Search this lineup</h2>
@@ -250,41 +250,56 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
     }
   }
 
-  const flightSection = (isFriday && fridayFlights.length > 0) ? `
+  let _flightNoteId = 0;
+  const flightSection = fridayFlights.length > 0 ? `
     <div class="section">
       <div class="section-header">
-        <h2>This Friday's Flight${fridayFlights.length > 1 ? 's' : ''}</h2>
+        <h2>${isFriday ? "This Friday's" : 'Featured'} Flight${fridayFlights.length > 1 ? 's' : ''}</h2>
       </div>
-      ${fridayFlights.map((f) => `
+      ${fridayFlights.map((f) => {
+        const noteBlockId = `specials-flight-notes-${++_flightNoteId}`;
+        const priceLabel = isFriday
+          ? (f.fridayPriceLabel || f.price)
+          : (f.regularPriceLabel || f.price);
+        const discountNote = isFriday && f.regularPriceLabel
+          ? `<div class="flight-price-regular">Regular ${escHTML(f.regularPriceLabel)} during the week</div>`
+          : (!isFriday && f.fridayPriceLabel
+            ? `<div class="flight-price-regular">${escHTML(f.fridayPriceLabel)} on Fridays</div>`
+            : '');
+        return `
         <div class="flight-card" ${fridayFlights.length > 1 ? 'style="margin-bottom: 16px;"' : ''}>
           <div class="flight-theme">${escHTML(f.theme)}</div>
           ${f.description ? `<div class="flight-desc">${escHTML(f.description)}</div>` : ''}
-          ${(f.fridayPriceLabel || f.price || f.regularPriceLabel) ? `
+          ${priceLabel ? `
             <div class="flight-price-wrap">
-              ${f.fridayPriceLabel || f.price ? `<div class="flight-price">${escHTML(f.fridayPriceLabel || f.price)}</div>` : ''}
-              ${f.regularPriceLabel ? `<div class="flight-price-regular">Regular ${escHTML(f.regularPriceLabel)} during the week</div>` : ''}
+              <div class="flight-price">${escHTML(priceLabel)}</div>
+              ${discountNote}
             </div>
           ` : ''}
-          <div class="pours">
-            ${(f.pours || []).sort((a,b) => a.displayOrder - b.displayOrder).map((p, i) => `
-              <div class="pour">
-                <div class="pour-number">${i + 1}</div>
-                <div class="pour-info">
-                  <div class="pour-name">${escHTML(p.spiritName)}</div>
-                  ${p.description ? `<div class="pour-origin">${escHTML(p.description)}</div>` : ''}
-                  ${p.guestNotes || p.tastingNotes
-                    ? renderBottleTastingNotes({
-                        guestNotes: p.guestNotes || null,
-                        notes: p.tastingNotes || '',
-                      })
-                    : ''}
-                  ${p.pourSize ? `<div class="pour-size">${escHTML(p.pourSize)}</div>` : ''}
+          <div class="flight-pour-names">${(f.pours || []).sort((a,b) => a.displayOrder - b.displayOrder).map((p) => escHTML(p.spiritName)).join(' &bull; ')}</div>
+          <button class="flight-expand-btn" onclick="var el=document.getElementById('${noteBlockId}');var open=el.classList.toggle('flight-notes-open');this.textContent=open?'Hide tasting notes':'See tasting notes';">See tasting notes</button>
+          <div class="flight-notes-detail" id="${noteBlockId}">
+            <div class="pours">
+              ${(f.pours || []).sort((a,b) => a.displayOrder - b.displayOrder).map((p, i) => `
+                <div class="pour">
+                  <div class="pour-number">${i + 1}</div>
+                  <div class="pour-info">
+                    <div class="pour-name">${escHTML(p.spiritName)}</div>
+                    ${p.description ? `<div class="pour-origin">${escHTML(p.description)}</div>` : ''}
+                    ${p.guestNotes || p.tastingNotes
+                      ? renderBottleTastingNotes({
+                          guestNotes: p.guestNotes || null,
+                          notes: p.tastingNotes || '',
+                        })
+                      : ''}
+                    ${p.pourSize ? `<div class="pour-size">${escHTML(p.pourSize)}</div>` : ''}
+                  </div>
                 </div>
-              </div>
-            `).join('')}
+              `).join('')}
+            </div>
           </div>
         </div>
-      `).join('')}
+      `}).join('')}
     </div>
   ` : '';
 
@@ -371,8 +386,8 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
     </div>
   ` : '';
 
-  // Friday flight teaser (non-Friday days only)
-  const flightTeaser = (!isFriday && fridayFlight) ? `
+  // Friday flight teaser (non-Friday days, only if no extended flights are already showing)
+  const flightTeaser = (!isFriday && fridayFlights.length === 0 && fridayFlight) ? `
     <div class="teaser-card">
       <div class="teaser-label">This Friday</div>
       <div class="teaser-title">Flight Night</div>
@@ -795,6 +810,23 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           font-size: 0.95rem;
         }
         .flight-price-regular { margin-top: 6px; color: var(--muted); font-size: 0.82rem; }
+        .flight-pour-names { color: var(--muted); font-size: 0.82rem; margin-bottom: 10px; line-height: 1.5; }
+        .flight-expand-btn {
+          background: none;
+          border: 1px solid rgba(245,232,204,0.18);
+          color: var(--gold);
+          font-size: 0.78rem;
+          font-weight: 600;
+          padding: 6px 14px;
+          border-radius: 8px;
+          cursor: pointer;
+          letter-spacing: 0.02em;
+          width: 100%;
+          margin-bottom: 4px;
+        }
+        .flight-expand-btn:hover { background: rgba(245,232,204,0.08); }
+        .flight-notes-detail { display: none; margin-top: 10px; }
+        .flight-notes-detail.flight-notes-open { display: block; }
         .pours { display: flex; flex-direction: column; gap: 10px; }
         .pour {
           display: flex;

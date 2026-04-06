@@ -1614,15 +1614,17 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       const baseUrl = proto + '://' + hostHeader;
       const linkLocationOptions = locations.map(l => '<option value="' + esc(l.slug) + '">' + esc(l.name) + '</option>').join('');
 
-      // Load events per location for the link builder dropdown
+      // Load events per location for the link builder dropdown.
+      // Include inactive events with a "(draft)" label so admins can prep
+      // links for events that aren't live yet.
       let eventsByLocation = {};
       try {
         if (prisma.event) {
           const allEvents = await prisma.event.findMany({
-            where: { isActive: true, isCancelled: false },
+            where: { isCancelled: false },
             orderBy: [{ startDate: 'desc' }],
-            select: { id: true, slug: true, title: true, locationId: true, startDate: true },
-            take: 200,
+            select: { id: true, slug: true, title: true, locationId: true, startDate: true, isActive: true },
+            take: 300,
           });
           const locById = {};
           locations.forEach(l => { locById[l.id] = l.slug; });
@@ -1630,7 +1632,10 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
             const slug = locById[ev.locationId];
             if (!slug || !ev.slug) return;
             if (!eventsByLocation[slug]) eventsByLocation[slug] = [];
-            eventsByLocation[slug].push({ slug: ev.slug, title: ev.title });
+            eventsByLocation[slug].push({
+              slug: ev.slug,
+              title: ev.title + (ev.isActive ? '' : ' (draft)'),
+            });
           });
         }
       } catch (err) {

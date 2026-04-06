@@ -247,6 +247,16 @@ function renderCustomFields(event, prevValues = {}) {
           <option value="No"${prev === 'No' ? ' selected' : ''}>No</option>
         </select>`;
     }
+    if (q.type === 'image') {
+      const hasPrev = !!prev && /^(data:image|https?:\/\/)/i.test(prev);
+      return `<label for="cq-${escHTML(q.id)}-file">${escHTML(q.label)}${reqMark}</label>
+        <div class="ev-cq-image-wrap">
+          <input type="file" id="cq-${escHTML(q.id)}-file" class="ev-cq-image-file" data-target="cq-${escHTML(q.id)}" accept="image/jpeg,image/png,image/webp,image/gif" />
+          <input type="hidden" id="cq-${escHTML(q.id)}" name="cq_${escHTML(q.id)}" value="${hasPrev ? escHTML(prev) : ''}"${req} />
+          <div class="ev-cq-image-hint">Max ~500&#8239;KB. JPG/PNG/WebP.</div>
+          <img class="ev-cq-image-preview" id="cq-${escHTML(q.id)}-preview" src="${hasPrev ? escHTML(prev) : ''}" alt="" style="${hasPrev ? '' : 'display:none'}" />
+        </div>`;
+    }
     return `<label for="cq-${escHTML(q.id)}">${escHTML(q.label)}${reqMark}</label>
       <input type="text" id="cq-${escHTML(q.id)}" name="cq_${escHTML(q.id)}" value="${escHTML(prev)}"${req} />`;
   }).join('');
@@ -326,36 +336,62 @@ function generateEventPage(location, event, signupCount, options = {}) {
         }
         .ev-back:hover { color: var(--gold); }
         .ev-hero {
+          position: relative;
           background:
-            linear-gradient(180deg, rgba(24,25,28,0.95), rgba(15,16,18,0.98)),
-            radial-gradient(circle at top, rgba(210,170,103,0.1), transparent 60%);
+            linear-gradient(180deg, rgba(24,25,28,0.97), rgba(7,7,8,0.99)),
+            radial-gradient(circle at top, rgba(210,170,103,0.18), transparent 55%);
           border: 1px solid var(--line);
-          border-radius: 20px;
-          padding: 26px 22px;
-          margin-bottom: 22px;
-          box-shadow: 0 18px 48px var(--shadow);
+          border-radius: 0 0 28px 28px;
+          border-top: 0;
+          padding: 38px 24px 34px;
+          margin: 0 -2px 30px;
+          box-shadow: 0 22px 58px var(--shadow), inset 0 0 0 1px rgba(255,255,255,0.04);
           text-align: center;
         }
-        .ev-hero .brand-mark { max-width: 200px; margin: 0 auto 14px; }
+        .ev-hero::before {
+          content: '';
+          position: absolute;
+          left: 50%;
+          top: 0;
+          transform: translateX(-50%);
+          width: 60%;
+          max-width: 280px;
+          height: 1px;
+          background: linear-gradient(90deg, transparent, var(--gold), transparent);
+          opacity: 0.6;
+        }
+        .ev-hero .brand-mark { max-width: 260px; margin: 4px auto 22px; }
         .ev-hero-eyebrow {
           color: var(--gold);
-          font-size: 0.68rem;
+          font-size: 0.7rem;
           font-weight: 800;
-          letter-spacing: 0.22em;
+          letter-spacing: 0.28em;
           text-transform: uppercase;
-          margin-bottom: 6px;
+          margin-bottom: 12px;
+          opacity: 0.85;
         }
         .ev-hero-title {
-          font-family: 'Playfair Display', Georgia, serif;
-          font-size: 1.8rem;
+          font-family: 'Playfair Display', 'Iowan Old Style', Georgia, serif;
+          font-size: clamp(2.1rem, 8vw, 3rem);
           font-weight: 800;
-          line-height: 1.15;
+          line-height: 1.05;
+          letter-spacing: -0.01em;
           color: var(--text);
-          margin-bottom: 10px;
+          margin: 0 0 14px;
+          text-shadow: 0 4px 24px rgba(0,0,0,0.6);
+        }
+        .ev-hero-divider {
+          width: 56px;
+          height: 1px;
+          background: var(--gold);
+          opacity: 0.5;
+          margin: 14px auto 16px;
         }
         .ev-hero-location {
-          color: var(--muted);
-          font-size: 0.9rem;
+          color: var(--steel);
+          font-size: 0.92rem;
+          font-style: italic;
+          letter-spacing: 0.04em;
         }
         .ev-banner-img {
           width: 100%;
@@ -437,28 +473,41 @@ function generateEventPage(location, event, signupCount, options = {}) {
 
         /* ─── Page sections ─── */
         .ev-sec {
-          margin-bottom: 22px;
+          margin-bottom: 26px;
         }
         .ev-sec-text {
-          background: var(--panel);
+          background: linear-gradient(180deg, rgba(24,25,28,0.95), rgba(15,16,18,0.98));
           border: 1px solid var(--line);
-          border-radius: 16px;
-          padding: 22px 24px;
+          border-radius: 18px;
+          padding: 28px 26px;
+          box-shadow: 0 12px 32px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(255,255,255,0.025);
         }
         .ev-sec-heading {
-          font-family: 'Playfair Display', Georgia, serif;
-          color: var(--gold);
-          font-size: 1.3rem;
+          font-family: 'Playfair Display', 'Iowan Old Style', Georgia, serif;
+          color: var(--text);
+          font-size: clamp(1.4rem, 5vw, 1.7rem);
           font-weight: 800;
-          margin-bottom: 12px;
-          line-height: 1.2;
+          margin-bottom: 14px;
+          line-height: 1.15;
+          letter-spacing: -0.005em;
         }
+        .ev-sec-text .ev-sec-heading::after {
+          content: '';
+          display: block;
+          width: 36px;
+          height: 1px;
+          background: var(--gold);
+          opacity: 0.6;
+          margin-top: 10px;
+        }
+        .ev-sec-text.ev-sec-align-center .ev-sec-heading::after { margin-left: auto; margin-right: auto; }
+        .ev-sec-text.ev-sec-align-right .ev-sec-heading::after { margin-left: auto; }
         .ev-sec-body {
           color: var(--steel);
-          font-size: 0.95rem;
-          line-height: 1.65;
+          font-size: 1rem;
+          line-height: 1.7;
         }
-        .ev-sec-body p { margin-bottom: 10px; }
+        .ev-sec-body p { margin-bottom: 12px; }
         .ev-sec-body p:last-child { margin-bottom: 0; }
 
         .ev-sec-image {
@@ -481,17 +530,29 @@ function generateEventPage(location, event, signupCount, options = {}) {
         }
 
         .ev-sec-details {
-          background: var(--panel);
+          background: linear-gradient(180deg, rgba(24,25,28,0.95), rgba(15,16,18,0.98));
           border: 1px solid var(--line);
-          border-radius: 16px;
-          padding: 22px 24px;
+          border-radius: 18px;
+          padding: 26px 26px 22px;
+          box-shadow: 0 12px 32px rgba(0,0,0,0.35);
         }
         .ev-sec-details-title {
-          font-family: 'Playfair Display', Georgia, serif;
-          color: var(--gold);
-          font-size: 1.15rem;
+          font-family: 'Playfair Display', 'Iowan Old Style', Georgia, serif;
+          color: var(--text);
+          font-size: 1.4rem;
           font-weight: 800;
-          margin-bottom: 14px;
+          margin-bottom: 18px;
+          line-height: 1.15;
+          text-align: center;
+        }
+        .ev-sec-details-title::after {
+          content: '';
+          display: block;
+          width: 36px;
+          height: 1px;
+          background: var(--gold);
+          opacity: 0.6;
+          margin: 10px auto 0;
         }
         .ev-sec-details-list { display: flex; flex-direction: column; gap: 0; }
         .ev-sec-details-row {
@@ -566,9 +627,15 @@ function generateEventPage(location, event, signupCount, options = {}) {
 
         /* ─── Background style modifiers ─── */
         .ev-sec-bg-gold {
-          background: linear-gradient(135deg, rgba(210,170,103,0.12), rgba(138,86,53,0.06)) !important;
-          border-color: rgba(210,170,103,0.35) !important;
+          background:
+            linear-gradient(180deg, rgba(24,25,28,0.92), rgba(15,16,18,0.95)),
+            radial-gradient(circle at 50% 0%, rgba(210,170,103,0.28), transparent 60%) !important;
+          border-color: rgba(210,170,103,0.45) !important;
+          box-shadow: 0 16px 36px rgba(210,170,103,0.08), inset 0 0 0 1px rgba(210,170,103,0.12) !important;
         }
+        .ev-sec-bg-gold .ev-sec-heading { color: var(--accent-light); }
+        .ev-sec-bg-gold .ev-sec-heading::after { background: var(--gold); opacity: 1; }
+        .ev-sec-bg-gold .ev-sec-details-title { color: var(--accent-light); }
         .ev-sec-bg-dark {
           background: #050505 !important;
           border-color: rgba(255,255,255,0.06) !important;
@@ -578,6 +645,7 @@ function generateEventPage(location, event, signupCount, options = {}) {
           border: none !important;
           padding-left: 0 !important;
           padding-right: 0 !important;
+          box-shadow: none !important;
         }
         .ev-sec-align-center { text-align: center; }
         .ev-sec-align-center .ev-sec-heading { text-align: center; }
@@ -803,6 +871,31 @@ function generateEventPage(location, event, signupCount, options = {}) {
           margin-bottom: 16px;
           font-size: 0.9rem;
         }
+        /* Image upload custom question */
+        .ev-cq-image-wrap {
+          background: var(--panel-strong);
+          border: 1px solid var(--line);
+          border-radius: 10px;
+          padding: 14px;
+        }
+        .ev-cq-image-wrap input[type="file"] {
+          width: 100%;
+          padding: 8px;
+          background: transparent;
+          border: 1px dashed var(--line-strong);
+          border-radius: 8px;
+          color: var(--steel);
+          cursor: pointer;
+        }
+        .ev-cq-image-hint { color: var(--smoke); font-size: 0.78rem; margin-top: 8px; }
+        .ev-cq-image-preview {
+          max-width: 200px;
+          max-height: 200px;
+          border-radius: 8px;
+          margin-top: 12px;
+          border: 1px solid var(--line);
+          display: block;
+        }
 
         @media (max-width: 480px) {
           .ev-hero { padding: 22px 16px; border-radius: 16px; }
@@ -818,8 +911,9 @@ function generateEventPage(location, event, signupCount, options = {}) {
 
         <div class="ev-hero">
           ${renderBrandMark()}
-          <div class="ev-hero-eyebrow">Event</div>
+          <div class="ev-hero-eyebrow">Presents</div>
           <h1 class="ev-hero-title">${escHTML(event.title)}</h1>
+          <div class="ev-hero-divider"></div>
           <div class="ev-hero-location">${escHTML(location.name)}</div>
         </div>
 
@@ -846,6 +940,30 @@ function generateEventPage(location, event, signupCount, options = {}) {
 
         ${form}
       </div>
+      <script>
+        // Image-upload custom questions: read file as base64 and store in
+        // the corresponding hidden input so it submits with the form.
+        document.addEventListener('change', function(e) {
+          if (!e.target.classList || !e.target.classList.contains('ev-cq-image-file')) return;
+          var input = e.target;
+          var targetId = input.getAttribute('data-target');
+          var hidden = document.getElementById(targetId);
+          var preview = document.getElementById(targetId + '-preview');
+          var file = input.files && input.files[0];
+          if (!file) return;
+          if (file.size > 750 * 1024) {
+            alert('Image is too large. Max ~500 KB. Try a smaller photo.');
+            input.value = '';
+            return;
+          }
+          var reader = new FileReader();
+          reader.onload = function() {
+            if (hidden) hidden.value = reader.result;
+            if (preview) { preview.src = reader.result; preview.style.display = ''; }
+          };
+          reader.readAsDataURL(file);
+        });
+      </script>
     </body>
     </html>
   `;

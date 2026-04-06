@@ -709,6 +709,7 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
             <option value="textarea"${q.type === 'textarea' ? ' selected' : ''}>Long text</option>
             <option value="number"${q.type === 'number' ? ' selected' : ''}>Number</option>
             <option value="yesno"${q.type === 'yesno' ? ' selected' : ''}>Yes / No</option>
+            <option value="image"${q.type === 'image' ? ' selected' : ''}>Image upload</option>
           </select>
         </div>
         <div class="cq-required-col">
@@ -723,7 +724,8 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
     </div>
   `).join('');
 
-  // Public URL preview (shown when editing)
+  // Public URL preview (shown when editing) — with quick source-tag buttons
+  // so each social post gets a properly tagged share link.
   let publicUrlBlock = '';
   if (!isNew) {
     const locSlug = event.location?.slug || '';
@@ -732,11 +734,24 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
       <div class="ev-public-url">
         <div class="ev-public-url-label">Share link</div>
         <div class="ev-public-url-row">
-          <input type="text" id="ev-share-url" readonly value="${escHTML(publicUrl ? (typeof window === 'undefined' ? publicUrl : '') : publicUrl)}" />
+          <input type="text" id="ev-share-url" data-base="${escHTML(publicUrl)}" readonly value="${escHTML(publicUrl)}" />
           <button type="button" id="ev-copy-url" class="btn btn-primary btn-sm">Copy</button>
-          ${publicUrl ? `<a href="${escHTML(publicUrl)}" target="_blank" class="btn btn-secondary btn-sm">Open ↗</a>` : ''}
+          ${publicUrl ? `<a id="ev-open-url" href="${escHTML(publicUrl)}" target="_blank" class="btn btn-secondary btn-sm">Open ↗</a>` : ''}
         </div>
-        <div class="ev-public-url-hint">Paste this link in your social posts and emails. Traffic will be tracked in Analytics.</div>
+        <div class="ev-public-url-hint">
+          Pick where you're sharing this link below. Each option adds a tag so Analytics can show you exactly which channel brought people in.
+        </div>
+        <div class="ev-share-buttons">
+          <button type="button" class="ev-share-btn" data-src="">No tag</button>
+          <button type="button" class="ev-share-btn" data-src="instagram">Instagram</button>
+          <button type="button" class="ev-share-btn" data-src="facebook">Facebook</button>
+          <button type="button" class="ev-share-btn" data-src="tiktok">TikTok</button>
+          <button type="button" class="ev-share-btn" data-src="website">Website</button>
+          <button type="button" class="ev-share-btn" data-src="email">Email</button>
+          <button type="button" class="ev-share-btn" data-src="sms">SMS</button>
+          <button type="button" class="ev-share-btn" data-src="qr">QR Code</button>
+        </div>
+        <div id="ev-share-status" class="ev-share-status"></div>
       </div>
     `;
   }
@@ -757,7 +772,23 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
       .ev-public-url-label { font-size:0.72rem; color:#93c5fd; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:8px; }
       .ev-public-url-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
       .ev-public-url-row input { flex:1; min-width:260px; background:#0d0d0d; color:#d4af37; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:0.85rem; }
-      .ev-public-url-hint { color:#888; font-size:0.78rem; margin-top:8px; }
+      .ev-public-url-hint { color:#888; font-size:0.78rem; margin-top:10px; }
+      .ev-share-buttons { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
+      .ev-share-btn {
+        background:#1a1a1d;
+        border:1px solid #333;
+        color:#ccc;
+        padding:7px 14px;
+        border-radius:18px;
+        font-size:0.78rem;
+        font-weight:600;
+        cursor:pointer;
+        font-family:inherit;
+        transition: all 0.15s;
+      }
+      .ev-share-btn:hover { border-color:#93c5fd; color:#93c5fd; }
+      .ev-share-btn.ev-share-btn-active { background:rgba(96,165,250,0.18); border-color:#60a5fa; color:#93c5fd; }
+      .ev-share-status { color:#4ade80; font-size:0.8rem; margin-top:8px; min-height:1.2em; }
 
       .ev-section {
         background:#1a1a1a;
@@ -1006,21 +1037,58 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
 
     <script>
       (function() {
-        // Set share URL using current host
+        // Share link with source-tag buttons:
+        //   - clicking a tag updates the share URL with ?src=<tag>
+        //   - the Copy button copies whatever's currently in the URL field
+        //   - the Open ↗ link opens the current URL
         var shareInput = document.getElementById('ev-share-url');
-        if (shareInput && shareInput.value && !shareInput.value.startsWith('http')) {
-          shareInput.value = window.location.origin + shareInput.value;
-        }
         var copyBtn = document.getElementById('ev-copy-url');
-        if (copyBtn && shareInput) {
-          copyBtn.addEventListener('click', function() {
-            shareInput.select();
-            try { navigator.clipboard.writeText(shareInput.value); } catch (e) { document.execCommand('copy'); }
-            var orig = copyBtn.textContent;
-            copyBtn.textContent = '✓ Copied!';
-            setTimeout(function() { copyBtn.textContent = orig; }, 1500);
+        var openLink = document.getElementById('ev-open-url');
+        var status = document.getElementById('ev-share-status');
+        var basePath = shareInput ? shareInput.getAttribute('data-base') : '';
+        var origin = window.location.origin;
+        var currentSrc = '';
+
+        function buildUrl(src) {
+          if (!basePath) return '';
+          var url = origin + basePath;
+          if (src) url += '?src=' + encodeURIComponent(src);
+          return url;
+        }
+        function applySrc(src) {
+          currentSrc = src || '';
+          if (shareInput) shareInput.value = buildUrl(currentSrc);
+          if (openLink) openLink.href = buildUrl(currentSrc);
+          // Update active button styling
+          document.querySelectorAll('.ev-share-btn').forEach(function(b) {
+            if (b.getAttribute('data-src') === currentSrc) b.classList.add('ev-share-btn-active');
+            else b.classList.remove('ev-share-btn-active');
           });
         }
+        function copyUrl() {
+          if (!shareInput) return;
+          shareInput.select();
+          try { navigator.clipboard.writeText(shareInput.value); }
+          catch (e) { document.execCommand('copy'); }
+          if (status) {
+            status.textContent = currentSrc
+              ? '\u2713 Copied! Tagged as ' + currentSrc + '.'
+              : '\u2713 Copied! (no source tag)';
+            setTimeout(function() { status.textContent = ''; }, 2500);
+          }
+        }
+
+        if (shareInput) {
+          // Initialize URL with the absolute origin so it's copy-ready
+          applySrc('');
+        }
+        if (copyBtn) copyBtn.addEventListener('click', copyUrl);
+        document.querySelectorAll('.ev-share-btn').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            applySrc(btn.getAttribute('data-src') || '');
+            copyUrl();
+          });
+        });
 
         // Custom question add/remove
         var cqList = document.getElementById('cq-list');
@@ -1038,6 +1106,7 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
                 '<option value="textarea">Long text</option>' +
                 '<option value="number">Number</option>' +
                 '<option value="yesno">Yes / No</option>' +
+                '<option value="image">Image upload</option>' +
               '</select></div>' +
               '<div class="cq-required-col"><label>&nbsp;</label><label class="ev-check"><input type="checkbox" name="custom_required_' + i + '" /> Required</label></div>' +
               '<div class="cq-del-col"><label>&nbsp;</label><button type="button" class="btn btn-danger btn-sm cq-remove">Remove</button></div>' +
@@ -1132,7 +1201,15 @@ function eventSignupsView(event, signups, user, flashMsg) {
 
   const rows = signups.map(s => {
     const answers = s.customAnswers || {};
-    const customCells = customDefs.map(q => `<td>${escHTML(answers[q.id] == null ? '' : String(answers[q.id]))}</td>`).join('');
+    const customCells = customDefs.map(q => {
+      const raw = answers[q.id];
+      if (raw == null || raw === '') return '<td><span style="color:#555">—</span></td>';
+      // Image questions: render a thumbnail
+      if (q.type === 'image' && /^(data:image|https?:\/\/)/i.test(String(raw))) {
+        return `<td><a href="${escHTML(raw)}" target="_blank" rel="noopener"><img src="${escHTML(raw)}" alt="${escHTML(q.label)}" style="max-width:80px; max-height:80px; border-radius:6px; border:1px solid #333; display:block;" /></a></td>`;
+      }
+      return `<td>${escHTML(String(raw))}</td>`;
+    }).join('');
     return `
       <tr>
         <td style="white-space:nowrap">${escHTML(formatFriendlyDate(s.createdAt))}</td>

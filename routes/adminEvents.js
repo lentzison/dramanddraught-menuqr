@@ -23,11 +23,40 @@ function slugify(value) {
     .slice(0, 60);
 }
 
+// Look up the Eastern Time UTC offset (in minutes) for a given calendar date.
+// Returns -240 (EDT) in summer, -300 (EST) in winter, automatically handling DST.
+function getEasternOffsetMinutes(year, month, day) {
+  // Make a UTC noon timestamp on that day, then format it in Eastern with timeZoneName.
+  // The short name is "EDT" or "EST" depending on DST status.
+  const probe = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  const formatted = probe.toLocaleString('en-US', {
+    timeZone: 'America/New_York',
+    timeZoneName: 'short',
+  });
+  // formatted ends with "EDT" or "EST"
+  return formatted.endsWith('EDT') ? -240 : -300;
+}
+
 function parseDateTimeLocal(value) {
   if (!value) return null;
-  // `datetime-local` inputs return "YYYY-MM-DDTHH:MM" (local time, no timezone)
-  // Interpret as local time on the server.
-  const d = new Date(value);
+  // `datetime-local` inputs return "YYYY-MM-DDTHH:MM" (no timezone).
+  // The admin enters the wall-clock time they want at the location, which
+  // for this business is Eastern. We must NOT use `new Date(value)` because
+  // that would interpret the input as the server's local timezone (UTC in
+  // production), shifting the time by 4 or 5 hours.
+  const m = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (!m) return null;
+  const year = parseInt(m[1], 10);
+  const month = parseInt(m[2], 10);
+  const day = parseInt(m[3], 10);
+  const hour = parseInt(m[4], 10);
+  const minute = parseInt(m[5], 10);
+  if ([year, month, day, hour, minute].some((n) => Number.isNaN(n))) return null;
+  const offsetMin = getEasternOffsetMinutes(year, month, day);
+  // Build the equivalent UTC timestamp: UTC = Eastern wall - offset
+  // (offset is negative for Eastern, so subtracting a negative adds)
+  const utcMs = Date.UTC(year, month - 1, day, hour, minute, 0) - offsetMin * 60 * 1000;
+  const d = new Date(utcMs);
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
@@ -163,7 +192,7 @@ function parseCustomQuestions(body) {
     const label = normalizeText(labels[i]);
     if (!label) continue;
     const type = (types[i] || 'text').toLowerCase();
-    const validType = ['text', 'textarea', 'number', 'yesno'].includes(type) ? type : 'text';
+    const validType = ['text', 'textarea', 'number', 'yesno', 'image'].includes(type) ? type : 'text';
     const required = body[`custom_required_${i}`] === 'on';
     questions.push({
       id: 'q_' + i + '_' + Math.random().toString(36).slice(2, 8),

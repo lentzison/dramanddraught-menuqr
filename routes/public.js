@@ -1205,12 +1205,21 @@ async function handlePublic(req, res, pathname, prisma) {
     if (!name) errors.push('Name is required.');
     if (event.collectEmail && !email) errors.push('Email is required.');
 
-    // Custom answers
+    // Custom answers — image questions can hold a base64 data URL up to ~750KB
     const customAnswers = {};
     const questions = Array.isArray(event.customQuestions) ? event.customQuestions : [];
     for (const q of questions) {
       const raw = body[`cq_${q.id}`];
-      const val = String(raw == null ? '' : raw).trim().slice(0, 500);
+      let val = String(raw == null ? '' : raw).trim();
+      if (q.type === 'image') {
+        // Accept either a data URL or http(s) URL; cap at ~750KB
+        if (val && !/^(data:image\/(jpeg|jpg|png|gif|webp);base64,|https?:\/\/)/i.test(val)) {
+          val = '';
+        }
+        if (val.length > 750 * 1024) val = '';
+      } else {
+        val = val.slice(0, 500);
+      }
       if (q.required && !val) errors.push(`${q.label} is required.`);
       if (val) customAnswers[q.id] = val;
     }

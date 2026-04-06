@@ -37,6 +37,7 @@ const { generateDraftPage } = require('../views/draftPage');
 const { generateFlightsPage } = require('../views/flightsPage');
 const { generateMenuPage } = require('../views/menuPage');
 const { generateLubricationCupPage } = require('../views/lubricationCupPage');
+const { generateEventPage, generateEventConfirmationPage, eventStatus } = require('../views/eventPage');
 const { trackPageView, buildTrackingScript } = require('../analytics');
 
 const DAYS_ORDER = Array.isArray(importDaysOrder) && importDaysOrder.length > 0 ? importDaysOrder : ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
@@ -1155,6 +1156,154 @@ async function handlePublic(req, res, pathname, prisma) {
     }
     const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/flights`, getQueryString(req));
     sendHTML(res, 200, injectTracking(generateFlightsPage(location, flights), sid));
+    return true;
+  }
+
+  // Event signup submission: POST /{slug}/events/{eventSlug}/signup
+  const eventSignupMatch = pathname.match(/^\/([a-z0-9-]+)\/events\/([a-z0-9-]+)\/signup$/);
+  if (eventSignupMatch && req.method === 'POST') {
+    const [, locSlug, eventSlug] = eventSignupMatch;
+    const locs = await getLocations(prisma);
+    const location = locs.find((l) => l.slug === locSlug);
+    if (!location || !prisma) {
+      sendHTML(res, 404, '<h1>Event not found</h1>');
+      return true;
+    }
+    const event = await prisma.event.findFirst({
+      where: { locationId: location.id, slug: eventSlug },
+    }).catch(() => null);
+    if (!event) {
+      sendHTML(res, 404, '<h1>Event not found</h1>');
+      return true;
+    }
+    const signupCount = await prisma.eventSignup.count({ where: { eventId: event.id } }).catch(() => 0);
+    const status = eventStatus(event, signupCount);
+    if (status.key !== 'open') {
+      // Re-render the page with the status banner
+      const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/events/${event.slug}`, getQueryString(req));
+      sendHTML(res, 200, injectTracking(generateEventPage(location, event, signupCount), sid));
+      return true;
+    }
+
+    const body = await parseBody(req);
+    const name = String(body.name || '').trim().slice(0, 120);
+    const email = String(body.email || '').trim().slice(0, 200) || null;
+    const phone = String(body.phone || '').trim().slice(0, 50) || null;
+    const partySizeRaw = parseInt(body.partySize, 10);
+    const partySize = Number.isFinite(partySizeRaw) && partySizeRaw > 0 ? Math.min(partySizeRaw, 50) : null;
+    const notes = String(body.notes || '').trim().slice(0, 1000) || null;
+
+    // Validate required fields
+    const errors = [];
+    if (!name) errors.push('Name is required.');
+    if (event.collectEmail && !email) errors.push('Email is required.');
+
+    // Custom answers
+    const customAnswers = {};
+    const questions = Array.isArray(event.customQuestions) ? event.customQuestions : [];
+    for (const q of questions) {
+      const raw = body[`cq_${q.id}`];
+      const val = String(raw == null ? '' : raw).trim().slice(0, 500);
+      if (q.required && !val) errors.push(`${q.label} is required.`);
+      if (val) customAnswers[q.id] = val;
+    }
+
+    if (errors.length > 0) {
+      const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/events/${event.slug}`, getQueryString(req));
+      sendHTML(res, 400, injectTracking(
+        generateEventPage(location, event, signupCount, {
+          prevValues: { name, email, phone, partySize, notes, ...Object.fromEntries(questions.map(q => [q.id, body[`cq_${q.id}`] || ''])) },
+          errorMessage: errors.join(' '),
+        }),
+        sid,
+      ));
+      return true;
+    }
+
+    // Get client IP
+    const fwd = req.headers['x-forwarded-for'];
+    const ip = fwd ? String(fwd).split(',')[0].trim() : (req.socket?.remoteAddress || null);
+
+    let signup;
+    try {
+      signup = await prisma.eventSignup.create({
+        data: {
+          eventId: event.id,
+          name,
+          email,
+          phone,
+          partySize,
+          notes,
+          customAnswers: Object.keys(customAnswers).length > 0 ? customAnswers : null,
+          ipAddress: ip,
+        },
+      });
+    } catch (err) {
+      console.error('Error creating event signup:', err.message);
+      const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/events/${event.slug}`, getQueryString(req));
+      sendHTML(res, 500, injectTracking(
+        generateEventPage(location, event, signupCount, {
+          prevValues: { name, email, phone, partySize, notes },
+          errorMessage: 'Something went wrong saving your signup. Please try again.',
+        }),
+        sid,
+      ));
+      return true;
+    }
+
+    // Best-effort notification email
+    if (event.notifyEmail) {
+      try {
+        const subject = `New signup: ${event.title}`;
+        const bodyLines = [
+          `New signup for "${event.title}" at ${location.name}`,
+          `Event date: ${event.startDate ? new Date(event.startDate).toLocaleString('en-US', { timeZone: 'America/New_York' }) : ''}`,
+          '',
+          `Name: ${name}`,
+          email ? `Email: ${email}` : null,
+          phone ? `Phone: ${phone}` : null,
+          partySize ? `Party size: ${partySize}` : null,
+          notes ? `Notes: ${notes}` : null,
+        ].filter(Boolean);
+        for (const q of questions) {
+          if (customAnswers[q.id]) bodyLines.push(`${q.label}: ${customAnswers[q.id]}`);
+        }
+        bodyLines.push('', `Total signups: ${signupCount + 1}${event.capacity ? ' / ' + event.capacity : ''}`);
+        await sendEmailViaGoogle({
+          to: event.notifyEmail,
+          subject,
+          body: bodyLines.join('\n'),
+        }).catch(err => console.warn('Event notify email failed:', err.message));
+      } catch (err) {
+        console.warn('Event notify email error:', err.message);
+      }
+    }
+
+    const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/events/${event.slug}/signup`, getQueryString(req));
+    sendHTML(res, 200, injectTracking(generateEventConfirmationPage(location, event, signup), sid));
+    return true;
+  }
+
+  // Event page: /{slug}/events/{eventSlug}
+  const eventPageMatch = pathname.match(/^\/([a-z0-9-]+)\/events\/([a-z0-9-]+)$/);
+  if (eventPageMatch) {
+    const [, locSlug, eventSlug] = eventPageMatch;
+    const locs = await getLocations(prisma);
+    const location = locs.find((l) => l.slug === locSlug);
+    if (!location || !prisma) {
+      sendHTML(res, 404, '<h1>Event not found</h1><p><a href="/">Back to home</a></p>');
+      return true;
+    }
+    const event = await prisma.event.findFirst({
+      where: { locationId: location.id, slug: eventSlug },
+    }).catch(() => null);
+    if (!event) {
+      sendHTML(res, 404, '<h1>Event not found</h1><p><a href="/">Back to home</a></p>');
+      return true;
+    }
+    const signupCount = await prisma.eventSignup.count({ where: { eventId: event.id } }).catch(() => 0);
+    const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/events/${event.slug}`, getQueryString(req));
+    sendHTML(res, 200, injectTracking(generateEventPage(location, event, signupCount), sid));
     return true;
   }
 

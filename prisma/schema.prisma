@@ -204,21 +204,65 @@ model MenuItem {
 }
 
 model Event {
-  id          String   @id @default(uuid())
-  locationId  String
-  title       String
-  description String?
-  startDate   DateTime
-  endDate     DateTime?
-  image       String?
-  isActive    Boolean  @default(true)
+  id               String    @id @default(uuid())
+  locationId       String
+  slug             String    // URL slug, unique per location
+  title            String
+  description      String?
+  startDate        DateTime  // When the event happens
+  endDate          DateTime?
+  image            String?   // Banner image URL
 
-  location    Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  // Promotion window — when the event is visible / accepting signups
+  promoteFrom      DateTime? // Defaults to createdAt if null
+  promoteUntil     DateTime? // Defaults to startDate if null
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  // Capacity
+  capacity         Int?      // null = unlimited
 
+  // Standard signup field toggles (name is always required)
+  collectEmail     Boolean   @default(true)
+  collectPhone     Boolean   @default(true)
+  collectPartySize Boolean   @default(false)
+  collectNotes     Boolean   @default(false)
+
+  // Custom questions as JSON: [{id, label, type, required}]
+  customQuestions  Json?
+
+  // Post-signup
+  confirmationMessage String?
+  notifyEmail      String?   // Email to notify when someone signs up
+
+  // State
+  isActive         Boolean   @default(true)
+  isCancelled      Boolean   @default(false)
+
+  location         Location       @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  signups          EventSignup[]
+
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([locationId, slug])
   @@index([locationId, startDate])
+  @@index([slug])
+}
+
+model EventSignup {
+  id            String   @id @default(uuid())
+  eventId       String
+  name          String
+  email         String?
+  phone         String?
+  partySize     Int?
+  notes         String?
+  customAnswers Json?
+  ipAddress     String?
+  createdAt     DateTime @default(now())
+
+  event         Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId, createdAt])
 }
 
 model BottleNotesCache {

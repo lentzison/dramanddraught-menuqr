@@ -251,6 +251,7 @@ function adminLayout(title, content, user, options = {}) {
         <a href="/admin/locations"${navClass('/admin/locations')}>Locations</a>
         <a href="/admin/specials"${navClass('/admin/specials')}>Daily Specials</a>
         <a href="/admin/menu"${navClass('/admin/menu')}>Food Menu</a>
+        <a href="/admin/events"${navClass('/admin/events')}>Events</a>
         <a href="/admin/flights"${navClass('/admin/flights')}>Flights</a>
         <a href="/admin/feedback"${navClass('/admin/feedback')}>Feedback</a>
         <a href="/admin/analytics"${navClass('/admin/analytics')}>Analytics</a>

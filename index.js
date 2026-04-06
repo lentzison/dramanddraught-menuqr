@@ -9,6 +9,7 @@ const { handlePublic } = require('./routes/public');
 const { handleAdmin } = require('./routes/admin');
 const { handleAdminSpecials } = require('./routes/adminSpecials');
 const { handleAdminMenu } = require('./routes/adminMenu');
+const { handleAdminEvents } = require('./routes/adminEvents');
 
 const PORT = parseInt(process.env.PORT || '80', 10);
 
@@ -38,6 +39,11 @@ const handler = async (req, res) => {
     // Admin food menu routes: /admin/menu, /admin/menu/:slug
     if (pathname.startsWith('/admin/menu')) {
       if (await handleAdminMenu(req, res, pathname, prisma)) return;
+    }
+
+    // Admin events routes: /admin/events, /admin/events/new, /admin/events/:id, /admin/events/:id/signups
+    if (pathname.startsWith('/admin/events')) {
+      if (await handleAdminEvents(req, res, pathname, prisma)) return;
     }
 
     // Admin routes: /admin/login, /admin/logout, /admin, /admin/seed, /admin/location/*

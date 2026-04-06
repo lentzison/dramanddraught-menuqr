@@ -1,5 +1,5 @@
-const { sendHTML, parseBody, redirect, getFlashMsg, fallbackLocations } = require('../helpers');
-const { authenticate, createSession, destroySession, requireAuth } = require('../auth');
+const { sendHTML, parseBody, redirect, getFlashMsg, fallbackLocations, sendJSON } = require('../helpers');
+const { authenticate, createSession, destroySession, requireAuth, refreshSession } = require('../auth');
 const { loginPage } = require('../views/adminLayout');
 const { locationsList, locationEditor } = require('../views/adminLocationViews');
 
@@ -73,6 +73,13 @@ async function handleAdmin(req, res, pathname, prisma) {
   if (pathname === '/admin/logout') {
     destroySession(req, res);
     redirect(res, '/admin/login');
+    return true;
+  }
+
+  // ─── Session keepalive ping (called from admin pages every few minutes) ───
+  if (pathname === '/admin/_ping') {
+    const ok = refreshSession(req, res);
+    sendJSON(res, ok ? 200 : 401, { ok });
     return true;
   }
 

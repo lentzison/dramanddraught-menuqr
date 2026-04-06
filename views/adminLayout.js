@@ -324,6 +324,97 @@ function adminLayout(title, content, user, options = {}) {
           }
         })();
       </script>` : ''}
+      <script>
+        // Session keepalive: ping every 5 minutes while the admin tab is open
+        // so an active editor never silently times out mid-edit.
+        (function() {
+          if (window.__adminPingStarted) return;
+          window.__adminPingStarted = true;
+          function ping() {
+            if (document.hidden) return;
+            fetch('/admin/_ping', { credentials: 'same-origin' }).catch(function() {});
+          }
+          setInterval(ping, 5 * 60 * 1000);
+          // Also ping when the tab regains focus
+          document.addEventListener('visibilitychange', function() {
+            if (!document.hidden) ping();
+          });
+        })();
+
+        // localStorage draft auto-save for forms with data-autosave="<key>".
+        // Restores any saved values on load and clears them on submit.
+        (function() {
+          if (window.__adminAutosaveStarted) return;
+          window.__adminAutosaveStarted = true;
+          var STORAGE_PREFIX = 'admin-draft:';
+
+          function snapshot(form) {
+            var data = {};
+            Array.from(form.elements).forEach(function(el) {
+              if (!el.name || el.type === 'file' || el.type === 'submit' || el.type === 'button') return;
+              if (el.type === 'checkbox') data[el.name] = el.checked;
+              else if (el.type === 'radio') { if (el.checked) data[el.name] = el.value; }
+              else data[el.name] = el.value;
+            });
+            return data;
+          }
+          function restore(form, data) {
+            if (!data) return;
+            Array.from(form.elements).forEach(function(el) {
+              if (!el.name || !(el.name in data)) return;
+              if (el.type === 'checkbox') el.checked = !!data[el.name];
+              else if (el.type === 'radio') el.checked = (el.value === data[el.name]);
+              else el.value = data[el.name];
+            });
+          }
+          function showRestoredBanner(form, savedAt) {
+            if (form.querySelector('.draft-banner')) return;
+            var banner = document.createElement('div');
+            banner.className = 'draft-banner';
+            banner.style.cssText = 'background:rgba(96,165,250,0.12); border:1px solid rgba(96,165,250,0.35); color:#93c5fd; padding:10px 14px; border-radius:8px; margin-bottom:14px; font-size:0.85rem; display:flex; align-items:center; gap:10px;';
+            var ago = Math.round((Date.now() - savedAt) / 60000);
+            banner.innerHTML = '<span>Restored an unsaved draft from ' + (ago < 1 ? 'just now' : ago + ' min ago') + '.</span>' +
+              '<button type="button" style="margin-left:auto; background:transparent; border:1px solid rgba(96,165,250,0.5); color:#93c5fd; padding:4px 10px; border-radius:6px; cursor:pointer; font-size:0.78rem;">Discard draft</button>';
+            banner.querySelector('button').addEventListener('click', function() {
+              var key = form.getAttribute('data-autosave');
+              localStorage.removeItem(STORAGE_PREFIX + key);
+              location.reload();
+            });
+            form.insertBefore(banner, form.firstChild);
+          }
+
+          document.querySelectorAll('form[data-autosave]').forEach(function(form) {
+            var key = form.getAttribute('data-autosave');
+            if (!key) return;
+            var storageKey = STORAGE_PREFIX + key;
+            // Restore on load
+            try {
+              var raw = localStorage.getItem(storageKey);
+              if (raw) {
+                var saved = JSON.parse(raw);
+                if (saved && saved.data && saved.savedAt) {
+                  restore(form, saved.data);
+                  showRestoredBanner(form, saved.savedAt);
+                }
+              }
+            } catch (e) { /* ignore */ }
+            // Save on input (debounced)
+            var saveTimer = null;
+            form.addEventListener('input', function() {
+              clearTimeout(saveTimer);
+              saveTimer = setTimeout(function() {
+                try {
+                  localStorage.setItem(storageKey, JSON.stringify({ data: snapshot(form), savedAt: Date.now() }));
+                } catch (e) { /* localStorage full or disabled */ }
+              }, 800);
+            });
+            // Clear on successful submit
+            form.addEventListener('submit', function() {
+              try { localStorage.removeItem(storageKey); } catch (e) {}
+            });
+          });
+        })();
+      </script>
     </body>
     </html>
   `;

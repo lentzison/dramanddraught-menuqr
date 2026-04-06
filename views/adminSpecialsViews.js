@@ -128,11 +128,13 @@ function renderHalfPricePicker(day, theme, actionUrl, spiritCatalog, spiritCateg
   return `
     <div class="card hp-picker" id="hp-picker">
       <style>
-        .hp-picker { background: #1a1a1a; border: 1px solid #2a2a2a; padding: 0; overflow: hidden; }
+        /* No overflow:hidden so position:sticky on .hp-summary works against the viewport */
+        .hp-picker { background: #1a1a1a; border: 1px solid #2a2a2a; padding: 0; border-radius: 12px; }
         .hp-picker .hp-head {
           padding: 20px 24px;
           background: linear-gradient(135deg, rgba(212,175,55,0.08), rgba(184,115,51,0.04));
           border-bottom: 1px solid #2a2a2a;
+          border-radius: 12px 12px 0 0;
         }
         .hp-picker .hp-head h2 { margin: 0 0 4px; font-size: 1.25rem; color: #d4af37; }
         .hp-picker .hp-head p { color: #888; font-size: 0.88rem; margin: 0; }

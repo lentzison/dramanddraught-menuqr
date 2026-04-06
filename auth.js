@@ -108,4 +108,22 @@ function requireAuth(req, res) {
   return session.user;
 }
 
-module.exports = { authenticate, createSession, destroySession, requireAuth, getSession };
+// Bump the session expiration so an open admin tab keeps the session alive.
+// Returns true if a session was found and refreshed, false otherwise.
+function refreshSession(req, res) {
+  const cookies = parseCookies(req);
+  const sessionId = cookies[COOKIE_NAME];
+  if (!sessionId) return false;
+  const session = sessions.get(sessionId);
+  if (!session) return false;
+  if (session.expiresAt < Date.now()) {
+    sessions.delete(sessionId);
+    return false;
+  }
+  session.expiresAt = Date.now() + SESSION_TTL;
+  // Refresh the cookie too so browser keeps it
+  setSessionCookie(res, sessionId);
+  return true;
+}
+
+module.exports = { authenticate, createSession, destroySession, requireAuth, getSession, refreshSession };

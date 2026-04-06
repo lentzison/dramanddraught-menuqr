@@ -862,7 +862,7 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
 
     ${publicUrlBlock}
 
-    <form method="POST" action="${actionUrl}" id="ev-form">
+    <form method="POST" action="${actionUrl}" id="ev-form" data-autosave="event-${escHTML(event?.id || 'new')}">
       <!-- ─── Basics ─── -->
       <div class="ev-section">
         <h2>Event Details</h2>

@@ -6,6 +6,11 @@ const FLASH_LABELS = {
   error: 'Something went wrong.',
 };
 
+// Brand name is configurable via the BRAND_NAME env var so a future
+// rebrand or white-label deployment doesn't require code changes.
+const BRAND_NAME = process.env.BRAND_NAME || 'Dram & Draught';
+const BRAND_NAME_SHORT = process.env.BRAND_NAME_SHORT || 'D&D';
+
 function escFlash(value) {
   return String(value || '')
     .replace(/&/g, '&amp;')
@@ -55,7 +60,7 @@ function adminLayout(title, content, user, options = {}) {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>${title} - Dram &amp; Draught Admin</title>
+      <title>${title} - ${BRAND_NAME} Admin</title>
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -284,19 +289,39 @@ function adminLayout(title, content, user, options = {}) {
         @media (max-width: 768px) {
           .grid-7 { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
           .form-row { flex-direction: column; }
-          .special-item { grid-template-columns: minmax(0, 1fr) auto; }
+          .special-item { grid-template-columns: minmax(0, 1fr); }
           .special-item .drag-handle { display: none; }
-          .special-meta { align-items: flex-start; }
-          .edit-form-inline { margin-left: 0; }
-          .admin-nav { gap: 8px; }
+          .special-meta { align-items: stretch; flex-direction: row; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+          .special-meta .btn,
+          .special-meta button,
+          .special-meta form { flex: 1 1 auto; }
+          .special-meta button.btn-sm { padding: 10px 12px; font-size: 0.85rem; min-height: 40px; }
+          .edit-form-inline { margin-left: 0; padding: 16px 14px; }
+          .admin-nav { gap: 4px; padding: 10px 14px; }
+          .admin-nav a { padding: 8px 10px; font-size: 0.82rem; }
+          .admin-content { padding: 18px 14px; }
           .hours-row { grid-template-columns: 70px 1fr auto 1fr auto; gap: 4px; }
           .link-row { grid-template-columns: 1fr; }
+          /* Bigger tap targets for all small buttons in admin */
+          .btn-sm { padding: 9px 14px; font-size: 0.85rem; min-height: 38px; min-width: 38px; }
+          /* Inline forms (reorder buttons, etc.) should wrap nicely */
+          .inline-form { flex-wrap: wrap; gap: 6px; }
+          .inline-form .btn-sm { min-height: 38px; min-width: 38px; }
+          /* Stack header rows that have a title + action button */
+          h1 { font-size: 1.5rem; }
+          h2 { font-size: 1.1rem; }
+        }
+        @media (max-width: 480px) {
+          .admin-nav { padding: 8px 10px; }
+          .admin-nav .brand { font-size: 1rem; margin-right: 6px; }
+          .admin-content { padding: 14px 10px; }
+          .card { padding: 14px; }
         }
       </style>
     </head>
     <body>
       <nav class="admin-nav">
-        <span class="brand">D&amp;D Admin</span>
+        <span class="brand">${BRAND_NAME_SHORT} Admin</span>
         <a href="/admin"${pathname === '/admin' || pathname === '/admin/dashboard' ? ' class="active"' : ''}>Dashboard</a>
         <a href="/admin/locations"${navClass('/admin/locations')}>Locations</a>
         <a href="/admin/specials"${navClass('/admin/specials')}>Daily Specials</a>
@@ -429,7 +454,7 @@ function loginPage(error) {
     <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Login - Dram &amp; Draught Admin</title>
+      <title>Login - ${BRAND_NAME} Admin</title>
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -500,7 +525,7 @@ function loginPage(error) {
     </head>
     <body>
       <div class="login-box">
-        <h1>Dram &amp; Draught</h1>
+        <h1>${BRAND_NAME}</h1>
         <p class="subtitle">Admin</p>
         ${error ? `<div class="error">${error}</div>` : ''}
         <form method="POST" action="/admin/login">

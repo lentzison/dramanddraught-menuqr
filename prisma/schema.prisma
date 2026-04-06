@@ -72,6 +72,9 @@ model DayTheme {
   name        String     // e.g. "Industry Night", "Classic Tuesday"
   tagline     String?
   description String?
+  // Optional hex color (e.g. "#d4af37") that themes the public specials
+  // page header for this day. Falls back to the brand gold if null.
+  themeColor  String?
   isActive    Boolean    @default(true)
 
   halfPriceConfig Json?    // Selection rules for half-price spirits (Wed/Thu)

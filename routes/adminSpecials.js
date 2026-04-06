@@ -679,14 +679,18 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       if (action === 'saveTheme') {
         // Prisma can't upsert on composite unique with null, so findFirst + create/update
         const existing = await prisma.dayTheme.findFirst({ where: { dayOfWeek: day, locationId: locationId } });
+        // Validate theme color: must be #RRGGBB or null
+        const colorRaw = (body.themeColor || '').trim();
+        const themeColor = /^#[0-9a-fA-F]{6}$/.test(colorRaw) && colorRaw.toLowerCase() !== '#d4af37'
+          ? colorRaw : null;
         if (existing) {
           await prisma.dayTheme.update({
             where: { id: existing.id },
-            data: { name: body.name, tagline: body.tagline || null, description: body.description || null, isActive: body.isActive === 'on' },
+            data: { name: body.name, tagline: body.tagline || null, description: body.description || null, themeColor, isActive: body.isActive === 'on' },
           });
         } else {
           await prisma.dayTheme.create({
-            data: { dayOfWeek: day, locationId: locationId, name: body.name, tagline: body.tagline || null, description: body.description || null, isActive: body.isActive === 'on' },
+            data: { dayOfWeek: day, locationId: locationId, name: body.name, tagline: body.tagline || null, description: body.description || null, themeColor, isActive: body.isActive === 'on' },
           });
         }
         writeAudit(prisma, req, user, {

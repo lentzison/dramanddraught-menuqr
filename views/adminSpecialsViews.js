@@ -966,6 +966,11 @@ function dayThemeEditor(day, theme, specials, locations, locationSlug, user, mes
         <input type="text" name="tagline" value="${escHTML(theme ? theme.tagline : '')}" placeholder="e.g. We take care of our own" />
         <label>Description</label>
         <textarea name="description" placeholder="Optional longer description">${escHTML(theme ? theme.description : '')}</textarea>
+        <label>Theme Color <span style="font-weight:400; color:#888; font-size:0.8rem">(optional &mdash; tints the public specials header for this day)</span></label>
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap">
+          <input type="color" name="themeColor" value="${escHTML(theme && theme.themeColor ? theme.themeColor : '#d4af37')}" style="width:60px; height:42px; padding:2px; cursor:pointer" />
+          <span style="color:#888; font-size:0.82rem">Click swatch to choose &mdash; default is brand gold</span>
+        </div>
         <label style="display:flex; align-items:center; gap:8px; margin-top:16px">
           <input type="checkbox" name="isActive" ${!theme || theme.isActive ? 'checked' : ''} style="width:auto" />
           <span>Active</span>

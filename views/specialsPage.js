@@ -1093,6 +1093,13 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
       ${dataWarningMessage}
 
       ${theme ? `
+        ${theme.themeColor && /^#[0-9a-fA-F]{6}$/.test(theme.themeColor) ? `
+          <style>
+            .theme-banner .theme-tagline { color: ${theme.themeColor}; }
+            .theme-banner .theme-day { color: ${theme.themeColor}; }
+            .theme-banner { border-color: ${theme.themeColor}40; }
+          </style>
+        ` : ''}
         <div class="theme-banner">
           <div class="theme-day">${dayLabel}${isToday ? '<span class="today-badge">TODAY</span>' : ''}</div>
           <div class="theme-name">${escHTML(theme.name)}</div>

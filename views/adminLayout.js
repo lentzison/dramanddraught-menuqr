@@ -297,6 +297,7 @@ function adminLayout(title, content, user, options = {}) {
     <body>
       <nav class="admin-nav">
         <span class="brand">D&amp;D Admin</span>
+        <a href="/admin"${pathname === '/admin' || pathname === '/admin/dashboard' ? ' class="active"' : ''}>Dashboard</a>
         <a href="/admin/locations"${navClass('/admin/locations')}>Locations</a>
         <a href="/admin/specials"${navClass('/admin/specials')}>Daily Specials</a>
         <a href="/admin/menu"${navClass('/admin/menu')}>Food Menu</a>

@@ -319,6 +319,10 @@ function eventsList(events, user, flashMsg) {
           <div class="ev-row-actions">
             <a href="/admin/events/${escHTML(ev.id)}/signups" class="btn btn-secondary btn-sm">View Signups</a>
             <a href="/admin/events/${escHTML(ev.id)}" class="btn btn-secondary btn-sm">Edit</a>
+            <form method="POST" action="/admin/events/${escHTML(ev.id)}" style="display:inline; margin:0;">
+              <input type="hidden" name="_action" value="duplicate" />
+              <button type="submit" class="btn btn-secondary btn-sm" title="Make a copy of this event">Copy</button>
+            </form>
             ${publicPath ? `<a href="${escHTML(publicPath)}" class="btn btn-secondary btn-sm" target="_blank">View ↗</a>` : ''}
           </div>
         </div>

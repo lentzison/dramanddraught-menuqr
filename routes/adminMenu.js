@@ -215,6 +215,37 @@ async function handleAdminMenu(req, res, pathname, prisma) {
           return true;
         }
 
+        if (action === 'duplicateItem') {
+          const itemId = String(body.itemId || '');
+          const original = await prisma.menuItem.findUnique({
+            where: { id: itemId },
+            include: { category: true },
+          });
+          if (!original || original.category.locationId !== location.id) {
+            redirect(res, `/admin/menu/${slug}`); return true;
+          }
+          const max = await prisma.menuItem.findFirst({
+            where: { categoryId: original.categoryId },
+            orderBy: { displayOrder: 'desc' },
+            select: { displayOrder: true },
+          });
+          const nextOrder = (max ? max.displayOrder : -1) + 1;
+          await prisma.menuItem.create({
+            data: {
+              categoryId: original.categoryId,
+              name: `${original.name} (copy)`,
+              description: original.description,
+              price: original.price,
+              image: original.image,
+              isFeatured: original.isFeatured,
+              isAvailable: original.isAvailable,
+              displayOrder: nextOrder,
+            },
+          });
+          redirect(res, `/admin/menu/${slug}?msg=created`);
+          return true;
+        }
+
         if (action === 'moveItem') {
           const itemId = String(body.itemId || '');
           const direction = String(body.direction || '');

@@ -908,9 +908,14 @@ function dayThemeEditor(day, theme, specials, locations, locationSlug, user, mes
         </form>
         <button type="button" class="btn btn-secondary btn-sm" onclick="toggleEdit('${s.id}')">Edit</button>
         <form method="POST" action="${actionUrl}" style="display:inline">
+          <input type="hidden" name="_action" value="duplicateSpecial" />
+          <input type="hidden" name="specialId" value="${s.id}" />
+          <button type="submit" class="btn btn-secondary btn-sm" title="Make a copy of this special">Copy</button>
+        </form>
+        <form method="POST" action="${actionUrl}" style="display:inline">
           <input type="hidden" name="_action" value="deleteSpecial" />
           <input type="hidden" name="specialId" value="${s.id}" />
-          <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Delete this special?')">Del</button>
+          <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Delete &quot;${escHTML(s.name)}&quot;?')">Del</button>
         </form>
       </div>
     </div>

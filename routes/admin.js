@@ -2,6 +2,101 @@ const { sendHTML, parseBody, redirect, getFlashMsg, fallbackLocations, sendJSON 
 const { authenticate, createSession, destroySession, requireAuth, refreshSession } = require('../auth');
 const { loginPage } = require('../views/adminLayout');
 const { locationsList, locationEditor } = require('../views/adminLocationViews');
+const { adminDashboard } = require('../views/adminDashboard');
+
+const DAYS = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+function getEasternToday() {
+  const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  return DAYS[now.getDay()];
+}
+
+// Build the per-location summary the dashboard renders.
+async function buildDashboardData(prisma) {
+  if (!prisma) return [];
+  const todayDay = getEasternToday();
+  const locations = await prisma.location.findMany({
+    where: { isActive: true },
+    orderBy: { name: 'asc' },
+    select: { id: true, slug: true, name: true, city: true },
+  }).catch(() => []);
+
+  const now = new Date();
+  return Promise.all(locations.map(async (loc) => {
+    const summary = {
+      location: loc,
+      todayTheme: null,
+      halfPriceCount: 0,
+      menuCategoryCount: 0,
+      menuItemCount: 0,
+      activeEventCount: 0,
+      nextEvent: null,
+    };
+
+    // Today's theme — prefer location override, fall back to company default
+    try {
+      const overrideTheme = await prisma.dayTheme.findFirst({
+        where: { dayOfWeek: todayDay, locationId: loc.id, isActive: true },
+        include: { specials: true },
+      });
+      const defaultTheme = !overrideTheme
+        ? await prisma.dayTheme.findFirst({
+            where: { dayOfWeek: todayDay, locationId: null, isActive: true },
+            include: { specials: true },
+          })
+        : null;
+      const theme = overrideTheme || defaultTheme;
+      if (theme) {
+        summary.todayTheme = {
+          name: theme.name,
+          tagline: theme.tagline || null,
+          specialsCount: (theme.specials || []).length,
+        };
+        const cfg = theme.halfPriceConfig;
+        if (cfg && Array.isArray(cfg.picks)) summary.halfPriceCount = cfg.picks.length;
+      }
+    } catch (err) { /* ignore — dashboard is best-effort */ }
+
+    // Food menu counts
+    try {
+      const cats = await prisma.menuCategory.findMany({
+        where: { locationId: loc.id, isActive: true },
+        select: { id: true, _count: { select: { items: true } } },
+      });
+      summary.menuCategoryCount = cats.length;
+      summary.menuItemCount = cats.reduce((s, c) => s + (c._count?.items || 0), 0);
+    } catch (err) {
+      // Fallback if _count include unsupported
+      try {
+        const cats = await prisma.menuCategory.findMany({ where: { locationId: loc.id, isActive: true } });
+        summary.menuCategoryCount = cats.length;
+        summary.menuItemCount = await prisma.menuItem.count({
+          where: { category: { locationId: loc.id, isActive: true } },
+        }).catch(() => 0);
+      } catch (e) { /* ignore */ }
+    }
+
+    // Active events (not cancelled, signups window includes now or upcoming)
+    try {
+      const events = await prisma.event.findMany({
+        where: {
+          locationId: loc.id,
+          isActive: true,
+          isCancelled: false,
+          startDate: { gte: now },
+        },
+        orderBy: { startDate: 'asc' },
+        select: { id: true, slug: true, title: true, startDate: true },
+        take: 10,
+      });
+      summary.activeEventCount = events.length;
+      if (events.length > 0) {
+        summary.nextEvent = events[0];
+      }
+    } catch (err) { /* ignore */ }
+
+    return summary;
+  }));
+}
 
 const WEEK_DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
@@ -83,9 +178,16 @@ async function handleAdmin(req, res, pathname, prisma) {
     return true;
   }
 
-  // ─── Redirect /admin to /admin/locations ───
-  if (pathname === '/admin') {
-    redirect(res, '/admin/locations');
+  // ─── Dashboard ───
+  if (pathname === '/admin' || pathname === '/admin/dashboard') {
+    const user = requireAuth(req, res);
+    if (!user) { redirect(res, '/admin/login'); return true; }
+    const flashMsg = getFlashMsg(req.url);
+    const dashboardData = await buildDashboardData(prisma).catch((err) => {
+      console.warn('Dashboard build error:', err.message);
+      return [];
+    });
+    sendHTML(res, 200, adminDashboard(dashboardData, user, flashMsg));
     return true;
   }
 

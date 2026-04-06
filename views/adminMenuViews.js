@@ -99,9 +99,14 @@ function menuLocationEditor(location, categories, user, flashMsg) {
             </form>
             <button type="button" class="btn btn-secondary btn-sm" onclick="toggleMenuEdit('mi-edit-${item.id}')">Edit</button>
             <form method="POST" action="${actionUrl}" class="mi-inline">
+              <input type="hidden" name="_action" value="duplicateItem" />
+              <input type="hidden" name="itemId" value="${escHTML(item.id)}" />
+              <button type="submit" class="btn btn-secondary btn-sm" title="Make a copy of this item">Copy</button>
+            </form>
+            <form method="POST" action="${actionUrl}" class="mi-inline">
               <input type="hidden" name="_action" value="deleteItem" />
               <input type="hidden" name="itemId" value="${escHTML(item.id)}" />
-              <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Delete this item?')">Del</button>
+              <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Delete &quot;${escHTML(item.name)}&quot;?')">Del</button>
             </form>
           </div>
           <div class="mi-edit" id="mi-edit-${item.id}" style="display:none">

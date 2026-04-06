@@ -923,6 +923,35 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
         redirect(res, pathname + '?msg=deleted');
         return true;
       }
+
+      if (action === 'duplicateSpecial' && body.specialId) {
+        const original = await prisma.dailySpecial.findUnique({ where: { id: body.specialId } });
+        if (original) {
+          const max = await prisma.dailySpecial.findFirst({
+            where: { dayThemeId: original.dayThemeId },
+            orderBy: { displayOrder: 'desc' },
+            select: { displayOrder: true },
+          });
+          await prisma.dailySpecial.create({
+            data: {
+              dayThemeId: original.dayThemeId,
+              name: `${original.name} (copy)`,
+              description: original.description,
+              price: original.price,
+              imageUrl: original.imageUrl,
+              section: original.section,
+              detailText: original.detailText,
+              badges: original.badges,
+              timeWindow: original.timeWindow,
+              isFeatured: original.isFeatured,
+              category: original.category,
+              displayOrder: (max ? max.displayOrder : -1) + 1,
+            },
+          });
+        }
+        redirect(res, pathname + '?msg=created');
+        return true;
+      }
     }
 
     // GET: show editor

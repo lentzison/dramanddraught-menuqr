@@ -365,6 +365,44 @@ async function handleAdminEvents(req, res, pathname, prisma) {
         return true;
       }
 
+      if (action === 'duplicate') {
+        // Make a copy of this event with a fresh slug. Doesn't copy signups.
+        const baseSlug = await ensureUniqueSlug(prisma, event.locationId, event.slug + '-copy');
+        try {
+          const copy = await prisma.event.create({
+            data: {
+              locationId: event.locationId,
+              slug: baseSlug,
+              title: event.title + ' (copy)',
+              description: event.description,
+              startDate: event.startDate,
+              endDate: event.endDate,
+              image: event.image,
+              promoteFrom: event.promoteFrom,
+              promoteUntil: event.promoteUntil,
+              capacity: event.capacity,
+              signupsEnabled: event.signupsEnabled,
+              collectEmail: event.collectEmail,
+              collectPhone: event.collectPhone,
+              collectPartySize: event.collectPartySize,
+              collectNotes: event.collectNotes,
+              customQuestions: event.customQuestions || undefined,
+              sections: event.sections || undefined,
+              confirmationMessage: event.confirmationMessage,
+              notifyEmail: event.notifyEmail,
+              isActive: false, // Default new copies to inactive so they don't go live immediately
+              isCancelled: false,
+            },
+          });
+          redirect(res, `/admin/events/${copy.id}?msg=created`);
+          return true;
+        } catch (err) {
+          console.error('Error duplicating event:', err.message || err);
+          redirect(res, `/admin/events/${eventId}?msg=` + encodeURIComponent('error|' + (err.message || 'Could not duplicate.')));
+          return true;
+        }
+      }
+
       // ─── Section actions ───
       if (action === 'addSection') {
         const newSection = buildSectionFromForm(body);

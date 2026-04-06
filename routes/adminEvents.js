@@ -51,13 +51,33 @@ function sanitizeImageSrc(src) {
   return null;
 }
 
+// Allowed background style values for sections that support theming.
+function normalizeBgStyle(value) {
+  const v = String(value || '').toLowerCase();
+  return ['default', 'gold', 'dark', 'transparent'].includes(v) ? v : 'default';
+}
+
+// Helper for section types that have repeating rows (schedule, faq).
+function pickArray(body, key) {
+  const v = body[key];
+  if (Array.isArray(v)) return v;
+  if (v == null || v === '') return [];
+  return [v];
+}
+
 // Build a section object from form fields based on its type. Generates a fresh id when not provided.
 function buildSectionFromForm(body, existingId = null) {
   const type = String(body.type || 'text').toLowerCase();
   const id = existingId || `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  const bgStyle = normalizeBgStyle(body.bgStyle);
 
   if (type === 'text') {
-    return { id, type, heading: normalizeText(body.heading) || null, body: normalizeText(body.body) || null };
+    return {
+      id, type, bgStyle,
+      heading: normalizeText(body.heading) || null,
+      body: normalizeText(body.body) || null,
+      align: ['left', 'center', 'right'].includes(String(body.align)) ? body.align : 'left',
+    };
   }
   if (type === 'image') {
     const src = sanitizeImageSrc(body.src);
@@ -65,22 +85,21 @@ function buildSectionFromForm(body, existingId = null) {
     return { id, type, src, caption: normalizeText(body.caption) || null, alt: normalizeText(body.alt) || null };
   }
   if (type === 'details') {
-    const labels = Array.isArray(body.detail_label) ? body.detail_label : (body.detail_label ? [body.detail_label] : []);
-    const values = Array.isArray(body.detail_value) ? body.detail_value : (body.detail_value ? [body.detail_value] : []);
+    const labels = pickArray(body, 'detail_label');
+    const values = pickArray(body, 'detail_value');
     const items = [];
     for (let i = 0; i < labels.length; i++) {
       const label = normalizeText(labels[i]);
       const value = normalizeText(values[i]);
       if (label || value) items.push({ label, value });
     }
-    return { id, type, title: normalizeText(body.title) || null, items };
+    return { id, type, bgStyle, title: normalizeText(body.title) || null, items };
   }
   if (type === 'button') {
     const url = normalizeText(body.url);
     if (!url) return null;
     return {
-      id,
-      type,
+      id, type, bgStyle,
       label: normalizeText(body.label) || 'Learn More',
       url: url.slice(0, 2000),
       style: ['primary', 'secondary'].includes(String(body.style)) ? body.style : 'primary',
@@ -89,10 +108,57 @@ function buildSectionFromForm(body, existingId = null) {
   if (type === 'video') {
     const url = normalizeText(body.url);
     if (!url) return null;
-    return { id, type, url: url.slice(0, 2000), caption: normalizeText(body.caption) || null };
+    return { id, type, bgStyle, url: url.slice(0, 2000), caption: normalizeText(body.caption) || null };
   }
   if (type === 'divider') {
     return { id, type };
+  }
+  if (type === 'hero') {
+    const src = sanitizeImageSrc(body.src);
+    if (!src) return null;
+    return {
+      id, type,
+      src,
+      eyebrow: normalizeText(body.eyebrow) || null,
+      title: normalizeText(body.title) || null,
+      subtitle: normalizeText(body.subtitle) || null,
+    };
+  }
+  if (type === 'twocol') {
+    const src = sanitizeImageSrc(body.src);
+    if (!src) return null;
+    return {
+      id, type, bgStyle,
+      src,
+      alt: normalizeText(body.alt) || null,
+      imagePosition: String(body.imagePosition) === 'right' ? 'right' : 'left',
+      heading: normalizeText(body.heading) || null,
+      body: normalizeText(body.body) || null,
+    };
+  }
+  if (type === 'schedule') {
+    const times = pickArray(body, 'sched_time');
+    const titles = pickArray(body, 'sched_title');
+    const descs = pickArray(body, 'sched_desc');
+    const items = [];
+    for (let i = 0; i < Math.max(times.length, titles.length); i++) {
+      const time = normalizeText(times[i]);
+      const title = normalizeText(titles[i]);
+      const description = normalizeText(descs[i]);
+      if (time || title || description) items.push({ time, title, description });
+    }
+    return { id, type, bgStyle, title: normalizeText(body.title) || null, items };
+  }
+  if (type === 'faq') {
+    const questions = pickArray(body, 'faq_question');
+    const answers = pickArray(body, 'faq_answer');
+    const items = [];
+    for (let i = 0; i < Math.max(questions.length, answers.length); i++) {
+      const question = normalizeText(questions[i]);
+      const answer = normalizeText(answers[i]);
+      if (question || answer) items.push({ question, answer });
+    }
+    return { id, type, bgStyle, title: normalizeText(body.title) || null, items };
   }
   return null;
 }

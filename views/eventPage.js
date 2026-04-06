@@ -85,31 +85,47 @@ function videoEmbedUrl(url) {
   return null;
 }
 
-// Render an array of page sections (text/image/details/button/video/divider)
+function isValidImageSrc(src) {
+  if (!src) return false;
+  return /^data:image\/(jpeg|jpg|png|gif|webp);base64,/i.test(src) || /^https?:\/\//i.test(src);
+}
+
+function bgStyleClass(s) {
+  const v = s && s.bgStyle;
+  if (v === 'gold') return ' ev-sec-bg-gold';
+  if (v === 'dark') return ' ev-sec-bg-dark';
+  if (v === 'transparent') return ' ev-sec-bg-transparent';
+  return ''; // default — no extra class
+}
+
+// Render an array of page sections.
+// Types: text, image, details, button, video, divider, hero, twocol, schedule, faq
 function renderSections(sections) {
   if (!Array.isArray(sections) || sections.length === 0) return '';
   return sections.map(s => {
     const type = s && s.type;
+
     if (type === 'text') {
       const heading = s.heading ? `<h2 class="ev-sec-heading">${escHTML(s.heading)}</h2>` : '';
       const body = s.body
         ? s.body.split(/\n\n+/).map(p => `<p>${escHTML(p).replace(/\n/g, '<br/>')}</p>`).join('')
         : '';
-      return `<section class="ev-sec ev-sec-text">${heading}<div class="ev-sec-body">${body}</div></section>`;
+      const align = (s.align === 'center' || s.align === 'right') ? ` ev-sec-align-${s.align}` : '';
+      return `<section class="ev-sec ev-sec-text${bgStyleClass(s)}${align}">${heading}<div class="ev-sec-body">${body}</div></section>`;
     }
+
     if (type === 'image') {
-      if (!s.src) return '';
-      // Allow data URLs (uploaded) and http(s) URLs only
-      if (!/^data:image\/(jpeg|jpg|png|gif|webp);base64,/i.test(s.src) && !/^https?:\/\//i.test(s.src)) return '';
+      if (!isValidImageSrc(s.src)) return '';
       return `<section class="ev-sec ev-sec-image">
         <img src="${escHTML(s.src)}" alt="${escHTML(s.alt || s.caption || '')}" loading="lazy" />
         ${s.caption ? `<div class="ev-sec-caption">${escHTML(s.caption)}</div>` : ''}
       </section>`;
     }
+
     if (type === 'details') {
       const items = Array.isArray(s.items) ? s.items.filter(it => it && (it.label || it.value)) : [];
       if (items.length === 0 && !s.title) return '';
-      return `<section class="ev-sec ev-sec-details">
+      return `<section class="ev-sec ev-sec-details${bgStyleClass(s)}">
         ${s.title ? `<div class="ev-sec-details-title">${escHTML(s.title)}</div>` : ''}
         <div class="ev-sec-details-list">
           ${items.map(it => `
@@ -121,27 +137,94 @@ function renderSections(sections) {
         </div>
       </section>`;
     }
+
     if (type === 'button') {
       if (!s.url) return '';
       const styleClass = s.style === 'secondary' ? 'ev-sec-btn-secondary' : 'ev-sec-btn-primary';
-      // Open external links in a new tab; rel for safety
-      return `<section class="ev-sec ev-sec-button">
+      return `<section class="ev-sec ev-sec-button${bgStyleClass(s)}">
         <a href="${escHTML(s.url)}" class="ev-sec-btn ${styleClass}" target="_blank" rel="noopener noreferrer">${escHTML(s.label || 'Learn More')}</a>
       </section>`;
     }
+
     if (type === 'video') {
       const embed = videoEmbedUrl(s.url);
       if (!embed) return '';
-      return `<section class="ev-sec ev-sec-video">
+      return `<section class="ev-sec ev-sec-video${bgStyleClass(s)}">
         <div class="ev-sec-video-frame">
           <iframe src="${escHTML(embed)}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
         </div>
         ${s.caption ? `<div class="ev-sec-caption">${escHTML(s.caption)}</div>` : ''}
       </section>`;
     }
+
     if (type === 'divider') {
       return `<hr class="ev-sec-divider" />`;
     }
+
+    if (type === 'hero') {
+      if (!isValidImageSrc(s.src)) return '';
+      return `<section class="ev-sec ev-sec-hero" style="background-image: linear-gradient(180deg, rgba(7,7,8,0.55), rgba(7,7,8,0.85)), url('${escHTML(s.src).replace(/'/g, "\\'")}')">
+        <div class="ev-sec-hero-inner">
+          ${s.eyebrow ? `<div class="ev-sec-hero-eyebrow">${escHTML(s.eyebrow)}</div>` : ''}
+          ${s.title ? `<h1 class="ev-sec-hero-title">${escHTML(s.title)}</h1>` : ''}
+          ${s.subtitle ? `<div class="ev-sec-hero-subtitle">${escHTML(s.subtitle)}</div>` : ''}
+        </div>
+      </section>`;
+    }
+
+    if (type === 'twocol') {
+      if (!isValidImageSrc(s.src)) return '';
+      const heading = s.heading ? `<h2 class="ev-sec-heading">${escHTML(s.heading)}</h2>` : '';
+      const body = s.body
+        ? s.body.split(/\n\n+/).map(p => `<p>${escHTML(p).replace(/\n/g, '<br/>')}</p>`).join('')
+        : '';
+      const posClass = s.imagePosition === 'right' ? ' ev-sec-twocol-right' : '';
+      return `<section class="ev-sec ev-sec-twocol${bgStyleClass(s)}${posClass}">
+        <div class="ev-sec-twocol-image">
+          <img src="${escHTML(s.src)}" alt="${escHTML(s.alt || s.heading || '')}" loading="lazy" />
+        </div>
+        <div class="ev-sec-twocol-text">
+          ${heading}
+          <div class="ev-sec-body">${body}</div>
+        </div>
+      </section>`;
+    }
+
+    if (type === 'schedule') {
+      const items = Array.isArray(s.items) ? s.items.filter(it => it && (it.time || it.title || it.description)) : [];
+      if (items.length === 0 && !s.title) return '';
+      return `<section class="ev-sec ev-sec-schedule${bgStyleClass(s)}">
+        ${s.title ? `<div class="ev-sec-details-title">${escHTML(s.title)}</div>` : ''}
+        <div class="ev-sec-schedule-list">
+          ${items.map(it => `
+            <div class="ev-sec-schedule-row">
+              <div class="ev-sec-schedule-time">${escHTML(it.time || '')}</div>
+              <div class="ev-sec-schedule-content">
+                ${it.title ? `<div class="ev-sec-schedule-title">${escHTML(it.title)}</div>` : ''}
+                ${it.description ? `<div class="ev-sec-schedule-desc">${escHTML(it.description)}</div>` : ''}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </section>`;
+    }
+
+    if (type === 'faq') {
+      const items = Array.isArray(s.items) ? s.items.filter(it => it && (it.question || it.answer)) : [];
+      if (items.length === 0 && !s.title) return '';
+      return `<section class="ev-sec ev-sec-faq${bgStyleClass(s)}">
+        ${s.title ? `<div class="ev-sec-details-title">${escHTML(s.title)}</div>` : ''}
+        <div class="ev-sec-faq-list">
+          ${items.map(it => `
+            <details class="ev-sec-faq-item">
+              <summary class="ev-sec-faq-question">${escHTML(it.question || '')}</summary>
+              <div class="ev-sec-faq-answer">${escHTML(it.answer || '').replace(/\n/g, '<br/>')}</div>
+            </details>
+          `).join('')}
+        </div>
+      </section>`;
+    }
+
     return '';
   }).join('');
 }
@@ -484,6 +567,183 @@ function generateEventPage(location, event, signupCount, options = {}) {
           height: 1px;
           background: linear-gradient(90deg, transparent, var(--line-strong), transparent);
           margin: 24px 0;
+        }
+
+        /* ─── Background style modifiers ─── */
+        .ev-sec-bg-gold {
+          background: linear-gradient(135deg, rgba(210,170,103,0.12), rgba(138,86,53,0.06)) !important;
+          border-color: rgba(210,170,103,0.35) !important;
+        }
+        .ev-sec-bg-dark {
+          background: #050505 !important;
+          border-color: rgba(255,255,255,0.06) !important;
+        }
+        .ev-sec-bg-transparent {
+          background: transparent !important;
+          border: none !important;
+          padding-left: 0 !important;
+          padding-right: 0 !important;
+        }
+        .ev-sec-align-center { text-align: center; }
+        .ev-sec-align-center .ev-sec-heading { text-align: center; }
+        .ev-sec-align-right { text-align: right; }
+        .ev-sec-align-right .ev-sec-heading { text-align: right; }
+
+        /* ─── Hero section (full-width banner with image background) ─── */
+        .ev-sec-hero {
+          margin: -8px -16px 26px;
+          padding: 60px 24px;
+          background-size: cover;
+          background-position: center;
+          border-radius: 16px;
+          text-align: center;
+          min-height: 280px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .ev-sec-hero-inner { max-width: 560px; }
+        .ev-sec-hero-eyebrow {
+          color: var(--gold);
+          font-size: 0.72rem;
+          font-weight: 800;
+          letter-spacing: 0.22em;
+          text-transform: uppercase;
+          margin-bottom: 10px;
+        }
+        .ev-sec-hero-title {
+          font-family: 'Playfair Display', Georgia, serif;
+          font-size: 2.2rem;
+          font-weight: 800;
+          line-height: 1.1;
+          color: var(--text);
+          margin: 0 0 10px;
+          text-shadow: 0 2px 18px rgba(0,0,0,0.6);
+        }
+        .ev-sec-hero-subtitle {
+          color: var(--steel);
+          font-size: 1rem;
+          line-height: 1.5;
+          text-shadow: 0 2px 12px rgba(0,0,0,0.6);
+        }
+
+        /* ─── Two-column section ─── */
+        .ev-sec-twocol {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 0;
+          background: var(--panel);
+          border: 1px solid var(--line);
+          border-radius: 16px;
+          overflow: hidden;
+        }
+        .ev-sec-twocol.ev-sec-twocol-right { grid-template-columns: 1fr 1fr; direction: rtl; }
+        .ev-sec-twocol.ev-sec-twocol-right > * { direction: ltr; }
+        .ev-sec-twocol-image {
+          background: var(--panel-strong);
+          min-height: 240px;
+        }
+        .ev-sec-twocol-image img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+        }
+        .ev-sec-twocol-text {
+          padding: 24px 26px;
+          display: flex;
+          flex-direction: column;
+          justify-content: center;
+        }
+        .ev-sec-twocol-text .ev-sec-heading { margin-bottom: 12px; }
+
+        /* ─── Schedule section ─── */
+        .ev-sec-schedule {
+          background: var(--panel);
+          border: 1px solid var(--line);
+          border-radius: 16px;
+          padding: 22px 24px;
+        }
+        .ev-sec-schedule-list { display: flex; flex-direction: column; gap: 0; }
+        .ev-sec-schedule-row {
+          display: grid;
+          grid-template-columns: 110px 1fr;
+          gap: 18px;
+          padding: 14px 0;
+          border-bottom: 1px solid var(--line);
+        }
+        .ev-sec-schedule-row:last-child { border-bottom: none; }
+        .ev-sec-schedule-time {
+          color: var(--gold);
+          font-weight: 800;
+          font-size: 0.92rem;
+          letter-spacing: 0.04em;
+          padding-top: 2px;
+        }
+        .ev-sec-schedule-content { min-width: 0; }
+        .ev-sec-schedule-title {
+          color: var(--text);
+          font-weight: 700;
+          font-size: 1rem;
+          margin-bottom: 4px;
+        }
+        .ev-sec-schedule-desc {
+          color: var(--muted);
+          font-size: 0.88rem;
+          line-height: 1.5;
+        }
+
+        /* ─── FAQ section ─── */
+        .ev-sec-faq {
+          background: var(--panel);
+          border: 1px solid var(--line);
+          border-radius: 16px;
+          padding: 22px 24px;
+        }
+        .ev-sec-faq-list { display: flex; flex-direction: column; gap: 4px; }
+        .ev-sec-faq-item {
+          border-bottom: 1px solid var(--line);
+          padding: 4px 0;
+        }
+        .ev-sec-faq-item:last-child { border-bottom: none; }
+        .ev-sec-faq-question {
+          padding: 14px 30px 14px 0;
+          color: var(--text);
+          font-weight: 700;
+          font-size: 0.98rem;
+          cursor: pointer;
+          list-style: none;
+          position: relative;
+          transition: color 0.15s;
+        }
+        .ev-sec-faq-question::-webkit-details-marker { display: none; }
+        .ev-sec-faq-question:hover { color: var(--gold); }
+        .ev-sec-faq-question::after {
+          content: '+';
+          position: absolute;
+          right: 4px;
+          top: 50%;
+          transform: translateY(-50%);
+          color: var(--gold);
+          font-size: 1.4rem;
+          font-weight: 300;
+          transition: transform 0.2s;
+        }
+        .ev-sec-faq-item[open] .ev-sec-faq-question::after { content: '−'; }
+        .ev-sec-faq-answer {
+          padding: 0 0 18px;
+          color: var(--steel);
+          font-size: 0.92rem;
+          line-height: 1.6;
+        }
+
+        @media (max-width: 600px) {
+          .ev-sec-twocol { grid-template-columns: 1fr; }
+          .ev-sec-twocol.ev-sec-twocol-right { grid-template-columns: 1fr; direction: ltr; }
+          .ev-sec-twocol-image { min-height: 200px; }
+          .ev-sec-hero { padding: 40px 18px; min-height: 220px; }
+          .ev-sec-hero-title { font-size: 1.7rem; }
+          .ev-sec-schedule-row { grid-template-columns: 90px 1fr; gap: 12px; }
         }
 
         .ev-form {

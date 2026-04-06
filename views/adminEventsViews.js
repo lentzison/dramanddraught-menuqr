@@ -34,32 +34,48 @@ function formatFriendlyDate(value) {
   });
 }
 
+// Reusable image upload fragment (file picker → base64 + URL fallback + preview).
+// Used by image, hero, and two-column section types.
+function imageUploadFragment(section, idPrefix) {
+  const hasSrc = !!section?.src;
+  return `
+    <div class="sec-img-upload" data-prefix="${idPrefix}">
+      <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" id="${idPrefix}-file" class="sec-img-file" />
+      <div class="sec-img-hint">Click to choose a file (max ~500&#8239;KB), or paste a hosted image URL below.</div>
+      <input type="text" id="${idPrefix}-url-input" placeholder="https://... (optional alternative)" class="sec-img-url-input" value="${hasSrc && /^https?:\/\//i.test(section.src) ? escHTML(section.src) : ''}" />
+      <input type="hidden" id="${idPrefix}-src" name="src" value="${hasSrc ? escHTML(section.src) : ''}" />
+      <div class="sec-img-preview-wrap">
+        <img id="${idPrefix}-preview" class="sec-img-preview" src="${hasSrc ? escHTML(section.src) : ''}" alt="" style="${hasSrc ? '' : 'display:none'}" />
+        ${hasSrc ? `<button type="button" class="btn btn-secondary btn-sm sec-img-clear" data-prefix="${idPrefix}">Remove image</button>` : ''}
+      </div>
+    </div>
+  `;
+}
+
 // Render the inline edit form for a single section, by type. Used both for
 // existing sections (when expanded) and the "add new section" panel.
 function renderSectionEditFields(section, idPrefix) {
   const type = section?.type || 'text';
   if (type === 'text') {
+    const align = section?.align || 'left';
     return `
       <label for="${idPrefix}-heading">Heading <span style="color:#888; font-weight:400; font-size:0.78rem">(optional)</span></label>
       <input type="text" id="${idPrefix}-heading" name="heading" value="${escHTML(section?.heading || '')}" placeholder="e.g. About the Event" />
       <label for="${idPrefix}-body">Body Text</label>
       <textarea id="${idPrefix}-body" name="body" rows="5" placeholder="What guests should know. Plain text or one paragraph per blank line.">${escHTML(section?.body || '')}</textarea>
+      <label>Text Alignment</label>
+      <div style="display:flex; gap:14px;">
+        <label class="ev-check"><input type="radio" name="align" value="left" ${align === 'left' ? 'checked' : ''} /> Left</label>
+        <label class="ev-check"><input type="radio" name="align" value="center" ${align === 'center' ? 'checked' : ''} /> Center</label>
+        <label class="ev-check"><input type="radio" name="align" value="right" ${align === 'right' ? 'checked' : ''} /> Right</label>
+      </div>
+      ${bgStylePicker(section, idPrefix)}
     `;
   }
   if (type === 'image') {
-    const hasSrc = !!section?.src;
     return `
       <label>Image</label>
-      <div class="sec-img-upload" data-prefix="${idPrefix}">
-        <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" id="${idPrefix}-file" class="sec-img-file" />
-        <div class="sec-img-hint">Click to choose a file (max ~500&#8239;KB), or paste a hosted image URL below.</div>
-        <input type="text" id="${idPrefix}-url-input" placeholder="https://... (optional alternative)" class="sec-img-url-input" value="${hasSrc && /^https?:\/\//i.test(section.src) ? escHTML(section.src) : ''}" />
-        <input type="hidden" id="${idPrefix}-src" name="src" value="${hasSrc ? escHTML(section.src) : ''}" />
-        <div class="sec-img-preview-wrap">
-          <img id="${idPrefix}-preview" class="sec-img-preview" src="${hasSrc ? escHTML(section.src) : ''}" alt="" style="${hasSrc ? '' : 'display:none'}" />
-          ${hasSrc ? `<button type="button" class="btn btn-secondary btn-sm sec-img-clear" data-prefix="${idPrefix}">Remove image</button>` : ''}
-        </div>
-      </div>
+      ${imageUploadFragment(section, idPrefix)}
       <label for="${idPrefix}-caption">Caption <span style="color:#888; font-weight:400; font-size:0.78rem">(optional)</span></label>
       <input type="text" id="${idPrefix}-caption" name="caption" value="${escHTML(section?.caption || '')}" placeholder="Shown beneath the image" />
       <label for="${idPrefix}-alt">Alt Text <span style="color:#888; font-weight:400; font-size:0.78rem">(for accessibility)</span></label>
@@ -81,6 +97,7 @@ function renderSectionEditFields(section, idPrefix) {
       <label>Details</label>
       <div class="sec-detail-list" id="${idPrefix}-details">${rows}</div>
       <button type="button" class="btn btn-secondary btn-sm sec-detail-add" data-target="${idPrefix}-details">+ Add Row</button>
+      ${bgStylePicker(section, idPrefix)}
     `;
   }
   if (type === 'button') {
@@ -95,6 +112,7 @@ function renderSectionEditFields(section, idPrefix) {
         <label class="ev-check"><input type="radio" name="style" value="primary" ${style === 'primary' ? 'checked' : ''} /> Primary (gold, prominent)</label>
         <label class="ev-check"><input type="radio" name="style" value="secondary" ${style === 'secondary' ? 'checked' : ''} /> Secondary (outline)</label>
       </div>
+      ${bgStylePicker(section, idPrefix)}
     `;
   }
   if (type === 'video') {
@@ -104,11 +122,82 @@ function renderSectionEditFields(section, idPrefix) {
       <div style="color:#888; font-size:0.78rem; margin-top:4px;">YouTube, Vimeo, and other common video URLs work. Will be embedded automatically.</div>
       <label for="${idPrefix}-caption">Caption <span style="color:#888; font-weight:400; font-size:0.78rem">(optional)</span></label>
       <input type="text" id="${idPrefix}-caption" name="caption" value="${escHTML(section?.caption || '')}" placeholder="Shown beneath the video" />
+      ${bgStylePicker(section, idPrefix)}
     `;
   }
   if (type === 'divider') {
     return `<p style="color:#888; font-size:0.85rem; margin-top:8px;">A simple horizontal divider. No options needed.</p>`;
   }
+
+  if (type === 'hero') {
+    return `
+      <label>Background Image <span style="color:#f87171">*</span></label>
+      ${imageUploadFragment(section, idPrefix)}
+      <label for="${idPrefix}-eyebrow">Eyebrow <span style="color:#888; font-weight:400; font-size:0.78rem">(small label above title)</span></label>
+      <input type="text" id="${idPrefix}-eyebrow" name="eyebrow" value="${escHTML(section?.eyebrow || '')}" placeholder="e.g. PRESENTING" />
+      <label for="${idPrefix}-title">Title</label>
+      <input type="text" id="${idPrefix}-title" name="title" value="${escHTML(section?.title || '')}" placeholder="e.g. Lubrication Cup 2026" />
+      <label for="${idPrefix}-subtitle">Subtitle <span style="color:#888; font-weight:400; font-size:0.78rem">(optional)</span></label>
+      <input type="text" id="${idPrefix}-subtitle" name="subtitle" value="${escHTML(section?.subtitle || '')}" placeholder="e.g. The cocktail competition that crowns the city's best" />
+    `;
+  }
+  if (type === 'twocol') {
+    const pos = section?.imagePosition || 'left';
+    return `
+      <label>Image <span style="color:#f87171">*</span></label>
+      ${imageUploadFragment(section, idPrefix)}
+      <label for="${idPrefix}-alt">Alt Text <span style="color:#888; font-weight:400; font-size:0.78rem">(for accessibility)</span></label>
+      <input type="text" id="${idPrefix}-alt" name="alt" value="${escHTML(section?.alt || '')}" placeholder="Describe the image briefly" />
+      <label>Image Position</label>
+      <div style="display:flex; gap:14px;">
+        <label class="ev-check"><input type="radio" name="imagePosition" value="left" ${pos === 'left' ? 'checked' : ''} /> Image on left</label>
+        <label class="ev-check"><input type="radio" name="imagePosition" value="right" ${pos === 'right' ? 'checked' : ''} /> Image on right</label>
+      </div>
+      <label for="${idPrefix}-heading">Heading <span style="color:#888; font-weight:400; font-size:0.78rem">(optional)</span></label>
+      <input type="text" id="${idPrefix}-heading" name="heading" value="${escHTML(section?.heading || '')}" placeholder="e.g. About the Cup" />
+      <label for="${idPrefix}-body">Body Text</label>
+      <textarea id="${idPrefix}-body" name="body" rows="6" placeholder="The story alongside the image. Plain text or one paragraph per blank line.">${escHTML(section?.body || '')}</textarea>
+      ${bgStylePicker(section, idPrefix)}
+    `;
+  }
+  if (type === 'schedule') {
+    const items = Array.isArray(section?.items) && section.items.length > 0 ? section.items : [{ time: '', title: '', description: '' }];
+    const rows = items.map(it => `
+      <div class="sec-sched-row">
+        <input type="text" name="sched_time" value="${escHTML(it.time || '')}" placeholder="7:00 PM" />
+        <input type="text" name="sched_title" value="${escHTML(it.title || '')}" placeholder="What happens" />
+        <input type="text" name="sched_desc" value="${escHTML(it.description || '')}" placeholder="Optional details" />
+        <button type="button" class="btn btn-secondary btn-sm sec-sched-remove">×</button>
+      </div>
+    `).join('');
+    return `
+      <label for="${idPrefix}-title">Title <span style="color:#888; font-weight:400; font-size:0.78rem">(optional)</span></label>
+      <input type="text" id="${idPrefix}-title" name="title" value="${escHTML(section?.title || '')}" placeholder="e.g. Schedule of Events" />
+      <label>Schedule Items</label>
+      <div class="sec-sched-list" id="${idPrefix}-sched">${rows}</div>
+      <button type="button" class="btn btn-secondary btn-sm sec-sched-add" data-target="${idPrefix}-sched">+ Add Time Slot</button>
+      ${bgStylePicker(section, idPrefix)}
+    `;
+  }
+  if (type === 'faq') {
+    const items = Array.isArray(section?.items) && section.items.length > 0 ? section.items : [{ question: '', answer: '' }];
+    const rows = items.map(it => `
+      <div class="sec-faq-row">
+        <input type="text" name="faq_question" value="${escHTML(it.question || '')}" placeholder="Question (e.g. How do I sign up?)" />
+        <textarea name="faq_answer" rows="2" placeholder="Answer">${escHTML(it.answer || '')}</textarea>
+        <button type="button" class="btn btn-secondary btn-sm sec-faq-remove">×</button>
+      </div>
+    `).join('');
+    return `
+      <label for="${idPrefix}-title">Title <span style="color:#888; font-weight:400; font-size:0.78rem">(optional)</span></label>
+      <input type="text" id="${idPrefix}-title" name="title" value="${escHTML(section?.title || '')}" placeholder="e.g. Frequently Asked Questions" />
+      <label>Questions</label>
+      <div class="sec-faq-list" id="${idPrefix}-faq">${rows}</div>
+      <button type="button" class="btn btn-secondary btn-sm sec-faq-add" data-target="${idPrefix}-faq">+ Add Question</button>
+      ${bgStylePicker(section, idPrefix)}
+    `;
+  }
+
   return `<p style="color:#888;">Unknown section type</p>`;
 }
 
@@ -136,11 +225,54 @@ function sectionPreviewSummary(section) {
   if (type === 'divider') {
     return '<em style="color:#666">— divider —</em>';
   }
+  if (type === 'hero') {
+    return section.title ? escHTML(section.title) : '<em style="color:#666">Hero banner</em>';
+  }
+  if (type === 'twocol') {
+    if (section.heading) return escHTML(section.heading) + ' (image ' + (section.imagePosition || 'left') + ')';
+    return '<em style="color:#666">Two-column block</em>';
+  }
+  if (type === 'schedule') {
+    const count = Array.isArray(section.items) ? section.items.length : 0;
+    return `${section.title ? escHTML(section.title) + ' · ' : ''}${count} item${count === 1 ? '' : 's'}`;
+  }
+  if (type === 'faq') {
+    const count = Array.isArray(section.items) ? section.items.length : 0;
+    return `${section.title ? escHTML(section.title) + ' · ' : ''}${count} question${count === 1 ? '' : 's'}`;
+  }
   return '';
 }
 
 function sectionTypeIcon(type) {
-  return ({ text: 'T', image: '📷', details: '⋮', button: '▶', video: '►', divider: '—' })[type] || '?';
+  return ({
+    text: 'T',
+    image: '📷',
+    details: '⋮',
+    button: '▶',
+    video: '►',
+    divider: '—',
+    hero: '★',
+    twocol: '⊞',
+    schedule: '⏱',
+    faq: '?',
+  })[type] || '?';
+}
+
+// Background style picker fragment — used by section types that support theming
+function bgStylePicker(section, idPrefix) {
+  const current = section?.bgStyle || 'default';
+  const options = [
+    { key: 'default', label: 'Default' },
+    { key: 'gold', label: 'Gold Highlight' },
+    { key: 'dark', label: 'Dark Card' },
+    { key: 'transparent', label: 'No Background' },
+  ];
+  return `
+    <label for="${idPrefix}-bg">Background Style</label>
+    <select id="${idPrefix}-bg" name="bgStyle">
+      ${options.map(o => `<option value="${o.key}"${current === o.key ? ' selected' : ''}>${o.label}</option>`).join('')}
+    </select>
+  `;
 }
 
 function eventStatusBadge(event) {
@@ -301,9 +433,13 @@ function renderSectionsCard(event, actionUrl) {
     `;
   }).join('');
 
-  // Build "add new section" panel — six type buttons that reveal a typed form
-  const addPanels = ['text', 'image', 'details', 'button', 'video', 'divider'].map(t => {
-    const stub = { type: t, items: t === 'details' ? [{ label: '', value: '' }] : undefined };
+  // Build "add new section" panel — type buttons that reveal a typed form
+  const ALL_TYPES = ['hero', 'text', 'twocol', 'image', 'details', 'schedule', 'faq', 'button', 'video', 'divider'];
+  const addPanels = ALL_TYPES.map(t => {
+    const stub = { type: t };
+    if (t === 'details') stub.items = [{ label: '', value: '' }];
+    if (t === 'schedule') stub.items = [{ time: '', title: '', description: '' }];
+    if (t === 'faq') stub.items = [{ question: '', answer: '' }];
     return `
       <div class="sec-add-panel" id="sec-add-${t}" style="display:none">
         <form method="POST" action="${actionUrl}">
@@ -332,9 +468,13 @@ function renderSectionsCard(event, actionUrl) {
 
       <div class="sec-add-bar">
         <span style="color:#888; font-size:0.85rem; margin-right:6px">+ Add section:</span>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="showAddPanel('hero')">Hero Banner</button>
         <button type="button" class="btn btn-secondary btn-sm" onclick="showAddPanel('text')">Text</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="showAddPanel('twocol')">Two-Column</button>
         <button type="button" class="btn btn-secondary btn-sm" onclick="showAddPanel('image')">Image</button>
         <button type="button" class="btn btn-secondary btn-sm" onclick="showAddPanel('details')">Details</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="showAddPanel('schedule')">Schedule</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="showAddPanel('faq')">FAQ</button>
         <button type="button" class="btn btn-secondary btn-sm" onclick="showAddPanel('button')">Button / Link</button>
         <button type="button" class="btn btn-secondary btn-sm" onclick="showAddPanel('video')">Video</button>
         <button type="button" class="btn btn-secondary btn-sm" onclick="showAddPanel('divider')">Divider</button>
@@ -420,7 +560,9 @@ function renderSectionsCard(event, actionUrl) {
         align-items:center;
       }
       .ev-sections-card .sec-detail-row input { margin:0 !important; }
-      .ev-sections-card .sec-detail-remove {
+      .ev-sections-card .sec-detail-remove,
+      .ev-sections-card .sec-sched-remove,
+      .ev-sections-card .sec-faq-remove {
         background:transparent;
         border:1px solid #444;
         color:#888;
@@ -429,7 +571,37 @@ function renderSectionsCard(event, actionUrl) {
         cursor:pointer;
         font-size:0.9rem;
       }
-      .ev-sections-card .sec-detail-remove:hover { border-color:#f87171; color:#f87171; }
+      .ev-sections-card .sec-detail-remove:hover,
+      .ev-sections-card .sec-sched-remove:hover,
+      .ev-sections-card .sec-faq-remove:hover { border-color:#f87171; color:#f87171; }
+
+      .ev-sections-card .sec-sched-list,
+      .ev-sections-card .sec-faq-list { margin-bottom:10px; }
+      .ev-sections-card .sec-sched-row {
+        display:grid;
+        grid-template-columns:90px 1.2fr 1.5fr auto;
+        gap:8px;
+        margin-bottom:6px;
+        align-items:center;
+      }
+      .ev-sections-card .sec-sched-row input { margin:0 !important; }
+      .ev-sections-card .sec-faq-row {
+        display:grid;
+        grid-template-columns:1fr auto;
+        grid-template-areas: "q q" "a x";
+        gap:6px 8px;
+        margin-bottom:10px;
+        padding:10px;
+        background:#0a0a0a;
+        border-radius:6px;
+        border:1px solid #1a1a1a;
+      }
+      .ev-sections-card .sec-faq-row input[name="faq_question"] { grid-area:q; margin:0 !important; }
+      .ev-sections-card .sec-faq-row textarea { grid-area:a; margin:0 !important; }
+      .ev-sections-card .sec-faq-row .sec-faq-remove { grid-area:x; align-self:start; }
+      @media (max-width:768px) {
+        .ev-sections-card .sec-sched-row { grid-template-columns:1fr; }
+      }
     </style>
 
     <script>
@@ -438,8 +610,9 @@ function renderSectionsCard(event, actionUrl) {
         if (!el) return;
         el.style.display = el.style.display === 'none' ? 'block' : 'none';
       }
+      var SEC_TYPES = ['hero','text','twocol','image','details','schedule','faq','button','video','divider'];
       function showAddPanel(t) {
-        ['text','image','details','button','video','divider'].forEach(function(x) {
+        SEC_TYPES.forEach(function(x) {
           var p = document.getElementById('sec-add-' + x);
           if (p) p.style.display = (x === t) ? 'block' : 'none';
         });
@@ -517,6 +690,47 @@ function renderSectionsCard(event, actionUrl) {
         }
         if (e.target.classList && e.target.classList.contains('sec-detail-remove')) {
           var row = e.target.closest('.sec-detail-row');
+          if (row) row.remove();
+        }
+      });
+
+      // Schedule rows: add and remove
+      document.addEventListener('click', function(e) {
+        if (e.target.classList && e.target.classList.contains('sec-sched-add')) {
+          var targetId = e.target.getAttribute('data-target');
+          var list = document.getElementById(targetId);
+          if (!list) return;
+          var row = document.createElement('div');
+          row.className = 'sec-sched-row';
+          row.innerHTML =
+            '<input type="text" name="sched_time" placeholder="7:00 PM" />' +
+            '<input type="text" name="sched_title" placeholder="What happens" />' +
+            '<input type="text" name="sched_desc" placeholder="Optional details" />' +
+            '<button type="button" class="btn btn-secondary btn-sm sec-sched-remove">×</button>';
+          list.appendChild(row);
+        }
+        if (e.target.classList && e.target.classList.contains('sec-sched-remove')) {
+          var row = e.target.closest('.sec-sched-row');
+          if (row) row.remove();
+        }
+      });
+
+      // FAQ rows: add and remove
+      document.addEventListener('click', function(e) {
+        if (e.target.classList && e.target.classList.contains('sec-faq-add')) {
+          var targetId = e.target.getAttribute('data-target');
+          var list = document.getElementById(targetId);
+          if (!list) return;
+          var row = document.createElement('div');
+          row.className = 'sec-faq-row';
+          row.innerHTML =
+            '<input type="text" name="faq_question" placeholder="Question" />' +
+            '<textarea name="faq_answer" rows="2" placeholder="Answer"></textarea>' +
+            '<button type="button" class="btn btn-secondary btn-sm sec-faq-remove">×</button>';
+          list.appendChild(row);
+        }
+        if (e.target.classList && e.target.classList.contains('sec-faq-remove')) {
+          var row = e.target.closest('.sec-faq-row');
           if (row) row.remove();
         }
       });

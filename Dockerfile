@@ -17,5 +17,7 @@ ENV NODE_ENV=production
 ENV PORT=80
 EXPOSE 80
 
-# Apply schema changes on startup then run app
-CMD ["sh","-c","npx prisma db push && node index.js"]
+# Apply pending migrations on startup then run app.
+# Migrations are managed via prisma/migrations/ — every schema change must
+# be authored as a migration file (npx prisma migrate dev) and committed.
+CMD ["sh","-c","npx prisma migrate deploy && node index.js"]

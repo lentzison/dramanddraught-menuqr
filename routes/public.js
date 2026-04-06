@@ -38,6 +38,7 @@ const { generateFlightsPage } = require('../views/flightsPage');
 const { generateMenuPage } = require('../views/menuPage');
 const { generateLubricationCupPage } = require('../views/lubricationCupPage');
 const { generateEventPage, generateEventConfirmationPage, eventStatus } = require('../views/eventPage');
+const { generateNotFoundPage } = require('../views/notFoundPage');
 const { trackPageView, buildTrackingScript } = require('../analytics');
 
 const DAYS_ORDER = Array.isArray(importDaysOrder) && importDaysOrder.length > 0 ? importDaysOrder : ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
@@ -54,6 +55,13 @@ function getQueryString(req) {
   if (!req || !req.url) return '';
   const idx = req.url.indexOf('?');
   return idx >= 0 ? req.url.slice(idx) : '';
+}
+
+// Send a branded 404 with the list of active locations as alternatives.
+async function send404(req, res, prisma) {
+  const locations = await getLocations(prisma).catch(() => []);
+  const requestedPath = req.url ? req.url.split('?')[0] : '';
+  sendHTML(res, 404, generateNotFoundPage({ locations, requestedPath }));
 }
 const BRAND_LOGO_PATH = path.join(__dirname, '..', 'assets', 'dram-draught-logo-white.png');
 
@@ -884,7 +892,7 @@ async function handleDraft(req, res, prisma, locationSlug) {
   const locs = await getLocations(prisma);
   const location = locs.find((l) => l.slug === locationSlug);
   if (!location) {
-    sendHTML(res, 404, '<h1>Location not found</h1><p><a href="/">Back to locations</a></p>');
+    await send404(req, res, prisma);
     return true;
   }
 
@@ -906,7 +914,7 @@ async function handleMenu(req, res, prisma, locationSlug) {
   const locs = await getLocations(prisma);
   const location = locs.find((l) => l.slug === locationSlug);
   if (!location) {
-    sendHTML(res, 404, '<h1>Location not found</h1><p><a href="/">Back to locations</a></p>');
+    await send404(req, res, prisma);
     return true;
   }
 
@@ -1116,7 +1124,7 @@ async function handlePublic(req, res, pathname, prisma) {
     const locs = await getLocations(prisma);
     const location = locs.find((l) => l.slug === slug);
     if (!location) {
-      sendHTML(res, 404, '<h1>Location not found</h1><p><a href="/">Back to locations</a></p>');
+      await send404(req, res, prisma);
       return true;
     }
 
@@ -1144,7 +1152,7 @@ async function handlePublic(req, res, pathname, prisma) {
     const locs = await getLocations(prisma);
     const location = locs.find((l) => l.slug === slug);
     if (!location) {
-      sendHTML(res, 404, '<h1>Location not found</h1><p><a href="/">Back to locations</a></p>');
+      await send404(req, res, prisma);
       return true;
     }
     let flights = [];
@@ -1166,14 +1174,14 @@ async function handlePublic(req, res, pathname, prisma) {
     const locs = await getLocations(prisma);
     const location = locs.find((l) => l.slug === locSlug);
     if (!location || !prisma) {
-      sendHTML(res, 404, '<h1>Event not found</h1>');
+      await send404(req, res, prisma);
       return true;
     }
     const event = await prisma.event.findFirst({
       where: { locationId: location.id, slug: eventSlug },
     }).catch(() => null);
     if (!event) {
-      sendHTML(res, 404, '<h1>Event not found</h1>');
+      await send404(req, res, prisma);
       return true;
     }
     const signupCount = await prisma.eventSignup.count({ where: { eventId: event.id } }).catch(() => 0);
@@ -1291,14 +1299,14 @@ async function handlePublic(req, res, pathname, prisma) {
     const locs = await getLocations(prisma);
     const location = locs.find((l) => l.slug === locSlug);
     if (!location || !prisma) {
-      sendHTML(res, 404, '<h1>Event not found</h1><p><a href="/">Back to home</a></p>');
+      await send404(req, res, prisma);
       return true;
     }
     const event = await prisma.event.findFirst({
       where: { locationId: location.id, slug: eventSlug },
     }).catch(() => null);
     if (!event) {
-      sendHTML(res, 404, '<h1>Event not found</h1><p><a href="/">Back to home</a></p>');
+      await send404(req, res, prisma);
       return true;
     }
     const signupCount = await prisma.eventSignup.count({ where: { eventId: event.id } }).catch(() => 0);
@@ -1318,7 +1326,7 @@ async function handlePublic(req, res, pathname, prisma) {
       sendHTML(res, 200, injectTracking(generateLubricationCupPage(location), sid));
       return true;
     }
-    sendHTML(res, 404, '<h1>Location not found</h1><p><a href="/">Back to locations</a></p>');
+    await send404(req, res, prisma);
     return true;
   }
 
@@ -1348,7 +1356,7 @@ async function handlePublic(req, res, pathname, prisma) {
       sendHTML(res, 200, injectTracking(generateLocationPage(location, locs, menuCategories, { showFlightsButton }), sid));
       return true;
     }
-    sendHTML(res, 404, '<h1>Location not found</h1><p><a href="/">Back to locations</a></p>');
+    await send404(req, res, prisma);
     return true;
   }
 

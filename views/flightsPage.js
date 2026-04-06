@@ -1,9 +1,6 @@
 const { vintageThemeCss } = require('./publicTheme');
 const { brandMarkCss, renderBrandMark } = require('./brandMark');
-
-function escHTML(s) {
-  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
+const { escHTML } = require('./escapeHtml');
 
 function fallbackNoteSections(raw) {
   if (!raw || typeof raw !== 'string') return [];

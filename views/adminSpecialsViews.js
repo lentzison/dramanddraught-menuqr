@@ -1,13 +1,10 @@
 const { adminLayout } = require('./adminLayout');
 const { imageUploadWidget, imageUploadWidgetCss, imageUploadWidgetScript } = require('./imageUploadWidget');
+const { escHTML } = require('./escapeHtml');
 
 const DAYS = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
 const DAY_LABELS = { MONDAY: 'Monday', TUESDAY: 'Tuesday', WEDNESDAY: 'Wednesday', THURSDAY: 'Thursday', FRIDAY: 'Friday', SATURDAY: 'Saturday', SUNDAY: 'Sunday' };
 const MONTHS = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-
-function escHTML(str) {
-  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
 
 function buildCategoryOptions(selected, options = []) {
   const merged = ['cocktail', 'beer', 'wine', 'whiskey', 'food', 'other']

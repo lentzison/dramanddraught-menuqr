@@ -1,10 +1,7 @@
 const { getOpenState } = require('../helpers');
 const { vintageThemeCss } = require('./publicTheme');
 const { brandMarkCss, renderBrandMark } = require('./brandMark');
-
-function escHTML(str) {
-  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
+const { escHTML } = require('./escapeHtml');
 
 function formatMoney(value) {
   if (value === null || value === undefined) return '';

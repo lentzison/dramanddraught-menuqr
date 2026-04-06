@@ -1,13 +1,6 @@
 const { adminLayout } = require('./adminLayout');
 const { imageUploadWidget, imageUploadWidgetCss, imageUploadWidgetScript } = require('./imageUploadWidget');
-
-function escHTML(value) {
-  return String(value == null ? '' : value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+const { escHTML } = require('./escapeHtml');
 
 function formatPrice(value) {
   if (value == null || value === '') return '';

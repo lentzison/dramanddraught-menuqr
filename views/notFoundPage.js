@@ -1,13 +1,6 @@
 const { vintageThemeCss } = require('./publicTheme');
 const { brandMarkCss, renderBrandMark } = require('./brandMark');
-
-function escHTML(s) {
-  return String(s == null ? '' : s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+const { escHTML } = require('./escapeHtml');
 
 // Branded 404 page that gives the user somewhere to go.
 // Optionally accepts a list of locations so we can offer them as alternatives.

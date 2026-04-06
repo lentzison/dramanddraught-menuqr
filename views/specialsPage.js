@@ -17,9 +17,7 @@ function getEasternMonth() {
   return { month: now.getMonth() + 1, year: now.getFullYear() };
 }
 
-function escHTML(str) {
-  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
+const { escHTML } = require('./escapeHtml');
 
 function groupBySection(specials) {
   const groups = [];

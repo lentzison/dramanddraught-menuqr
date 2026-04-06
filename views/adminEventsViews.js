@@ -1,12 +1,5 @@
 const { adminLayout } = require('./adminLayout');
-
-function escHTML(value) {
-  return String(value == null ? '' : value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+const { escHTML } = require('./escapeHtml');
 
 // Format a date as local datetime-local input value ("YYYY-MM-DDTHH:MM")
 function toDateTimeLocal(value) {

@@ -13,13 +13,7 @@
 // Then include `imageUploadWidgetCss()` once in the page <style> block,
 // and `imageUploadWidgetScript()` once in the page <script> block.
 
-function escHTML(value) {
-  return String(value == null ? '' : value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+const { escHTML } = require('./escapeHtml');
 
 function imageUploadWidget(opts = {}) {
   const name = opts.name || 'image';

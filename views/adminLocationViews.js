@@ -1,14 +1,11 @@
 const { adminLayout } = require('./adminLayout');
+const { escHTML } = require('./escapeHtml');
 
 const WEEK_DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 const DAY_LABELS = {
   monday: 'Monday', tuesday: 'Tuesday', wednesday: 'Wednesday',
   thursday: 'Thursday', friday: 'Friday', saturday: 'Saturday', sunday: 'Sunday',
 };
-
-function escHTML(str) {
-  return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
 
 function parseTimeRange(rangeStr) {
   // "4:00 PM - 12:00 AM" -> { open: "16:00", close: "00:00" }

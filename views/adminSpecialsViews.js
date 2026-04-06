@@ -60,43 +60,56 @@ function renderHalfPricePicker(day, theme, actionUrl, spiritCatalog, spiritCateg
   const savedLabel = typeof config.label === 'string' && config.label ? config.label : suggestedLabel;
   const savedDiscount = typeof config.discount === 'number' && config.discount > 0 ? config.discount : 50;
 
-  // Build category pill HTML
-  const categoryPills = categories.map(cat => {
-    const active = activeCategories.includes(cat);
-    return `<button type="button" class="hp-pill${active ? ' hp-pill-active' : ''}" data-hp-cat="${escHTML(cat)}">${escHTML(cat)}</button>`;
-  }).join('');
-
-  // Group catalog by category for table rendering
+  // Group catalog by category for pill counts and table rendering
   const grouped = {};
   catalog.forEach(s => {
     const cat = s.primaryCategory || 'Uncategorized';
     if (!grouped[cat]) grouped[cat] = [];
     grouped[cat].push(s);
   });
+  const sortedCats = Object.keys(grouped).sort();
+
+  // Build category pill HTML (pills are for categories present in the catalog, with count badges)
+  const catalogCatSet = new Set(sortedCats);
+  const pillList = categories.filter(c => catalogCatSet.has(c));
+  // Add any catalog categories that weren't in the master list (fallback)
+  sortedCats.forEach(c => { if (!pillList.includes(c)) pillList.push(c); });
+  const categoryPills = pillList.map(cat => {
+    const active = activeCategories.includes(cat);
+    const count = grouped[cat] ? grouped[cat].length : 0;
+    return `<button type="button" class="hp-pill${active ? ' hp-pill-active' : ''}" data-hp-cat="${escHTML(cat)}">
+      <span class="hp-pill-label">${escHTML(cat)}</span>
+      <span class="hp-pill-count">${count}</span>
+    </button>`;
+  }).join('');
 
   // Build table rows grouped by category
   let tableRows = '';
-  const sortedCats = Object.keys(grouped).sort();
   for (const cat of sortedCats) {
     const spirits = grouped[cat];
     const selectedInGroup = spirits.filter(s => savedPickSet.has(String(s.productId))).length;
     tableRows += `<tr class="hp-group-header" data-hp-group="${escHTML(cat)}">
-      <td colspan="5">
-        <span class="hp-group-label">${escHTML(cat)}</span>
-        <span class="hp-group-count">(${spirits.length})</span>
-        <span class="hp-group-selected" data-hp-gsel="${escHTML(cat)}">${selectedInGroup > 0 ? `${selectedInGroup} selected` : ''}</span>
-        <button type="button" class="hp-grp-btn hp-grp-selall" data-hp-grpact="${escHTML(cat)}">all</button>
-        <button type="button" class="hp-grp-btn hp-grp-selnone" data-hp-grpclr="${escHTML(cat)}">none</button>
+      <td colspan="4">
+        <div class="hp-group-header-inner">
+          <div class="hp-group-title">
+            <span class="hp-group-label">${escHTML(cat)}</span>
+            <span class="hp-group-count">${spirits.length}</span>
+            <span class="hp-group-selected" data-hp-gsel="${escHTML(cat)}">${selectedInGroup > 0 ? `${selectedInGroup} selected` : ''}</span>
+          </div>
+          <div class="hp-group-actions">
+            <button type="button" class="hp-grp-btn hp-grp-selall" data-hp-grpact="${escHTML(cat)}">Select all</button>
+            <button type="button" class="hp-grp-btn hp-grp-selnone" data-hp-grpclr="${escHTML(cat)}">Clear</button>
+          </div>
+        </div>
       </td>
     </tr>`;
     for (const s of spirits) {
       const checked = savedPickSet.has(String(s.productId)) ? ' checked' : '';
       const halfPrice = s.oneOzPrice ? (s.oneOzPrice / 2).toFixed(0) : '';
-      tableRows += `<tr class="hp-row${checked ? ' hp-row-picked' : ''}" data-hp-id="${escHTML(s.productId)}" data-hp-cat="${escHTML(s.primaryCategory || '')}" data-hp-name="${escHTML(s.name.toLowerCase())}" data-hp-price="${s.oneOzPrice || ''}">
-        <td class="hp-cell-cb"><input type="checkbox" class="hp-spirit-cb" value="${escHTML(s.productId)}"${checked} /></td>
+      tableRows += `<tr class="hp-row${checked ? ' hp-row-picked' : ''}" data-hp-id="${escHTML(s.productId)}" data-hp-cat="${escHTML(s.primaryCategory || '')}" data-hp-name="${escHTML(s.name.toLowerCase())}" data-hp-price="${s.oneOzPrice || ''}" tabindex="0">
+        <td class="hp-cell-cb"><input type="checkbox" class="hp-spirit-cb" value="${escHTML(s.productId)}"${checked} aria-label="Select ${escHTML(s.name)}" /></td>
         <td class="hp-cell-name">${escHTML(s.name)}</td>
-        <td class="hp-cell-cat">${escHTML(s.primaryCategory || '')}</td>
-        <td class="hp-cell-price">${s.oneOzPrice ? `$${s.oneOzPrice}` : ''}</td>
+        <td class="hp-cell-price">${s.oneOzPrice ? `$${s.oneOzPrice}` : '<span class="hp-na">—</span>'}</td>
         <td class="hp-cell-half">${s.oneOzPrice ? `$${halfPrice}` : ''}</td>
       </tr>`;
     }
@@ -109,116 +122,425 @@ function renderHalfPricePicker(day, theme, actionUrl, spiritCatalog, spiritCateg
     price: s.oneOzPrice,
   })));
 
+  const emptyCatalog = catalog.length === 0;
+
   return `
-    <div class="card hp-picker" style="background:rgba(212,175,55,0.05); border:1px solid rgba(212,175,55,0.2)">
+    <div class="card hp-picker" id="hp-picker">
       <style>
-        .hp-picker .hp-pills { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:16px }
-        .hp-picker .hp-pill { background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); color:#ccc; padding:5px 14px; border-radius:20px; font-size:0.85rem; cursor:pointer; transition:all 0.15s }
-        .hp-picker .hp-pill:hover { border-color:rgba(212,175,55,0.5); color:#d4af37 }
-        .hp-picker .hp-pill-active { background:rgba(212,175,55,0.25); border-color:#d4af37; color:#d4af37; font-weight:600 }
-        .hp-picker .hp-filter-row { display:flex; gap:16px; align-items:flex-end; flex-wrap:wrap; margin-bottom:16px }
-        .hp-picker .hp-filter-row label { font-size:0.82rem; color:#888; display:block; margin-bottom:3px }
-        .hp-picker .hp-filter-row input { width:80px }
-        .hp-picker .hp-filter-row .hp-search-wrap { flex:1; min-width:180px }
-        .hp-picker .hp-filter-row .hp-search-wrap input { width:100% }
-        .hp-picker .hp-status-bar { display:flex; align-items:center; gap:10px; padding:8px 12px; background:rgba(0,0,0,0.25); border-radius:6px; margin-bottom:2px; font-size:0.88rem; color:#aaa; flex-wrap:wrap }
-        .hp-picker .hp-status-bar label { display:flex; align-items:center; gap:6px; cursor:pointer; color:#ccc; font-size:0.85rem }
-        .hp-picker .hp-status-bar input { width:auto }
-        .hp-picker .hp-status-counts { margin-left:auto; white-space:nowrap }
-        .hp-picker .hp-status-counts strong { color:#d4af37 }
-        .hp-picker .hp-view-btns { display:inline-flex; gap:0; border:1px solid #555; border-radius:4px; overflow:hidden; margin-left:8px }
-        .hp-picker .hp-view-btn { background:transparent; border:none; color:#888; padding:3px 10px; font-size:0.78rem; cursor:pointer }
-        .hp-picker .hp-view-btn:not(:last-child) { border-right:1px solid #555 }
-        .hp-picker .hp-view-btn.hp-vb-active { background:rgba(212,175,55,0.2); color:#d4af37; font-weight:600 }
-        .hp-picker .hp-table-wrap { max-height:500px; overflow-y:auto; border:1px solid #333; border-radius:8px; background:rgba(0,0,0,0.2) }
-        .hp-picker .hp-table { width:100%; border-collapse:collapse }
-        .hp-picker .hp-group-header td { padding:8px 12px 5px; font-weight:700; color:#d4af37; font-size:0.85rem; border-bottom:1px solid rgba(212,175,55,0.2); background:rgba(212,175,55,0.06) }
-        .hp-picker .hp-group-count { color:#888; font-weight:400; font-size:0.8rem }
-        .hp-picker .hp-group-selected { color:#8cb369; font-weight:500; font-size:0.78rem; margin-left:6px }
-        .hp-picker .hp-grp-btn { background:transparent; border:1px solid #555; color:#888; padding:1px 8px; border-radius:3px; font-size:0.72rem; cursor:pointer; margin-left:4px; text-transform:uppercase; letter-spacing:0.03em }
-        .hp-picker .hp-grp-btn:hover { border-color:#d4af37; color:#d4af37 }
-        .hp-picker .hp-row td { padding:6px 12px; border-bottom:1px solid rgba(255,255,255,0.04); font-size:0.88rem; color:#ccc }
-        .hp-picker .hp-row:hover td { background:rgba(212,175,55,0.06) }
-        .hp-picker .hp-row-picked td { background:rgba(140,179,105,0.06) }
-        .hp-picker .hp-row-picked .hp-cell-name { color:#8cb369 }
-        .hp-picker .hp-cell-cb { width:30px; text-align:center }
-        .hp-picker .hp-cell-cb input { width:auto; cursor:pointer }
-        .hp-picker .hp-cell-name { font-weight:500 }
-        .hp-picker .hp-cell-cat { color:#888; font-size:0.82rem }
-        .hp-picker .hp-cell-price { color:#888; font-size:0.85rem; text-align:right; white-space:nowrap }
-        .hp-picker .hp-cell-half { color:#d4af37; font-weight:600; font-size:0.85rem; text-align:right; white-space:nowrap }
-        .hp-picker .hp-row-hidden { display:none }
+        .hp-picker { background: #1a1a1a; border: 1px solid #2a2a2a; padding: 0; overflow: hidden; }
+        .hp-picker .hp-head {
+          padding: 20px 24px;
+          background: linear-gradient(135deg, rgba(212,175,55,0.08), rgba(184,115,51,0.04));
+          border-bottom: 1px solid #2a2a2a;
+        }
+        .hp-picker .hp-head h2 { margin: 0 0 4px; font-size: 1.25rem; color: #d4af37; }
+        .hp-picker .hp-head p { color: #888; font-size: 0.88rem; margin: 0; }
+
+        .hp-picker .hp-section { padding: 20px 24px; border-bottom: 1px solid #222; }
+        .hp-picker .hp-section:last-of-type { border-bottom: none; }
+        .hp-picker .hp-section-label {
+          display: block;
+          font-size: 0.72rem;
+          font-weight: 700;
+          color: #888;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          margin-bottom: 14px;
+        }
+
+        /* Sticky summary bar */
+        .hp-picker .hp-summary {
+          position: sticky; top: 10px; z-index: 5;
+          margin: 16px 24px 0;
+          padding: 14px 18px;
+          background: linear-gradient(135deg, #1e1e1e, #1a1a1a);
+          border: 1px solid #3a3a3a;
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          flex-wrap: wrap;
+          box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        }
+        .hp-picker .hp-summary-stat { display: flex; align-items: baseline; gap: 6px; }
+        .hp-picker .hp-summary-num {
+          font-size: 1.5rem; font-weight: 800;
+          background: linear-gradient(135deg, #d4af37, #b87333);
+          -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .hp-picker .hp-summary-lbl { color: #888; font-size: 0.85rem; }
+        .hp-picker .hp-summary-sep { width: 1px; height: 24px; background: #333; }
+        .hp-picker .hp-summary-discount {
+          background: rgba(212,175,55,0.15);
+          color: #d4af37;
+          padding: 6px 12px;
+          border-radius: 20px;
+          font-weight: 700;
+          font-size: 0.85rem;
+        }
+        .hp-picker .hp-dirty-badge {
+          display: none;
+          align-items: center;
+          gap: 6px;
+          background: rgba(224,138,60,0.15);
+          color: #e08a3c;
+          padding: 5px 10px;
+          border-radius: 20px;
+          font-size: 0.78rem;
+          font-weight: 600;
+        }
+        .hp-picker .hp-dirty-badge.is-dirty { display: inline-flex; }
+        .hp-picker .hp-dirty-dot { width: 6px; height: 6px; background: #e08a3c; border-radius: 50%; animation: hp-pulse 1.6s ease-in-out infinite; }
+        @keyframes hp-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .hp-picker .hp-summary-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+        /* Display + preview */
+        .hp-picker .hp-display-row { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+        .hp-picker .hp-display-fields label { margin-top: 0; }
+        .hp-picker .hp-display-fields .form-row { margin-top: 12px; }
+        .hp-picker .hp-preview {
+          background: #0d0d0d;
+          border: 1px solid #2a2a2a;
+          border-radius: 10px;
+          padding: 16px 18px;
+        }
+        .hp-picker .hp-preview-hint {
+          font-size: 0.68rem;
+          font-weight: 700;
+          color: #666;
+          text-transform: uppercase;
+          letter-spacing: 0.1em;
+          margin-bottom: 10px;
+        }
+        .hp-picker .hp-preview-title {
+          font-size: 1.05rem;
+          font-weight: 700;
+          color: #d4af37;
+          margin-bottom: 4px;
+        }
+        .hp-picker .hp-preview-sub { color: #888; font-size: 0.82rem; margin-bottom: 12px; }
+        .hp-picker .hp-preview-ex {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 8px 10px;
+          background: #151515;
+          border-radius: 6px;
+          font-size: 0.85rem;
+        }
+        .hp-picker .hp-preview-ex-name { color: #ccc; font-weight: 500; }
+        .hp-picker .hp-preview-ex-prices { display: flex; gap: 8px; align-items: baseline; }
+        .hp-picker .hp-preview-ex-prices s { color: #666; font-size: 0.78rem; }
+        .hp-picker .hp-preview-ex-prices strong { color: #d4af37; font-size: 0.95rem; }
+        .hp-picker .hp-preview-empty { color: #555; font-size: 0.82rem; font-style: italic; }
+
+        /* Pills */
+        .hp-picker .hp-pills {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+        .hp-picker .hp-pill {
+          background: #111;
+          border: 1px solid #2a2a2a;
+          color: #aaa;
+          padding: 6px 10px 6px 12px;
+          border-radius: 20px;
+          font-size: 0.82rem;
+          cursor: pointer;
+          transition: all 0.15s;
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          font-family: inherit;
+        }
+        .hp-picker .hp-pill:hover { border-color: rgba(212,175,55,0.5); color: #d4af37; }
+        .hp-picker .hp-pill-count {
+          background: #222;
+          color: #888;
+          padding: 1px 7px;
+          border-radius: 10px;
+          font-size: 0.72rem;
+          font-weight: 600;
+        }
+        .hp-picker .hp-pill-active { background: rgba(212,175,55,0.15); border-color: #d4af37; color: #d4af37; font-weight: 600; }
+        .hp-picker .hp-pill-active .hp-pill-count { background: rgba(212,175,55,0.25); color: #d4af37; }
+
+        /* Filter row */
+        .hp-picker .hp-filter-grid {
+          display: grid;
+          grid-template-columns: 2fr 1fr 1fr;
+          gap: 12px;
+          margin-bottom: 14px;
+        }
+        .hp-picker .hp-filter-grid label { margin-top: 0; }
+        .hp-picker .hp-search-input {
+          background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='8'/><line x1='21' y1='21' x2='16.65' y2='16.65'/></svg>");
+          background-repeat: no-repeat;
+          background-position: 12px center;
+          padding-left: 36px !important;
+        }
+
+        /* Action toolbar */
+        .hp-picker .hp-toolbar {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 14px;
+          background: #111;
+          border: 1px solid #2a2a2a;
+          border-radius: 8px 8px 0 0;
+          border-bottom: none;
+          flex-wrap: wrap;
+        }
+        .hp-picker .hp-toolbar .hp-bulk-btn {
+          background: #222;
+          border: 1px solid #333;
+          color: #ccc;
+          padding: 5px 11px;
+          border-radius: 6px;
+          font-size: 0.78rem;
+          cursor: pointer;
+          font-family: inherit;
+          transition: all 0.15s;
+        }
+        .hp-picker .hp-toolbar .hp-bulk-btn:hover { border-color: #d4af37; color: #d4af37; }
+        .hp-picker .hp-view-btns {
+          display: inline-flex;
+          background: #0d0d0d;
+          border: 1px solid #333;
+          border-radius: 6px;
+          overflow: hidden;
+        }
+        .hp-picker .hp-view-btn {
+          background: transparent;
+          border: none;
+          color: #888;
+          padding: 5px 12px;
+          font-size: 0.78rem;
+          cursor: pointer;
+          font-family: inherit;
+          transition: all 0.15s;
+        }
+        .hp-picker .hp-view-btn:not(:last-child) { border-right: 1px solid #2a2a2a; }
+        .hp-picker .hp-view-btn:hover { color: #d4af37; }
+        .hp-picker .hp-view-btn.hp-vb-active { background: rgba(212,175,55,0.15); color: #d4af37; font-weight: 600; }
+        .hp-picker .hp-counts {
+          margin-left: auto;
+          color: #888;
+          font-size: 0.82rem;
+          white-space: nowrap;
+        }
+        .hp-picker .hp-counts strong { color: #d4af37; font-weight: 700; }
+
+        /* Table */
+        .hp-picker .hp-table-wrap {
+          max-height: 60vh;
+          overflow-y: auto;
+          border: 1px solid #2a2a2a;
+          border-top: none;
+          border-radius: 0 0 8px 8px;
+          background: #0d0d0d;
+        }
+        .hp-picker .hp-table { width: 100%; border-collapse: collapse; }
+        .hp-picker .hp-group-header td {
+          padding: 0;
+          background: #151515;
+          border-bottom: 1px solid #2a2a2a;
+          position: sticky;
+          top: 0;
+          z-index: 1;
+        }
+        .hp-picker .hp-group-header-inner {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 10px 14px;
+          gap: 10px;
+        }
+        .hp-picker .hp-group-title { display: flex; align-items: center; gap: 8px; }
+        .hp-picker .hp-group-label { font-weight: 700; color: #d4af37; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.05em; }
+        .hp-picker .hp-group-count { color: #666; font-size: 0.78rem; background: #222; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+        .hp-picker .hp-group-selected { color: #8cb369; font-size: 0.76rem; font-weight: 600; }
+        .hp-picker .hp-group-actions { display: flex; gap: 4px; }
+        .hp-picker .hp-grp-btn {
+          background: transparent;
+          border: 1px solid #333;
+          color: #888;
+          padding: 3px 9px;
+          border-radius: 4px;
+          font-size: 0.72rem;
+          cursor: pointer;
+          font-family: inherit;
+          transition: all 0.15s;
+        }
+        .hp-picker .hp-grp-btn:hover { border-color: #d4af37; color: #d4af37; }
+
+        .hp-picker .hp-row {
+          cursor: pointer;
+          transition: background 0.1s;
+        }
+        .hp-picker .hp-row:focus { outline: 2px solid rgba(212,175,55,0.5); outline-offset: -2px; }
+        .hp-picker .hp-row td {
+          padding: 9px 14px;
+          border-bottom: 1px solid #1a1a1a;
+          font-size: 0.88rem;
+          color: #ccc;
+        }
+        .hp-picker .hp-row:hover td { background: #151515; }
+        .hp-picker .hp-row-picked {
+          background: linear-gradient(90deg, rgba(140,179,105,0.08), transparent 60%);
+          box-shadow: inset 3px 0 0 #8cb369;
+        }
+        .hp-picker .hp-row-picked .hp-cell-name { color: #c5e1a5; }
+        .hp-picker .hp-cell-cb { width: 36px; text-align: center; }
+        .hp-picker .hp-cell-cb input[type="checkbox"] {
+          width: 16px; height: 16px;
+          accent-color: #d4af37;
+          cursor: pointer;
+        }
+        .hp-picker .hp-cell-name { font-weight: 500; }
+        .hp-picker .hp-cell-price { color: #888; font-size: 0.85rem; text-align: right; white-space: nowrap; }
+        .hp-picker .hp-cell-half { color: #d4af37; font-weight: 700; font-size: 0.9rem; text-align: right; white-space: nowrap; }
+        .hp-picker .hp-na { color: #444; }
+        .hp-picker .hp-row-hidden { display: none; }
+
+        .hp-picker .hp-empty {
+          text-align: center;
+          padding: 40px 20px;
+          color: #666;
+        }
+        .hp-picker .hp-empty-icon { font-size: 2rem; opacity: 0.4; margin-bottom: 8px; }
+        .hp-picker .hp-empty-title { color: #888; font-weight: 600; margin-bottom: 4px; }
+        .hp-picker .hp-empty-sub { font-size: 0.85rem; }
+
+        @media (max-width: 768px) {
+          .hp-picker .hp-display-row { grid-template-columns: 1fr; }
+          .hp-picker .hp-filter-grid { grid-template-columns: 1fr; }
+          .hp-picker .hp-summary { margin: 12px 16px 0; padding: 12px; }
+          .hp-picker .hp-summary-actions { margin-left: 0; width: 100%; }
+          .hp-picker .hp-head,
+          .hp-picker .hp-section { padding: 16px; }
+          .hp-picker .hp-group-header-inner { flex-direction: column; align-items: flex-start; gap: 6px; }
+          .hp-picker .hp-counts { margin-left: 0; width: 100%; }
+        }
       </style>
 
-      <h2>Discounted Spirit Picker</h2>
-      <p style="color:#aaa; margin-bottom:14px">
-        Pick the spirits guests see on this day's specials page. Use category pills, price, and search to narrow down &mdash; then check individual spirits to include.
-        <br/><span id="hp-dirty-indicator" style="color:#e08a3c; font-weight:600; display:none">You have unsaved changes.</span>
-        ${savedPicks.length > 0 ? `<br/><span style="color:#8cb369; font-weight:600">${savedPicks.length} spirits currently saved</span>` : ''}
-      </p>
+      <div class="hp-head">
+        <h2>Discounted Spirits</h2>
+        <p>Pick which spirits guests see on this day's specials page at a discount.</p>
+      </div>
 
-      <div class="form-row" style="margin-bottom:16px">
-        <div style="flex:2">
-          <label>Display Label <span style="font-weight:400; color:#888; font-size:0.8rem">(shown as section title to guests)</span></label>
-          <input type="text" id="hp-label" value="${escHTML(savedLabel)}" placeholder="e.g. Whiskey, Agave Spirits" />
+      <!-- Sticky summary bar -->
+      <div class="hp-summary">
+        <div class="hp-summary-stat">
+          <span class="hp-summary-num" id="hp-summary-count">0</span>
+          <span class="hp-summary-lbl">of ${catalog.length} selected</span>
         </div>
-        <div style="flex:1">
-          <label>Discount % <span style="font-weight:400; color:#888; font-size:0.8rem">(0&ndash;100)</span></label>
-          <input type="number" id="hp-discount" value="${escHTML(String(savedDiscount))}" min="1" max="99" step="1" />
+        <div class="hp-summary-sep"></div>
+        <div class="hp-summary-discount" id="hp-summary-discount">${savedDiscount}% off</div>
+        <span class="hp-dirty-badge" id="hp-dirty-badge">
+          <span class="hp-dirty-dot"></span> Unsaved changes
+        </span>
+        <div class="hp-summary-actions">
+          <form method="POST" action="${actionUrl}" id="hp-save-form" style="margin:0">
+            <input type="hidden" name="_action" value="saveHalfPrice" />
+            <input type="hidden" name="halfPriceConfig" id="hp-config-json" value="${escHTML(JSON.stringify(config))}" />
+            <button type="submit" class="btn btn-primary">Save Selection</button>
+          </form>
         </div>
       </div>
 
-      <label style="font-weight:700; color:#d4af37; margin-bottom:8px; display:block">Categories <span style="font-weight:400; color:#888; font-size:0.82rem">(click to filter the list below &mdash; does not select spirits)</span></label>
-      <div class="hp-pills" id="hp-pills">
-        ${categoryPills || '<span style="color:#666">No categories loaded from bartender database</span>'}
+      <!-- Section: How guests see it -->
+      <div class="hp-section">
+        <span class="hp-section-label">How guests see it</span>
+        <div class="hp-display-row">
+          <div class="hp-display-fields">
+            <label for="hp-label">Section Title</label>
+            <input type="text" id="hp-label" value="${escHTML(savedLabel)}" placeholder="e.g. Whiskey, Agave Spirits" />
+            <div class="form-row">
+              <div>
+                <label for="hp-discount">Discount %</label>
+                <input type="number" id="hp-discount" value="${escHTML(String(savedDiscount))}" min="1" max="99" step="1" />
+              </div>
+              <div>
+                <label>&nbsp;</label>
+                <div style="color:#666; font-size:0.8rem; padding-top:12px">Applies to all selected spirits</div>
+              </div>
+            </div>
+          </div>
+          <div class="hp-preview">
+            <div class="hp-preview-hint">Live Preview</div>
+            <div class="hp-preview-title" id="hp-preview-title">Half-Price Whiskey</div>
+            <div class="hp-preview-sub" id="hp-preview-sub">50% off select spirits &mdash; tonight only</div>
+            <div class="hp-preview-ex" id="hp-preview-ex">
+              <span class="hp-preview-empty">Select spirits below to see a price example</span>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div class="hp-filter-row">
-        <div>
-          <label>Min $/oz</label>
-          <input type="number" id="hp-priceMin" value="${escHTML(String(priceMin))}" min="0" step="1" placeholder="0" />
+      ${emptyCatalog ? `
+      <div class="hp-section">
+        <div class="hp-empty">
+          <div class="hp-empty-icon">◌</div>
+          <div class="hp-empty-title">No spirits loaded</div>
+          <div class="hp-empty-sub">The bartender database didn't return any spirits for this location.</div>
         </div>
-        <div>
-          <label>Max $/oz</label>
-          <input type="number" id="hp-priceMax" value="${escHTML(String(priceMax))}" min="0" step="1" placeholder="any" />
+      </div>
+      ` : `
+      <!-- Section: Filter -->
+      <div class="hp-section">
+        <span class="hp-section-label">Find spirits</span>
+        <div class="hp-filter-grid">
+          <div>
+            <label for="hp-search">Search</label>
+            <input type="text" id="hp-search" class="hp-search-input" placeholder="Search spirits by name..." />
+          </div>
+          <div>
+            <label for="hp-priceMin">Min $/oz</label>
+            <input type="number" id="hp-priceMin" value="${escHTML(String(priceMin))}" min="0" step="1" placeholder="0" />
+          </div>
+          <div>
+            <label for="hp-priceMax">Max $/oz</label>
+            <input type="number" id="hp-priceMax" value="${escHTML(String(priceMax))}" min="0" step="1" placeholder="any" />
+          </div>
         </div>
-        <div class="hp-search-wrap">
-          <label>Search</label>
-          <input type="text" id="hp-search" placeholder="Search spirits by name..." />
+        <label style="display:block; margin-bottom:8px; color:#888; font-size:0.82rem">Categories <span style="color:#555">&mdash; click to filter the list below</span></label>
+        <div class="hp-pills" id="hp-pills">
+          ${categoryPills || '<span style="color:#666">No categories loaded</span>'}
         </div>
       </div>
 
-      <div class="hp-status-bar" id="hp-status-bar">
-        <button type="button" class="btn btn-secondary btn-sm" id="hp-select-all" style="padding:2px 10px; font-size:0.8rem">Select All</button>
-        <button type="button" class="btn btn-secondary btn-sm" id="hp-deselect-all" style="padding:2px 10px; font-size:0.8rem">Deselect All</button>
-        <div class="hp-view-btns">
-          <button type="button" class="hp-view-btn hp-vb-active" data-hp-view="all">All</button>
-          <button type="button" class="hp-view-btn" data-hp-view="selected">Selected</button>
-          <button type="button" class="hp-view-btn" data-hp-view="unselected">Unselected</button>
+      <!-- Section: Pick -->
+      <div class="hp-section">
+        <span class="hp-section-label">Select spirits</span>
+        <div class="hp-toolbar">
+          <button type="button" class="hp-bulk-btn" id="hp-select-all">Select all shown</button>
+          <button type="button" class="hp-bulk-btn" id="hp-deselect-all">Clear shown</button>
+          <div class="hp-view-btns">
+            <button type="button" class="hp-view-btn hp-vb-active" data-hp-view="all">All</button>
+            <button type="button" class="hp-view-btn" data-hp-view="selected">Selected</button>
+            <button type="button" class="hp-view-btn" data-hp-view="unselected">Unselected</button>
+          </div>
+          <span class="hp-counts" id="hp-counts">&mdash;</span>
         </div>
-        <span class="hp-status-counts" id="hp-counts">...</span>
+        <div class="hp-table-wrap">
+          <table class="hp-table" id="hp-table">
+            <tbody>${tableRows}</tbody>
+          </table>
+        </div>
       </div>
-
-      <div class="hp-table-wrap">
-        <table class="hp-table" id="hp-table">
-          <tbody>${tableRows}</tbody>
-        </table>
-      </div>
-
-      <form method="POST" action="${actionUrl}" style="margin-top:14px">
-        <input type="hidden" name="_action" value="saveHalfPrice" />
-        <input type="hidden" name="halfPriceConfig" id="hp-config-json" value="${escHTML(JSON.stringify(config))}" />
-        <button type="submit" class="btn btn-primary">Save Half-Price Selection</button>
-      </form>
+      `}
     </div>
 
     <script>
     (function() {
       var catalog = ${catalogJSON};
       var configInput = document.getElementById('hp-config-json');
-      var pills = document.querySelectorAll('.hp-pill');
-      var rows = document.querySelectorAll('.hp-row');
-      var groupHeaders = document.querySelectorAll('.hp-group-header');
+      var pills = document.querySelectorAll('#hp-picker .hp-pill');
+      var rows = document.querySelectorAll('#hp-picker .hp-row');
+      var groupHeaders = document.querySelectorAll('#hp-picker .hp-group-header');
       var priceMinEl = document.getElementById('hp-priceMin');
       var priceMaxEl = document.getElementById('hp-priceMax');
       var searchEl = document.getElementById('hp-search');
@@ -227,15 +549,24 @@ function renderHalfPricePicker(day, theme, actionUrl, spiritCatalog, spiritCateg
       var countsEl = document.getElementById('hp-counts');
       var labelEl = document.getElementById('hp-label');
       var discountEl = document.getElementById('hp-discount');
-      var dirtyEl = document.getElementById('hp-dirty-indicator');
-      var halfCellCells = document.querySelectorAll('.hp-cell-half');
+      var dirtyBadge = document.getElementById('hp-dirty-badge');
+      var summaryCount = document.getElementById('hp-summary-count');
+      var summaryDiscount = document.getElementById('hp-summary-discount');
+      var previewTitle = document.getElementById('hp-preview-title');
+      var previewSub = document.getElementById('hp-preview-sub');
+      var previewEx = document.getElementById('hp-preview-ex');
+      var saveForm = document.getElementById('hp-save-form');
       var initialSnapshot = null;
       var viewMode = 'all';
+      var saving = false;
 
       function getDiscount() {
         var d = discountEl && discountEl.value ? parseInt(discountEl.value, 10) : 50;
         if (isNaN(d) || d <= 0 || d >= 100) d = 50;
         return d;
+      }
+      function getLabel() {
+        return labelEl && labelEl.value.trim() ? labelEl.value.trim() : 'Spirits';
       }
       function recomputePriceCells() {
         var disc = getDiscount();
@@ -249,26 +580,57 @@ function renderHalfPricePicker(day, theme, actionUrl, spiritCatalog, spiritCateg
           cell.textContent = '$' + (p * (100 - disc) / 100).toFixed(0);
         });
       }
+      function updatePreview() {
+        var disc = getDiscount();
+        var lbl = getLabel();
+        if (previewTitle) previewTitle.textContent = disc === 50 ? ('Half-Price ' + lbl) : (disc + '% Off ' + lbl);
+        if (previewSub) previewSub.textContent = disc + '% off select spirits \u2014 tonight only';
+        if (summaryDiscount) summaryDiscount.textContent = disc + '% off';
+
+        if (previewEx) {
+          // Find first selected spirit with a price, or fall back to first visible with a price
+          var exSpirit = null;
+          for (var i = 0; i < rows.length; i++) {
+            var cb = rows[i].querySelector('.hp-spirit-cb');
+            var priceAttr = rows[i].getAttribute('data-hp-price');
+            if (cb && cb.checked && priceAttr) {
+              exSpirit = {
+                name: rows[i].querySelector('.hp-cell-name').textContent,
+                price: parseFloat(priceAttr)
+              };
+              break;
+            }
+          }
+          if (exSpirit) {
+            var discounted = (exSpirit.price * (100 - disc) / 100).toFixed(0);
+            previewEx.innerHTML =
+              '<span class="hp-preview-ex-name">' + exSpirit.name + '</span>' +
+              '<span class="hp-preview-ex-prices"><s>$' + exSpirit.price + '</s> <strong>$' + discounted + '</strong></span>';
+          } else {
+            previewEx.innerHTML = '<span class="hp-preview-empty">Select spirits below to see a price example</span>';
+          }
+        }
+      }
       function markDirty() {
-        if (!dirtyEl || !initialSnapshot) return;
+        if (!dirtyBadge || initialSnapshot === null) return;
         if (configInput && configInput.value !== initialSnapshot) {
-          dirtyEl.style.display = 'inline';
+          dirtyBadge.classList.add('is-dirty');
         } else {
-          dirtyEl.style.display = 'none';
+          dirtyBadge.classList.remove('is-dirty');
         }
       }
 
       // --- View mode (All / Selected / Unselected) ---
-      document.querySelectorAll('.hp-view-btn').forEach(function(btn) {
+      document.querySelectorAll('#hp-picker .hp-view-btn').forEach(function(btn) {
         btn.addEventListener('click', function() {
-          document.querySelectorAll('.hp-view-btn').forEach(function(b) { b.classList.remove('hp-vb-active'); });
+          document.querySelectorAll('#hp-picker .hp-view-btn').forEach(function(b) { b.classList.remove('hp-vb-active'); });
           btn.classList.add('hp-vb-active');
           viewMode = btn.getAttribute('data-hp-view');
           applyFilters();
         });
       });
 
-      // --- Category pills: filter view only (no auto-select) ---
+      // --- Category pills: filter view only ---
       pills.forEach(function(pill) {
         pill.addEventListener('click', function() {
           pill.classList.toggle('hp-pill-active');
@@ -277,8 +639,9 @@ function renderHalfPricePicker(day, theme, actionUrl, spiritCatalog, spiritCateg
       });
 
       // --- Per-group select all / deselect all (only visible rows) ---
-      document.querySelectorAll('.hp-grp-selall').forEach(function(btn) {
-        btn.addEventListener('click', function() {
+      document.querySelectorAll('#hp-picker .hp-grp-selall').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+          e.stopPropagation();
           var cat = btn.getAttribute('data-hp-grpact');
           rows.forEach(function(row) {
             if (row.getAttribute('data-hp-cat') === cat && !row.classList.contains('hp-row-hidden')) {
@@ -286,11 +649,12 @@ function renderHalfPricePicker(day, theme, actionUrl, spiritCatalog, spiritCateg
               if (cb) { cb.checked = true; row.classList.add('hp-row-picked'); }
             }
           });
-          updateCounts(); buildConfig();
+          updateCounts(); buildConfig(); applyFilters();
         });
       });
-      document.querySelectorAll('.hp-grp-selnone').forEach(function(btn) {
-        btn.addEventListener('click', function() {
+      document.querySelectorAll('#hp-picker .hp-grp-selnone').forEach(function(btn) {
+        btn.addEventListener('click', function(e) {
+          e.stopPropagation();
           var cat = btn.getAttribute('data-hp-grpclr');
           rows.forEach(function(row) {
             if (row.getAttribute('data-hp-cat') === cat && !row.classList.contains('hp-row-hidden')) {
@@ -298,20 +662,20 @@ function renderHalfPricePicker(day, theme, actionUrl, spiritCatalog, spiritCateg
               if (cb) { cb.checked = false; row.classList.remove('hp-row-picked'); }
             }
           });
-          updateCounts(); buildConfig();
+          updateCounts(); buildConfig(); applyFilters();
         });
       });
 
       function getActiveCategories() {
-        return Array.from(document.querySelectorAll('.hp-pill-active')).map(function(p) { return p.getAttribute('data-hp-cat'); });
+        return Array.from(document.querySelectorAll('#hp-picker .hp-pill-active')).map(function(p) { return p.getAttribute('data-hp-cat'); });
       }
 
       // --- Filtering ---
       function applyFilters() {
         var activeCats = getActiveCategories();
-        var minP = priceMinEl.value ? parseFloat(priceMinEl.value) : null;
-        var maxP = priceMaxEl.value ? parseFloat(priceMaxEl.value) : null;
-        var q = (searchEl.value || '').toLowerCase().trim();
+        var minP = priceMinEl && priceMinEl.value ? parseFloat(priceMinEl.value) : null;
+        var maxP = priceMaxEl && priceMaxEl.value ? parseFloat(priceMaxEl.value) : null;
+        var q = searchEl ? (searchEl.value || '').toLowerCase().trim() : '';
 
         var visibleByGroup = {};
         var selectedByGroup = {};
@@ -329,8 +693,6 @@ function renderHalfPricePicker(day, theme, actionUrl, spiritCatalog, spiritCateg
           var searchOk = !q || name.indexOf(q) !== -1;
 
           var filterPass = catOk && priceOk && searchOk;
-
-          // Apply view mode
           var viewPass = true;
           if (viewMode === 'selected' && !isChecked) viewPass = false;
           if (viewMode === 'unselected' && isChecked) viewPass = false;
@@ -342,12 +704,9 @@ function renderHalfPricePicker(day, theme, actionUrl, spiritCatalog, spiritCateg
           } else {
             row.classList.add('hp-row-hidden');
           }
-
-          // Track selected per group (regardless of visibility)
           if (isChecked) selectedByGroup[cat] = (selectedByGroup[cat] || 0) + 1;
         });
 
-        // Show/hide group headers and update counts
         groupHeaders.forEach(function(hdr) {
           var g = hdr.getAttribute('data-hp-group');
           var cnt = visibleByGroup[g] || 0;
@@ -355,7 +714,7 @@ function renderHalfPricePicker(day, theme, actionUrl, spiritCatalog, spiritCateg
           if (cnt > 0) {
             hdr.classList.remove('hp-row-hidden');
             var countSpan = hdr.querySelector('.hp-group-count');
-            if (countSpan) countSpan.textContent = '(' + cnt + ')';
+            if (countSpan) countSpan.textContent = cnt;
             var selSpan = hdr.querySelector('.hp-group-selected');
             if (selSpan) selSpan.textContent = sel > 0 ? sel + ' selected' : '';
           } else {
@@ -376,26 +735,26 @@ function renderHalfPricePicker(day, theme, actionUrl, spiritCatalog, spiritCateg
           var cb = row.querySelector('.hp-spirit-cb');
           if (cb && cb.checked) pickedCount++;
         });
-        countsEl.innerHTML = visibleCount + ' shown &middot; <strong>' + pickedCount + ' of ' + catalog.length + ' selected</strong>';
+        if (countsEl) countsEl.innerHTML = '<strong>' + visibleCount + '</strong> shown \u00b7 <strong>' + pickedCount + '</strong> picked';
+        if (summaryCount) summaryCount.textContent = pickedCount;
       }
 
       // --- Select all / deselect visible spirits only ---
-      selectAllBtn.addEventListener('click', function() {
+      if (selectAllBtn) selectAllBtn.addEventListener('click', function() {
         rows.forEach(function(row) {
           if (row.classList.contains('hp-row-hidden')) return;
           var cb = row.querySelector('.hp-spirit-cb');
           if (cb) { cb.checked = true; row.classList.add('hp-row-picked'); }
         });
-        updateCounts(); buildConfig();
+        updateCounts(); buildConfig(); updatePreview();
       });
-
-      deselectAllBtn.addEventListener('click', function() {
+      if (deselectAllBtn) deselectAllBtn.addEventListener('click', function() {
         rows.forEach(function(row) {
           if (row.classList.contains('hp-row-hidden')) return;
           var cb = row.querySelector('.hp-spirit-cb');
           if (cb) { cb.checked = false; row.classList.remove('hp-row-picked'); }
         });
-        updateCounts(); buildConfig();
+        updateCounts(); buildConfig(); updatePreview();
       });
 
       // --- Build config JSON ---
@@ -404,9 +763,8 @@ function renderHalfPricePicker(day, theme, actionUrl, spiritCatalog, spiritCateg
         if (labelEl && labelEl.value.trim()) config.label = labelEl.value.trim();
         config.discount = getDiscount();
         config.categories = getActiveCategories();
-        if (priceMinEl.value) config.priceMin = parseFloat(priceMinEl.value);
-        if (priceMaxEl.value) config.priceMax = parseFloat(priceMaxEl.value);
-
+        if (priceMinEl && priceMinEl.value) config.priceMin = parseFloat(priceMinEl.value);
+        if (priceMaxEl && priceMaxEl.value) config.priceMax = parseFloat(priceMaxEl.value);
         var picks = [];
         rows.forEach(function(row) {
           var cb = row.querySelector('.hp-spirit-cb');
@@ -418,38 +776,64 @@ function renderHalfPricePicker(day, theme, actionUrl, spiritCatalog, spiritCateg
         markDirty();
       }
 
-      // --- Row checkbox change: update picked style ---
-      function onCheckboxChange(row) {
-        var cb = row.querySelector('.hp-spirit-cb');
-        if (cb && cb.checked) row.classList.add('hp-row-picked');
-        else row.classList.remove('hp-row-picked');
-        updateCounts(); buildConfig();
-      }
-
-      // --- Event listeners ---
-      priceMinEl.addEventListener('input', applyFilters);
-      priceMaxEl.addEventListener('input', applyFilters);
-      searchEl.addEventListener('input', applyFilters);
-      if (labelEl) labelEl.addEventListener('input', buildConfig);
-      if (discountEl) {
-        discountEl.addEventListener('input', function() { recomputePriceCells(); buildConfig(); });
-      }
+      // --- Row click to toggle ---
       rows.forEach(function(row) {
         var cb = row.querySelector('.hp-spirit-cb');
-        if (cb) cb.addEventListener('change', function() { onCheckboxChange(row); });
+        row.addEventListener('click', function(e) {
+          if (e.target === cb) return; // let checkbox handle itself
+          if (cb) {
+            cb.checked = !cb.checked;
+            cb.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        });
+        row.addEventListener('keydown', function(e) {
+          if (e.key === ' ' || e.key === 'Enter') {
+            e.preventDefault();
+            if (cb) {
+              cb.checked = !cb.checked;
+              cb.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+          }
+        });
+        if (cb) cb.addEventListener('change', function() {
+          if (cb.checked) row.classList.add('hp-row-picked');
+          else row.classList.remove('hp-row-picked');
+          updateCounts(); buildConfig(); updatePreview();
+        });
+      });
+
+      // --- Event listeners ---
+      if (priceMinEl) priceMinEl.addEventListener('input', applyFilters);
+      if (priceMaxEl) priceMaxEl.addEventListener('input', applyFilters);
+      if (searchEl) searchEl.addEventListener('input', applyFilters);
+      if (labelEl) labelEl.addEventListener('input', function() { updatePreview(); buildConfig(); });
+      if (discountEl) discountEl.addEventListener('input', function() { recomputePriceCells(); updatePreview(); buildConfig(); });
+
+      // Cmd/Ctrl+S to save
+      document.addEventListener('keydown', function(e) {
+        if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+          var picker = document.getElementById('hp-picker');
+          if (picker && saveForm) {
+            e.preventDefault();
+            saving = true;
+            saveForm.submit();
+          }
+        }
       });
 
       // Warn on navigation if there are unsaved changes
       window.addEventListener('beforeunload', function(e) {
-        if (dirtyEl && dirtyEl.style.display !== 'none') {
+        if (!saving && dirtyBadge && dirtyBadge.classList.contains('is-dirty')) {
           e.preventDefault();
           e.returnValue = '';
         }
       });
+      if (saveForm) saveForm.addEventListener('submit', function() { saving = true; });
 
       // Init
       recomputePriceCells();
       applyFilters();
+      updatePreview();
       if (configInput) initialSnapshot = configInput.value;
     })();
     </script>

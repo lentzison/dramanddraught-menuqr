@@ -79,6 +79,19 @@ function classifyPageType(pathname) {
   return 'location';
 }
 
+// Parse `src` or `utm_source` from a query string and normalize it to a short lower-case tag.
+function parseSource(queryString) {
+  if (!queryString) return null;
+  const qs = queryString.startsWith('?') ? queryString.slice(1) : queryString;
+  const params = new URLSearchParams(qs);
+  let src = params.get('src') || params.get('utm_source') || '';
+  src = String(src).trim().toLowerCase();
+  if (!src) return null;
+  // Keep it short, alphanumerics + a few separators
+  src = src.replace(/[^a-z0-9_.\-]/g, '').slice(0, 32);
+  return src || null;
+}
+
 async function trackPageView(req, res, prisma, locationSlug, locationId, pagePath, queryString) {
   if (!prisma) return null;
 
@@ -94,7 +107,8 @@ async function trackPageView(req, res, prisma, locationSlug, locationId, pagePat
     const { deviceType, browser, os } = parseUserAgent(ua);
     const ip = getClientIp(req);
     const referrer = req.headers.referer || req.headers.referrer || '';
-    const isQrScan = !referrer;
+    const source = parseSource(queryString);
+    const isQrScan = !referrer && !source;
     const pageType = classifyPageType(pagePath);
 
     // Find existing session within timeout window
@@ -109,10 +123,12 @@ async function trackPageView(req, res, prisma, locationSlug, locationId, pagePat
     });
 
     if (session) {
-      // Update existing session
+      // Update existing session; also backfill source if the new pageview has one and the session didn't
+      const updateData = { pageCount: { increment: 1 }, updatedAt: new Date() };
+      if (source && !session.source) updateData.source = source;
       session = await prisma.visitorSession.update({
         where: { id: session.id },
-        data: { pageCount: { increment: 1 }, updatedAt: new Date() },
+        data: updateData,
       });
     } else {
       // Create new session
@@ -128,6 +144,7 @@ async function trackPageView(req, res, prisma, locationSlug, locationId, pagePat
           os,
           referrer: referrer ? referrer.slice(0, 500) : null,
           isQrScan,
+          source: source || null,
           entryPage: pagePath,
         },
       });

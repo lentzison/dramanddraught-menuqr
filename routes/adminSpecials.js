@@ -1096,6 +1096,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
     const filterRange = parsed.query.range || '7d';
     const customStart = parsed.query.startDate || '';
     const customEnd = parsed.query.endDate || '';
+    const filterSource = parsed.query.source || '';
 
     // Date range
     const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
@@ -1120,18 +1121,28 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
     const where = { startedAt: { gte: rangeStart } };
     const prevWhere = { startedAt: { gte: prevRangeStart, lt: rangeStart } };
     if (filterSlug) { where.locationSlug = filterSlug; prevWhere.locationSlug = filterSlug; }
+    if (filterSource) {
+      if (filterSource === 'organic') {
+        where.source = null;
+        prevWhere.source = null;
+      } else {
+        where.source = filterSource;
+        prevWhere.source = filterSource;
+      }
+    }
 
     try {
       // CSV export
       if (pathname === '/admin/analytics/export') {
         const rows = await prisma.visitorSession.findMany({ where, orderBy: { startedAt: 'desc' }, take: 5000 });
-        const csvHeader = 'Date,Location,Device,Browser,OS,Entry Page,Pages,Duration (s),QR Scan,Language,IP\n';
+        const csvHeader = 'Date,Location,Device,Browser,OS,Source,Entry Page,Pages,Duration (s),QR Scan,Language,IP\n';
         const csvRows = rows.map(r => [
           r.startedAt ? r.startedAt.toISOString() : '',
           r.locationSlug || '',
           r.deviceType || '',
           r.browser || '',
           r.os || '',
+          r.source || 'organic',
           r.entryPage || '',
           r.pageCount || 1,
           r.durationSecs || '',
@@ -1147,14 +1158,18 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       // Dashboard data
       const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
       const pvWhere = { viewedAt: { gte: rangeStart }, ...(filterSlug ? { locationSlug: filterSlug } : {}) };
+      // For the source dropdown, query distinct sources within the current date range ignoring the source filter itself
+      const sourceListWhere = { startedAt: { gte: rangeStart }, ...(filterSlug ? { locationSlug: filterSlug } : {}), source: { not: null } };
 
-      const [sessions, prevSessions, locations, pageViews, liveCount] = await Promise.all([
+      const [sessions, prevSessions, locations, pageViews, liveCount, distinctSources] = await Promise.all([
         prisma.visitorSession.findMany({ where, orderBy: { startedAt: 'desc' }, take: 10000 }),
         prisma.visitorSession.findMany({ where: prevWhere, orderBy: { startedAt: 'desc' }, take: 10000 }),
         prisma.location.findMany({ where: { isActive: true }, orderBy: { name: 'asc' }, select: { slug: true, name: true } }),
         prisma.pageView.groupBy({ by: ['pageType'], _count: true, where: pvWhere }),
         prisma.visitorSession.count({ where: { updatedAt: { gte: fiveMinAgo }, ...(filterSlug ? { locationSlug: filterSlug } : {}) } }),
+        prisma.visitorSession.findMany({ where: sourceListWhere, select: { source: true }, distinct: ['source'], take: 50 }),
       ]);
+      const availableSources = distinctSources.map(s => s.source).filter(Boolean).sort();
 
       // Returning visitors — who visited before this period?
       const currentVisitorIds = [...new Set(sessions.map(s => s.visitorId))];
@@ -1179,6 +1194,17 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       const returnRate = uniqueVisitors > 0 ? Math.round((returningVisitors / uniqueVisitors) * 100) : 0;
       const qrCount = sessions.filter(s => s.isQrScan).length;
       const directCount = totalSessions - qrCount;
+
+      // ── Traffic source breakdown (tagged via ?src= or ?utm_source=) ──
+      // Sessions with an explicit source are shown as-is; untagged sessions are grouped as "Organic"
+      // (organic = in-store QR scan or direct type-in, i.e. no tagged link was followed).
+      const sourceCounts = {};
+      sessions.forEach(s => {
+        const key = (s.source && s.source.trim()) ? s.source.trim().toLowerCase() : 'organic';
+        sourceCounts[key] = (sourceCounts[key] || 0) + 1;
+      });
+      const sourcesSorted = Object.entries(sourceCounts).sort((a, b) => b[1] - a[1]);
+      const taggedSessions = totalSessions - (sourceCounts.organic || 0);
 
       // ── Previous period metrics ──
       const prevTotal = prevSessions.length;
@@ -1306,11 +1332,17 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       const locationOptions = locations.map(l => '<option value="' + esc(l.slug) + '"' + (filterSlug === l.slug ? ' selected' : '') + '>' + esc(l.name) + '</option>').join('');
       const rangeChoices = [['today', 'Today'], ['7d', 'Last 7 Days'], ['30d', 'Last 30 Days'], ['custom', 'Custom Range']];
       const rangeOptions = rangeChoices.map(([val, label]) => '<option value="' + val + '"' + (filterRange === val ? ' selected' : '') + '>' + label + '</option>').join('');
+      const sourceOptions = ['<option value="organic"' + (filterSource === 'organic' ? ' selected' : '') + '>Organic (store QR / direct)</option>']
+        .concat(availableSources.map(s => '<option value="' + esc(s) + '"' + (filterSource === s ? ' selected' : '') + '>' + esc(s) + '</option>'))
+        .join('');
 
       const filterForm = `
         <form id="analytics-filter" method="GET" action="/admin/analytics" style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;align-items:center;">
           <select name="location" onchange="this.form.submit()" style="padding:8px 12px;background:#1a1a1d;color:#ccc;border:1px solid #333;border-radius:8px;font-size:0.88rem;">
             <option value="">All Locations</option>${locationOptions}
+          </select>
+          <select name="source" onchange="this.form.submit()" style="padding:8px 12px;background:#1a1a1d;color:#ccc;border:1px solid #333;border-radius:8px;font-size:0.88rem;">
+            <option value="">All Sources</option>${sourceOptions}
           </select>
           <select name="range" id="range-select" onchange="handleRangeChange(this)" style="padding:8px 12px;background:#1a1a1d;color:#ccc;border:1px solid #333;border-radius:8px;font-size:0.88rem;">
             ${rangeOptions}
@@ -1321,7 +1353,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
             <input type="date" name="endDate" value="${esc(customEnd)}" style="padding:6px 8px;background:#1a1a1d;color:#ccc;border:1px solid #333;border-radius:6px;font-size:0.82rem;" />
             <button type="submit" style="padding:6px 14px;background:#d4af37;color:#0e0d0b;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:0.82rem;">Go</button>
           </span>
-          <a href="/admin/analytics/export?location=${esc(filterSlug)}&range=${esc(filterRange)}" style="margin-left:auto;padding:8px 14px;background:#222;color:#aaa;border-radius:8px;text-decoration:none;font-size:0.82rem;">Export CSV</a>
+          <a href="/admin/analytics/export?location=${esc(filterSlug)}&range=${esc(filterRange)}&source=${esc(filterSource)}" style="margin-left:auto;padding:8px 14px;background:#222;color:#aaa;border-radius:8px;text-decoration:none;font-size:0.82rem;">Export CSV</a>
         </form>`;
 
       // ── Live banner ──
@@ -1452,18 +1484,37 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       // ── Top entry pages + traffic source ──
       const entryPagesChart = topEntryPages.map(([path, count]) => barRow(path, count, topEntryMax)).join('');
 
-      const qrPct = totalSessions > 0 ? Math.round((qrCount / totalSessions) * 100) : 0;
-      const directPct = 100 - qrPct;
+      // Build multi-source stacked bar + legend
+      const sourcePalette = ['#d4af37', '#60a5fa', '#a78bfa', '#f472b6', '#4ade80', '#fb923c', '#22d3ee', '#facc15'];
+      const sourceColorFor = (name, idx) => name === 'organic' ? '#555' : sourcePalette[idx % sourcePalette.length];
+      const sourceBarSegments = sourcesSorted.map(([name, count], idx) => {
+        const pct = totalSessions > 0 ? (count / totalSessions) * 100 : 0;
+        const color = sourceColorFor(name, idx);
+        return `<div style="width:${pct}%;background:${color};min-width:${count > 0 ? '2px' : '0'};" title="${esc(name)}: ${count} (${Math.round(pct)}%)"></div>`;
+      }).join('');
+      const sourceLegendRows = sourcesSorted.map(([name, count], idx) => {
+        const pct = totalSessions > 0 ? Math.round((count / totalSessions) * 100) : 0;
+        const color = sourceColorFor(name, idx);
+        const displayName = name === 'organic' ? 'Organic (store QR / direct)' : name;
+        return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:0.82rem;">
+          <span style="width:10px;height:10px;border-radius:2px;background:${color};display:inline-block;flex-shrink:0;"></span>
+          <span style="color:#ccc;flex:1;text-transform:capitalize;">${esc(displayName)}</span>
+          <span style="color:#888;">${count} &middot; ${pct}%</span>
+        </div>`;
+      }).join('');
       const sourceSection = `
         <div>
-          <div style="display:flex;gap:4px;height:24px;border-radius:6px;overflow:hidden;margin-bottom:8px;">
-            <div style="width:${qrPct}%;background:#d4af37;min-width:${qrCount > 0 ? '2px' : '0'};"></div>
-            <div style="width:${directPct}%;background:#555;min-width:${directCount > 0 ? '2px' : '0'};"></div>
-          </div>
-          <div style="display:flex;justify-content:space-between;font-size:0.82rem;">
-            <span style="color:#d4af37;">QR Scan: ${qrCount} (${qrPct}%)</span>
-            <span style="color:#999;">Direct: ${directCount} (${directPct}%)</span>
-          </div>
+          ${sourcesSorted.length > 0 ? `
+            <div style="display:flex;gap:2px;height:24px;border-radius:6px;overflow:hidden;margin-bottom:10px;background:#1a1a1d;">
+              ${sourceBarSegments}
+            </div>
+            <div>${sourceLegendRows}</div>
+            ${taggedSessions === 0 ? `
+              <div style="margin-top:10px;padding:8px 10px;background:rgba(96,165,250,0.08);border:1px solid rgba(96,165,250,0.2);border-radius:6px;font-size:0.78rem;color:#93c5fd;">
+                No tagged traffic yet. Use the Trackable Links card below to tag your social links with <code style="background:#0d0d0d;padding:1px 5px;border-radius:3px;">?src=...</code>
+              </div>
+            ` : ''}
+          ` : '<p style="color:#666;font-size:0.85rem;">No data yet</p>'}
         </div>`;
 
       // ── New vs returning ──
@@ -1485,16 +1536,107 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       // ── Recent sessions table ──
       const recentRows = sessions.slice(0, 20).map(s => {
         const time = s.startedAt ? new Date(s.startedAt).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+        const srcLabel = s.source
+          ? '<span style="background:rgba(96,165,250,0.15);color:#93c5fd;padding:2px 8px;border-radius:10px;font-size:0.72rem;font-weight:600;text-transform:capitalize;">' + esc(s.source) + '</span>'
+          : '<span style="color:#666;font-size:0.78rem;">organic</span>';
         return '<tr>'
           + '<td>' + esc(time) + '</td>'
           + '<td>' + esc(locationNameMap[s.locationSlug] || s.locationSlug || 'home') + '</td>'
           + '<td>' + esc(s.deviceType || '?') + '</td>'
-          + '<td>' + (s.isQrScan ? '<span style="color:#d4af37;">QR</span>' : 'Direct') + '</td>'
+          + '<td>' + srcLabel + '</td>'
           + '<td>' + esc(s.entryPage || '/') + '</td>'
           + '<td>' + (s.pageCount || 1) + '</td>'
           + '<td>' + (s.durationSecs ? fmtDur(s.durationSecs) : '-') + '</td>'
           + '</tr>';
       }).join('');
+
+      // ── Trackable Links builder ──
+      // Base URL — prefer the request host so staging and prod both work
+      const hostHeader = req.headers['x-forwarded-host'] || req.headers.host || 'apps.dramanddraught.com';
+      const proto = (req.headers['x-forwarded-proto'] || (req.socket && req.socket.encrypted ? 'https' : 'http'));
+      const baseUrl = proto + '://' + hostHeader;
+      const linkLocationOptions = locations.map(l => '<option value="' + esc(l.slug) + '">' + esc(l.name) + '</option>').join('');
+      const linkBuilderSection = `
+        <div class="a-card" style="margin-top:24px;background:#111;border:1px solid rgba(96,165,250,0.3);">
+          <h3 class="a-heading" style="color:#60a5fa;">Trackable Links</h3>
+          <p style="color:#aaa;font-size:0.85rem;margin-bottom:14px;line-height:1.5;">
+            Generate a tagged URL to paste into social posts, emails, or ads. Traffic from tagged links shows up under its source tag in the breakdown above &mdash; everything else stays in &ldquo;Organic&rdquo; (store QR scans and direct visits).
+          </p>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+            <div>
+              <label style="display:block;font-size:0.72rem;color:#888;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:5px;">Location</label>
+              <select id="tl-location" style="width:100%;padding:8px 10px;background:#1a1a1d;color:#ccc;border:1px solid #333;border-radius:6px;font-size:0.85rem;">
+                ${linkLocationOptions}
+              </select>
+            </div>
+            <div>
+              <label style="display:block;font-size:0.72rem;color:#888;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:5px;">Page</label>
+              <select id="tl-page" style="width:100%;padding:8px 10px;background:#1a1a1d;color:#ccc;border:1px solid #333;border-radius:6px;font-size:0.85rem;">
+                <option value="/specials">Specials</option>
+                <option value="">Location Home</option>
+                <option value="/menu">Full Menu</option>
+                <option value="/draft">Draft List</option>
+                <option value="/flights">Flights</option>
+              </select>
+            </div>
+            <div>
+              <label style="display:block;font-size:0.72rem;color:#888;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:5px;">Source Tag</label>
+              <input type="text" id="tl-source" placeholder="e.g. instagram, event" value="instagram" style="width:100%;padding:8px 10px;background:#1a1a1d;color:#ccc;border:1px solid #333;border-radius:6px;font-size:0.85rem;" />
+            </div>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">
+            <span style="color:#666;font-size:0.76rem;margin-right:4px;align-self:center;">Quick picks:</span>
+            <button type="button" class="tl-quick" data-src="instagram" style="background:#1a1a1d;border:1px solid #333;color:#aaa;padding:3px 10px;border-radius:12px;font-size:0.75rem;cursor:pointer;">instagram</button>
+            <button type="button" class="tl-quick" data-src="facebook" style="background:#1a1a1d;border:1px solid #333;color:#aaa;padding:3px 10px;border-radius:12px;font-size:0.75rem;cursor:pointer;">facebook</button>
+            <button type="button" class="tl-quick" data-src="event" style="background:#1a1a1d;border:1px solid #333;color:#aaa;padding:3px 10px;border-radius:12px;font-size:0.75rem;cursor:pointer;">event</button>
+            <button type="button" class="tl-quick" data-src="email" style="background:#1a1a1d;border:1px solid #333;color:#aaa;padding:3px 10px;border-radius:12px;font-size:0.75rem;cursor:pointer;">email</button>
+            <button type="button" class="tl-quick" data-src="tiktok" style="background:#1a1a1d;border:1px solid #333;color:#aaa;padding:3px 10px;border-radius:12px;font-size:0.75rem;cursor:pointer;">tiktok</button>
+          </div>
+          <div style="display:flex;gap:8px;align-items:stretch;">
+            <input type="text" id="tl-url" readonly style="flex:1;padding:10px 12px;background:#0d0d0d;color:#d4af37;border:1px solid #333;border-radius:6px;font-size:0.85rem;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;" />
+            <button type="button" id="tl-copy" style="padding:10px 16px;background:linear-gradient(135deg,#d4af37,#b87333);color:#111;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:0.85rem;white-space:nowrap;">Copy</button>
+          </div>
+          <div id="tl-copied" style="display:none;margin-top:8px;color:#4ade80;font-size:0.78rem;">\u2713 Copied to clipboard</div>
+        </div>
+        <script>
+          (function() {
+            var locSel = document.getElementById('tl-location');
+            var pageSel = document.getElementById('tl-page');
+            var srcIn = document.getElementById('tl-source');
+            var urlIn = document.getElementById('tl-url');
+            var copyBtn = document.getElementById('tl-copy');
+            var copied = document.getElementById('tl-copied');
+            var base = ${JSON.stringify(baseUrl)};
+            function update() {
+              var loc = locSel.value;
+              var page = pageSel.value;
+              var src = (srcIn.value || '').trim().toLowerCase().replace(/[^a-z0-9_.\\-]/g, '');
+              var url = base + '/' + loc + page;
+              if (src) url += '?src=' + encodeURIComponent(src);
+              urlIn.value = url;
+            }
+            locSel.addEventListener('change', update);
+            pageSel.addEventListener('change', update);
+            srcIn.addEventListener('input', update);
+            document.querySelectorAll('.tl-quick').forEach(function(btn) {
+              btn.addEventListener('click', function() {
+                srcIn.value = btn.getAttribute('data-src');
+                update();
+              });
+            });
+            copyBtn.addEventListener('click', function() {
+              urlIn.select();
+              try {
+                navigator.clipboard.writeText(urlIn.value);
+                copied.style.display = 'block';
+                setTimeout(function() { copied.style.display = 'none'; }, 2000);
+              } catch (e) {
+                document.execCommand && document.execCommand('copy');
+              }
+            });
+            update();
+          })();
+        </script>`;
 
       // ── Technical details (collapsible) ──
       const techSection = `
@@ -1558,11 +1700,13 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
             ${entryPagesChart || '<p style="color:#666;font-size:0.85rem;">No data</p>'}
           </div>
           <div class="a-card">
-            <h3 class="a-heading">Traffic Source</h3>
+            <h3 class="a-heading">Traffic Sources</h3>
             ${sourceSection}
             ${nvrSection}
           </div>
         </div>
+
+        ${linkBuilderSection}
 
         <div class="a-card" style="margin-top:24px;overflow-x:auto;">
           <h3 class="a-heading">Recent Sessions</h3>

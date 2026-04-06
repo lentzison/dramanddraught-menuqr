@@ -266,6 +266,7 @@ model VisitorSession {
   language      String?
   referrer      String?
   isQrScan      Boolean  @default(true)
+  source        String?  // Traffic source from ?src= or ?utm_source= (e.g. "instagram", "event", "qr")
   entryPage     String
   pageCount     Int      @default(1)
   durationSecs  Int?
@@ -281,6 +282,7 @@ model VisitorSession {
   @@index([locationSlug])
   @@index([startedAt])
   @@index([locationSlug, startedAt])
+  @@index([source])
 }
 
 model PageView {

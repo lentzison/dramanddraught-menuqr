@@ -1,4 +1,5 @@
 const { adminLayout } = require('./adminLayout');
+const { imageUploadWidget, imageUploadWidgetCss, imageUploadWidgetScript } = require('./imageUploadWidget');
 
 function escHTML(value) {
   return String(value == null ? '' : value)
@@ -119,8 +120,8 @@ function menuLocationEditor(location, categories, user, flashMsg) {
               </div>
               <label>Description</label>
               <input type="text" name="description" value="${escHTML(item.description || '')}" placeholder="Short description (optional)" />
-              <label>Image URL</label>
-              <input type="text" name="image" value="${escHTML(item.image || '')}" placeholder="https://..." />
+              <label>Image</label>
+              ${imageUploadWidget({ name: 'image', prefix: `mi-img-${item.id}`, value: item.image || '' })}
               <div style="display:flex; gap:16px; margin-top:12px; flex-wrap:wrap">
                 <label class="mi-check"><input type="checkbox" name="isAvailable" ${item.isAvailable ? 'checked' : ''} /> Available</label>
                 <label class="mi-check"><input type="checkbox" name="isFeatured" ${item.isFeatured ? 'checked' : ''} /> Featured</label>
@@ -197,8 +198,8 @@ function menuLocationEditor(location, categories, user, flashMsg) {
             </div>
             <label>Description</label>
             <input type="text" name="description" placeholder="Short description (optional)" />
-            <label>Image URL</label>
-            <input type="text" name="image" placeholder="https://... (optional)" />
+            <label>Image</label>
+            ${imageUploadWidget({ name: 'image', prefix: `mi-new-${cat.id}`, value: '' })}
             <label class="mi-check" style="margin-top:12px"><input type="checkbox" name="isFeatured" /> Featured</label>
             <div class="form-actions">
               <button type="submit" class="btn btn-primary btn-sm">Add Item</button>
@@ -341,12 +342,14 @@ function menuLocationEditor(location, categories, user, flashMsg) {
 
     ${categoryBlocks || '<div class="card" style="text-align:center; padding:40px; color:#666">No menu categories yet. Add one above to get started.</div>'}
 
+    <style>${imageUploadWidgetCss()}</style>
     <script>
       function toggleMenuEdit(id) {
         var el = document.getElementById(id);
         if (!el) return;
         el.style.display = el.style.display === 'none' ? 'block' : 'none';
       }
+      ${imageUploadWidgetScript()}
     </script>
   `, user, { pathname: `/admin/menu/${location.slug}`, flashMsg });
 }

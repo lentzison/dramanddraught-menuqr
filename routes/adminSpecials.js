@@ -4,6 +4,7 @@ const { specialsDashboard, dayThemeEditor, flightsList, flightEditor, bottlesLis
 const { adminLayout } = require('../views/adminLayout');
 const { getSpiritCategories, getSpiritCatalog, getHalfPriceSpirits, getUpcomingSpiritFlightsAdmin, buildSpiritFlightBuilderUrl } = require('../bartenderDb');
 const { sendJSON } = require('../helpers');
+const { sanitizeImageSrc } = require('../views/imageUploadWidget');
 const OP_IMAGE_REGEN_TOKEN = process.env.OP_SPECIAL_IMAGE_REGEN_TOKEN || 'menuqr-special-image-regenerate';
 
 function normalizeText(value) {
@@ -755,7 +756,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
               name: body.specialName,
               description: body.specialDescription || null,
               price: body.specialPrice || null,
-              imageUrl: body.specialImageUrl || null,
+              imageUrl: sanitizeImageSrc(body.specialImageUrl),
               section: body.specialSection || null,
               detailText: body.specialDetailText || null,
               badges: body.specialBadges || null,
@@ -778,7 +779,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
             name: body.specialName,
             description: body.specialDescription || null,
             price: body.specialPrice || null,
-            imageUrl: body.specialImageUrl || null,
+            imageUrl: sanitizeImageSrc(body.specialImageUrl),
             category: normalizeCategory(body.specialCategory),
             displayOrder: parseInt(body.specialOrder) || 0,
             section: body.specialSection || null,

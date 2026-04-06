@@ -1,6 +1,7 @@
 const { sendHTML, parseBody, redirect, getFlashMsg } = require('../helpers');
 const { requireAuth } = require('../auth');
 const { menuLocationsList, menuLocationEditor } = require('../views/adminMenuViews');
+const { sanitizeImageSrc } = require('../views/imageUploadWidget');
 
 function parsePriceInput(value) {
   if (value == null || value === '') return null;
@@ -162,7 +163,7 @@ async function handleAdminMenu(req, res, pathname, prisma) {
               name,
               description: normalizeText(body.description) || null,
               price: parsePriceInput(body.price),
-              image: normalizeText(body.image) || null,
+              image: sanitizeImageSrc(body.image),
               isFeatured: body.isFeatured === 'on',
               isAvailable: true,
               displayOrder: nextOrder,
@@ -190,7 +191,7 @@ async function handleAdminMenu(req, res, pathname, prisma) {
               name,
               description: normalizeText(body.description) || null,
               price: parsePriceInput(body.price),
-              image: normalizeText(body.image) || null,
+              image: sanitizeImageSrc(body.image),
               isFeatured: body.isFeatured === 'on',
               isAvailable: body.isAvailable === 'on',
             },

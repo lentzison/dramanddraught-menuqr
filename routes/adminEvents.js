@@ -5,6 +5,7 @@ const {
   eventEditor,
   eventSignupsView,
 } = require('../views/adminEventsViews');
+const { sanitizeImageSrc } = require('../views/imageUploadWidget');
 
 function normalizeText(value) {
   return String(value || '').trim();
@@ -33,22 +34,6 @@ function parseCapacity(value) {
   if (value == null || value === '') return null;
   const n = parseInt(value, 10);
   return Number.isFinite(n) && n > 0 ? n : null;
-}
-
-// Validate that an image src is either a https/http URL or a small data URL.
-function sanitizeImageSrc(src) {
-  if (!src) return null;
-  const str = String(src).trim();
-  if (!str) return null;
-  if (/^data:image\/(jpeg|jpg|png|gif|webp);base64,/i.test(str)) {
-    // Cap at ~750KB encoded (~560KB binary) to keep DB rows reasonable
-    if (str.length > 750 * 1024) return null;
-    return str;
-  }
-  if (/^https?:\/\//i.test(str)) {
-    return str.slice(0, 2000);
-  }
-  return null;
 }
 
 // Allowed background style values for sections that support theming.

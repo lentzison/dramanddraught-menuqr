@@ -1,4 +1,5 @@
 const { adminLayout } = require('./adminLayout');
+const { imageUploadWidget, imageUploadWidgetCss, imageUploadWidgetScript } = require('./imageUploadWidget');
 
 const DAYS = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
 const DAY_LABELS = { MONDAY: 'Monday', TUESDAY: 'Tuesday', WEDNESDAY: 'Wednesday', THURSDAY: 'Thursday', FRIDAY: 'Friday', SATURDAY: 'Saturday', SUNDAY: 'Sunday' };
@@ -932,9 +933,8 @@ function dayThemeEditor(day, theme, specials, locations, locationSlug, user, mes
           <div><label>Category</label><select name="specialCategory">${buildCategoryOptions(s.category, categoryOptions)}</select></div>
           <div><label>Order</label><input type="number" name="specialOrder" value="${s.displayOrder}" /></div>
         </div>
-        <label>Image URL</label>
-        <input type="text" name="specialImageUrl" value="${escHTML(s.imageUrl)}" placeholder="https://..." />
-        ${s.imageUrl ? `<img src="${escHTML(s.imageUrl)}" alt="Preview" class="image-preview" />` : ''}
+        <label>Image</label>
+        ${imageUploadWidget({ name: 'specialImageUrl', prefix: `sp-img-${s.id}`, value: s.imageUrl || '' })}
         <label style="display:flex; align-items:center; gap:8px; margin-top:8px">
           <input type="checkbox" name="specialFeatured" ${s.isFeatured ? 'checked' : ''} style="width:auto" />
           <span>Featured (gold highlight)</span>
@@ -1043,8 +1043,8 @@ function dayThemeEditor(day, theme, specials, locations, locationSlug, user, mes
               <input type="number" name="specialOrder" value="${(specials || []).length}" />
             </div>
           </div>
-          <label>Image URL</label>
-          <input type="text" name="specialImageUrl" placeholder="https://..." />
+          <label>Image</label>
+          ${imageUploadWidget({ name: 'specialImageUrl', prefix: `sp-add-${day}`, value: '' })}
           <label style="display:flex; align-items:center; gap:8px; margin-top:8px">
             <input type="checkbox" name="specialFeatured" style="width:auto" />
             <span>Featured (gold highlight)</span>
@@ -1155,7 +1155,9 @@ function dayThemeEditor(day, theme, specials, locations, locationSlug, user, mes
 
       initializeSpecialDragAndDrop();
       refreshSpecialOrderState();
+      ${imageUploadWidgetScript()}
     </script>
+    <style>${imageUploadWidgetCss()}</style>
   `, user, { pathname: '/admin/specials', flashMsg });
 }
 

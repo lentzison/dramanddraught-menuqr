@@ -36,8 +36,6 @@ function renderHalfPricePicker(day, theme, actionUrl, spiritCatalog, spiritCateg
   const config = theme.halfPriceConfig || {};
   const categories = (spiritCategories && spiritCategories.categories) || [];
   const catalog = spiritCatalog || [];
-  const isWednesday = day === 'WEDNESDAY';
-  const dayLabel = isWednesday ? 'Whiskey' : 'Agave Spirits';
 
   const savedCategories = config.categories || [];
   const savedPicks = config.picks || [];
@@ -48,9 +46,19 @@ function renderHalfPricePicker(day, theme, actionUrl, spiritCatalog, spiritCateg
   const WHISKEY_DEFAULTS = ['Bourbon', 'Rye Whiskey', 'Tennessee Whiskey', 'American Whiskey', 'Canadian Whisky', 'Irish Whiskey', 'Blended Scotch', 'Single Malt Scotch', 'Japanese Whisky', 'Whiskey', 'Flavored Whiskey', 'International Whiskey'];
   const AGAVE_DEFAULTS = ['Tequila', 'Mezcal'];
 
-  // Determine active categories: saved config, or day defaults on first load
+  // Day-based suggestion for first-time setup only; not enforced
+  const isWednesday = day === 'WEDNESDAY';
+  const isThursday = day === 'THURSDAY';
+  const suggestedLabel = isWednesday ? 'Whiskey' : (isThursday ? 'Agave Spirits' : 'Spirits');
+  const suggestedCats = isWednesday ? WHISKEY_DEFAULTS : (isThursday ? AGAVE_DEFAULTS : []);
+
+  // Determine active categories: saved config, or day suggestions on first load
   const hasExistingConfig = Object.keys(config).length > 0;
-  const activeCategories = hasExistingConfig ? savedCategories : (isWednesday ? WHISKEY_DEFAULTS : AGAVE_DEFAULTS);
+  const activeCategories = hasExistingConfig ? savedCategories : suggestedCats;
+
+  // Label and discount: config-driven with sensible defaults
+  const savedLabel = typeof config.label === 'string' && config.label ? config.label : suggestedLabel;
+  const savedDiscount = typeof config.discount === 'number' && config.discount > 0 ? config.discount : 50;
 
   // Build category pill HTML
   const categoryPills = categories.map(cat => {
@@ -142,13 +150,25 @@ function renderHalfPricePicker(day, theme, actionUrl, spiritCatalog, spiritCateg
         .hp-picker .hp-row-hidden { display:none }
       </style>
 
-      <h2>Half-Price ${escHTML(dayLabel)}</h2>
+      <h2>Discounted Spirit Picker</h2>
       <p style="color:#aaa; margin-bottom:14px">
-        Select categories to auto-pick all spirits in them. Use search and price to narrow down, then fine-tune individual picks.
-        ${savedPicks.length > 0 ? `<br/><span style="color:#8cb369; font-weight:600">${savedPicks.length} spirits currently selected</span> &mdash; changes won't apply until you save.` : ''}
+        Pick the spirits guests see on this day's specials page. Use category pills, price, and search to narrow down &mdash; then check individual spirits to include.
+        <br/><span id="hp-dirty-indicator" style="color:#e08a3c; font-weight:600; display:none">You have unsaved changes.</span>
+        ${savedPicks.length > 0 ? `<br/><span style="color:#8cb369; font-weight:600">${savedPicks.length} spirits currently saved</span>` : ''}
       </p>
 
-      <label style="font-weight:700; color:#d4af37; margin-bottom:8px; display:block">Categories <span style="font-weight:400; color:#888; font-size:0.82rem">(click to toggle &mdash; activating selects all spirits in that category)</span></label>
+      <div class="form-row" style="margin-bottom:16px">
+        <div style="flex:2">
+          <label>Display Label <span style="font-weight:400; color:#888; font-size:0.8rem">(shown as section title to guests)</span></label>
+          <input type="text" id="hp-label" value="${escHTML(savedLabel)}" placeholder="e.g. Whiskey, Agave Spirits" />
+        </div>
+        <div style="flex:1">
+          <label>Discount % <span style="font-weight:400; color:#888; font-size:0.8rem">(0&ndash;100)</span></label>
+          <input type="number" id="hp-discount" value="${escHTML(String(savedDiscount))}" min="1" max="99" step="1" />
+        </div>
+      </div>
+
+      <label style="font-weight:700; color:#d4af37; margin-bottom:8px; display:block">Categories <span style="font-weight:400; color:#888; font-size:0.82rem">(click to filter the list below &mdash; does not select spirits)</span></label>
       <div class="hp-pills" id="hp-pills">
         ${categoryPills || '<span style="color:#666">No categories loaded from bartender database</span>'}
       </div>
@@ -205,7 +225,38 @@ function renderHalfPricePicker(day, theme, actionUrl, spiritCatalog, spiritCateg
       var selectAllBtn = document.getElementById('hp-select-all');
       var deselectAllBtn = document.getElementById('hp-deselect-all');
       var countsEl = document.getElementById('hp-counts');
+      var labelEl = document.getElementById('hp-label');
+      var discountEl = document.getElementById('hp-discount');
+      var dirtyEl = document.getElementById('hp-dirty-indicator');
+      var halfCellCells = document.querySelectorAll('.hp-cell-half');
+      var initialSnapshot = null;
       var viewMode = 'all';
+
+      function getDiscount() {
+        var d = discountEl && discountEl.value ? parseInt(discountEl.value, 10) : 50;
+        if (isNaN(d) || d <= 0 || d >= 100) d = 50;
+        return d;
+      }
+      function recomputePriceCells() {
+        var disc = getDiscount();
+        rows.forEach(function(row) {
+          var price = row.getAttribute('data-hp-price');
+          var cell = row.querySelector('.hp-cell-half');
+          if (!cell) return;
+          if (!price) { cell.textContent = ''; return; }
+          var p = parseFloat(price);
+          if (isNaN(p)) { cell.textContent = ''; return; }
+          cell.textContent = '$' + (p * (100 - disc) / 100).toFixed(0);
+        });
+      }
+      function markDirty() {
+        if (!dirtyEl || !initialSnapshot) return;
+        if (configInput && configInput.value !== initialSnapshot) {
+          dirtyEl.style.display = 'inline';
+        } else {
+          dirtyEl.style.display = 'none';
+        }
+      }
 
       // --- View mode (All / Selected / Unselected) ---
       document.querySelectorAll('.hp-view-btn').forEach(function(btn) {
@@ -350,6 +401,8 @@ function renderHalfPricePicker(day, theme, actionUrl, spiritCatalog, spiritCateg
       // --- Build config JSON ---
       function buildConfig() {
         var config = {};
+        if (labelEl && labelEl.value.trim()) config.label = labelEl.value.trim();
+        config.discount = getDiscount();
         config.categories = getActiveCategories();
         if (priceMinEl.value) config.priceMin = parseFloat(priceMinEl.value);
         if (priceMaxEl.value) config.priceMax = parseFloat(priceMaxEl.value);
@@ -362,6 +415,7 @@ function renderHalfPricePicker(day, theme, actionUrl, spiritCatalog, spiritCateg
         });
         config.picks = picks;
         if (configInput) configInput.value = JSON.stringify(config);
+        markDirty();
       }
 
       // --- Row checkbox change: update picked style ---
@@ -376,13 +430,27 @@ function renderHalfPricePicker(day, theme, actionUrl, spiritCatalog, spiritCateg
       priceMinEl.addEventListener('input', applyFilters);
       priceMaxEl.addEventListener('input', applyFilters);
       searchEl.addEventListener('input', applyFilters);
+      if (labelEl) labelEl.addEventListener('input', buildConfig);
+      if (discountEl) {
+        discountEl.addEventListener('input', function() { recomputePriceCells(); buildConfig(); });
+      }
       rows.forEach(function(row) {
         var cb = row.querySelector('.hp-spirit-cb');
         if (cb) cb.addEventListener('change', function() { onCheckboxChange(row); });
       });
 
+      // Warn on navigation if there are unsaved changes
+      window.addEventListener('beforeunload', function(e) {
+        if (dirtyEl && dirtyEl.style.display !== 'none') {
+          e.preventDefault();
+          e.returnValue = '';
+        }
+      });
+
       // Init
+      recomputePriceCells();
       applyFilters();
+      if (configInput) initialSnapshot = configInput.value;
     })();
     </script>
   `;
@@ -537,13 +605,13 @@ function dayThemeEditor(day, theme, specials, locations, locationSlug, user, mes
     </div>
     ` : ''}
 
-    ${(day === 'WEDNESDAY' || day === 'THURSDAY') && !isOverride ? `
+    ${!isOverride ? `
     <div class="card" style="background:rgba(212,175,55,0.05); border:1px solid rgba(212,175,55,0.2)">
-      <h2>Half-Price ${day === 'WEDNESDAY' ? 'Whiskey' : 'Agave Spirits'}</h2>
-      <p style="color:#aaa">Half-price spirit selections are configured per location since each location has different inventory and pricing. Select a location tab above to configure.</p>
+      <h2>Discounted Spirits</h2>
+      <p style="color:#aaa">Configure a discounted spirit selection for this day (e.g. half-price whiskey). Selections are configured per location since inventory and pricing differ. Select a location tab above to configure.</p>
     </div>
     ` : ''}
-    ${(day === 'WEDNESDAY' || day === 'THURSDAY') && isOverride && (halfPriceTheme || theme) ? renderHalfPricePicker(day, halfPriceTheme || theme, actionUrl, spiritCatalog, spiritCategories) : ''}
+    ${isOverride && (halfPriceTheme || theme) ? renderHalfPricePicker(day, halfPriceTheme || theme, actionUrl, spiritCatalog, spiritCategories) : ''}
 
     ${theme ? `
     <div class="card">

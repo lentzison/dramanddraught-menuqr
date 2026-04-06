@@ -163,7 +163,6 @@ async function main() {
         { name: 'Manhattan', price: '$10', category: 'cocktail', displayOrder: 1, section: '$10 Whiskey Cocktails', description: 'Rye, sweet vermouth, Angostura' },
         { name: 'Gold Rush', price: '$10', category: 'cocktail', displayOrder: 2, section: '$10 Whiskey Cocktails', description: 'Bourbon, honey syrup, fresh lemon' },
         { name: 'Revolver', price: '$10', category: 'cocktail', displayOrder: 3, section: '$10 Whiskey Cocktails', description: 'Bourbon, coffee liqueur, orange bitters', badges: 'This Month Only' },
-        { name: 'Select Whiskey Pours', price: '50% off', category: 'whiskey', displayOrder: 4, section: 'Pours', detailText: 'Half off select whiskey pours — ask your bartender for the featured bottles.', timeWindow: 'All night' },
       ]
     },
     {
@@ -175,7 +174,6 @@ async function main() {
         { name: 'Spicy Margarita', price: '$10', category: 'cocktail', displayOrder: 1, section: '$10 Agave Cocktails', description: 'Tequila, jalapeño, Cointreau, lime', badges: 'Staff Pick', isFeatured: true },
         { name: 'Paloma', price: '$10', category: 'cocktail', displayOrder: 2, section: '$10 Agave Cocktails', description: 'Tequila, grapefruit, lime, soda' },
         { name: 'Oaxaca Old Fashioned', price: '$10', category: 'cocktail', displayOrder: 3, section: '$10 Agave Cocktails', description: 'Mezcal, tequila, agave, mole bitters' },
-        { name: 'Select Tequila Bottles', price: '50% off', category: 'other', displayOrder: 4, section: 'Bottles', detailText: 'Half off select tequila and mezcal bottles — great for groups.', timeWindow: 'All night' },
       ]
     },
     {

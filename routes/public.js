@@ -479,7 +479,7 @@ async function handleSpecials(req, res, prisma, parsedUrl, location) {
       }
     }
 
-    if ((viewingDay === 'WEDNESDAY' || viewingDay === 'THURSDAY') && theme && theme.halfPriceConfig) {
+    if (theme && theme.halfPriceConfig && theme.halfPriceConfig.picks && theme.halfPriceConfig.picks.length > 0) {
       try {
         const loaded = await getHalfPriceSpirits(loc.slug, theme.halfPriceConfig);
         halfPriceSpirits = loaded.items || [];

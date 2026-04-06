@@ -935,10 +935,10 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
 
     let spiritCatalog = [];
     let spiritCategories = { categories: [], styles: [] };
-    // For location overrides on half-price days, build a synthetic theme with halfPriceConfig
-    // from the company default if no location-specific theme exists yet
+    // For any location override, load the spirit catalog so the half-price picker
+    // can be used on any day. Fall back to company default config if no location-specific theme.
     let halfPriceTheme = theme;
-    if ((day === 'WEDNESDAY' || day === 'THURSDAY') && locationSlug) {
+    if (locationSlug) {
       try {
         [spiritCategories, spiritCatalog] = await Promise.all([
           getSpiritCategories(),

@@ -139,10 +139,14 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
   const warnings = options.warnings || {};
   const halfPriceSpirits = options.halfPriceSpirits || [];
   const fridayFlights = options.fridayFlights || (flight ? [flight] : []);
-  const isWednesday = activeDay === 'WEDNESDAY';
-  const isThursday = activeDay === 'THURSDAY';
-  const isHalfPriceDay = isWednesday || isThursday;
-  const halfPriceDayLabel = isWednesday ? 'Whiskey' : 'Agave Spirits';
+  const halfPriceConfig = (theme && theme.halfPriceConfig) || null;
+  const hasHalfPrice = halfPriceConfig && halfPriceSpirits.length > 0;
+  const halfPriceDiscount = (halfPriceConfig && typeof halfPriceConfig.discount === 'number' && halfPriceConfig.discount > 0 && halfPriceConfig.discount < 100)
+    ? halfPriceConfig.discount
+    : 50;
+  const halfPriceDayLabel = (halfPriceConfig && typeof halfPriceConfig.label === 'string' && halfPriceConfig.label.trim())
+    ? halfPriceConfig.label.trim()
+    : 'Spirits';
   const themeDescription = sanitizeGuestCopy(theme && typeof theme.description === 'string' ? theme.description : '');
   const hasGiftToYouCopy = /our gift to you/i.test(themeDescription);
   const showGiftToYouSubtitle = isSunday && bottles && bottles.length > 0 && !hasGiftToYouCopy;
@@ -343,14 +347,22 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
   });
   const halfPriceCatKeys = Object.keys(halfPriceGrouped).sort();
 
-  const halfPriceSection = (isHalfPriceDay && halfPriceSpirits.length > 0) ? `
+  const halfPriceHeadline = halfPriceDiscount === 50
+    ? `Half-Price ${escHTML(halfPriceDayLabel)}`
+    : `${halfPriceDiscount}% Off ${escHTML(halfPriceDayLabel)}`;
+  const halfPriceSubtitle = halfPriceDiscount === 50
+    ? `50% off select spirits &mdash; ${isToday ? 'tonight only' : dayLabel + ' only'}`
+    : `${halfPriceDiscount}% off select spirits &mdash; ${isToday ? 'tonight only' : dayLabel + ' only'}`;
+  const discountMultiplier = (100 - halfPriceDiscount) / 100;
+
+  const halfPriceSection = hasHalfPrice ? `
     <div class="section">
       <div class="section-header">
-        <h2>Half-Price ${escHTML(halfPriceDayLabel)}</h2>
+        <h2>${halfPriceHeadline}</h2>
       </div>
-      <p class="section-subtitle">50% off select spirits &mdash; ${isToday ? 'tonight only' : dayLabel + ' only'}</p>
+      <p class="section-subtitle">${halfPriceSubtitle}</p>
       <div class="hp-search-wrap">
-        <input id="hp-guest-search" type="search" placeholder="Search ${halfPriceSpirits.length} spirits..." aria-label="Search half-price spirits">
+        <input id="hp-guest-search" type="search" placeholder="Search ${halfPriceSpirits.length} spirits..." aria-label="Search discounted spirits">
       </div>
       <div id="hp-guest-list">
         ${halfPriceCatKeys.map(cat => {
@@ -360,10 +372,10 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
               <div class="hp-cat-label">${escHTML(cat)} <span class="hp-cat-count">(${spirits.length})</span></div>
               ${spirits.map(s => {
                 const origPrice = s.oneOzPrice ? `$${s.oneOzPrice}` : '';
-                const halfPrice = s.oneOzPrice ? `$${(s.oneOzPrice / 2).toFixed(0)}` : '';
+                const discountedPrice = s.oneOzPrice ? `$${(s.oneOzPrice * discountMultiplier).toFixed(0)}` : '';
                 return `<div class="hp-spirit-row" data-hp-search="${escHTML(s.name.toLowerCase())}">
                   <span class="hp-spirit-name">${escHTML(s.name)}</span>
-                  <span class="hp-spirit-prices">${origPrice ? `<s>${escHTML(origPrice)}</s>` : ''} ${halfPrice ? `<strong>${escHTML(halfPrice)}</strong>` : ''}</span>
+                  <span class="hp-spirit-prices">${origPrice ? `<s>${escHTML(origPrice)}</s>` : ''} ${discountedPrice ? `<strong>${escHTML(discountedPrice)}</strong>` : ''}</span>
                 </div>`;
               }).join('')}
             </div>
@@ -422,7 +434,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
     </div>
   ` : '';
 
-  const isHalfPriceActive = isHalfPriceDay && halfPriceSpirits.length > 0;
+  const isHalfPriceActive = hasHalfPrice;
   const emptyThemeMessage = (theme && specialsForDisplay.length === 0 && !isSundayBottlesDay && !isHalfPriceActive) ? `
     <div class="section">
       <div class="empty-card">

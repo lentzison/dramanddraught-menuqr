@@ -6,10 +6,33 @@ const FLASH_LABELS = {
   error: 'Something went wrong.',
 };
 
+function escFlash(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 function adminLayout(title, content, user, options = {}) {
   const userName = user ? (user.firstName || user.email || 'Admin') : '';
   const pathname = options.pathname || '';
-  const flashMsg = options.flashMsg || '';
+  const flashRaw = options.flashMsg || '';
+  // flashMsg can be either:
+  //   - a short key ("saved", "error", "deleted", etc.) → looked up in FLASH_LABELS
+  //   - "key|detail text" → key looked up, detail appended ("Couldn't save: <detail>")
+  //   - "error|free text" → "Couldn't save: free text"
+  let flashKey = flashRaw;
+  let flashDetail = '';
+  if (typeof flashRaw === 'string' && flashRaw.includes('|')) {
+    [flashKey, ...flashDetail] = flashRaw.split('|');
+    flashDetail = flashDetail.join('|');
+  }
+  const flashLabel = FLASH_LABELS[flashKey] || flashKey || '';
+  const isError = flashKey === 'error';
+  const flashText = flashDetail
+    ? (isError ? `${flashLabel} ${flashDetail}` : `${flashLabel} ${flashDetail}`)
+    : flashLabel;
 
   function navClass(href) {
     if (!pathname) return '';
@@ -19,8 +42,11 @@ function adminLayout(title, content, user, options = {}) {
     return '';
   }
 
-  const flashHtml = flashMsg
-    ? `<div class="alert ${flashMsg === 'error' ? 'alert-error' : 'alert-success'}">${FLASH_LABELS[flashMsg] || flashMsg}</div>`
+  const flashHtml = flashLabel
+    ? `<div class="alert ${isError ? 'alert-error' : 'alert-success'}" id="admin-flash" role="status">
+        <span class="alert-text">${escFlash(flashText)}</span>
+        <button type="button" class="alert-close" aria-label="Dismiss" onclick="document.getElementById('admin-flash').remove()">&times;</button>
+      </div>`
     : '';
 
   return `
@@ -145,7 +171,30 @@ function adminLayout(title, content, user, options = {}) {
         .form-row { display: flex; gap: 12px; }
         .form-row > * { flex: 1; }
         .form-actions { margin-top: 20px; display: flex; gap: 10px; }
-        .alert { padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; }
+        .alert {
+          padding: 12px 16px;
+          border-radius: 8px;
+          margin-bottom: 16px;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          animation: alert-in 0.2s ease-out;
+        }
+        .alert .alert-text { flex: 1; line-height: 1.4; }
+        .alert .alert-close {
+          background: transparent;
+          border: none;
+          color: inherit;
+          font-size: 1.4rem;
+          line-height: 1;
+          padding: 4px 6px;
+          cursor: pointer;
+          opacity: 0.6;
+          font-family: inherit;
+        }
+        .alert .alert-close:hover { opacity: 1; }
+        .alert.alert-fading { opacity: 0; transform: translateY(-4px); transition: opacity 0.4s, transform 0.4s; }
+        @keyframes alert-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: translateY(0); } }
         .alert-success { background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid rgba(34,197,94,0.3); }
         .alert-error { background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
         .specials-list {
@@ -262,6 +311,19 @@ function adminLayout(title, content, user, options = {}) {
         ${flashHtml}
         ${content}
       </div>
+      ${flashHtml ? `<script>
+        (function() {
+          var el = document.getElementById('admin-flash');
+          if (!el) return;
+          // Auto-dismiss success messages after 6 seconds; errors stay until clicked.
+          if (!el.classList.contains('alert-error')) {
+            setTimeout(function() {
+              el.classList.add('alert-fading');
+              setTimeout(function() { if (el.parentNode) el.remove(); }, 500);
+            }, 6000);
+          }
+        })();
+      </script>` : ''}
     </body>
     </html>
   `;

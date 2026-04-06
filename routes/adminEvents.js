@@ -250,21 +250,17 @@ async function handleAdminEvents(req, res, pathname, prisma) {
   if (pathname === '/admin/events/new') {
     if (req.method === 'POST') {
       const body = await parseBody(req);
+      const flashError = (detail) => '/admin/events/new?msg=' + encodeURIComponent('error|' + detail);
       const title = normalizeText(body.title);
       const locationId = normalizeText(body.locationId);
-      if (!title || !locationId) {
-        redirect(res, '/admin/events/new?msg=error');
-        return true;
-      }
+      if (!title) { redirect(res, flashError('Event name is required.')); return true; }
+      if (!locationId) { redirect(res, flashError('Please pick a location.')); return true; }
 
       const baseSlug = slugify(body.slug || title) || 'event';
       const uniqueSlug = await ensureUniqueSlug(prisma, locationId, baseSlug);
 
       const startDate = parseDateTimeLocal(body.startDate);
-      if (!startDate) {
-        redirect(res, '/admin/events/new?msg=error');
-        return true;
-      }
+      if (!startDate) { redirect(res, flashError('Event date and time are required.')); return true; }
 
       const customQuestions = parseCustomQuestions(body);
 
@@ -297,7 +293,7 @@ async function handleAdminEvents(req, res, pathname, prisma) {
         return true;
       } catch (err) {
         console.error('Error creating event:', err.message || err);
-        redirect(res, '/admin/events/new?msg=error');
+        redirect(res, flashError(err.message || 'Database error.'));
         return true;
       }
     }
@@ -433,8 +429,9 @@ async function handleAdminEvents(req, res, pathname, prisma) {
       }
 
       // Default = update event metadata
+      const editFlashError = (detail) => `/admin/events/${eventId}?msg=` + encodeURIComponent('error|' + detail);
       const title = normalizeText(body.title);
-      if (!title) { redirect(res, `/admin/events/${eventId}?msg=error`); return true; }
+      if (!title) { redirect(res, editFlashError('Event name is required.')); return true; }
 
       const customQuestions = parseCustomQuestions(body);
       const newSlug = body.slug ? slugify(body.slug) : event.slug;
@@ -471,7 +468,7 @@ async function handleAdminEvents(req, res, pathname, prisma) {
         return true;
       } catch (err) {
         console.error('Error updating event:', err.message || err);
-        redirect(res, `/admin/events/${eventId}?msg=error`);
+        redirect(res, editFlashError(err.message || 'Database error.'));
         return true;
       }
     }

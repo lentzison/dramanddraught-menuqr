@@ -1,6 +1,6 @@
 const http = require('http');
 const url = require('url');
-const { sendHTML, sendEmailViaGoogle } = require('./helpers');
+const { sendHTML, sendEmailViaGoogle, getLocations } = require('./helpers');
 
 let prisma;
 try { prisma = require('./db'); } catch { prisma = null; }
@@ -10,6 +10,7 @@ const { handleAdmin } = require('./routes/admin');
 const { handleAdminSpecials } = require('./routes/adminSpecials');
 const { handleAdminMenu } = require('./routes/adminMenu');
 const { handleAdminEvents } = require('./routes/adminEvents');
+const { generateNotFoundPage } = require('./views/notFoundPage');
 
 const PORT = parseInt(process.env.PORT || '80', 10);
 
@@ -54,7 +55,13 @@ const handler = async (req, res) => {
     // Public routes: /, /{slug}, /{slug}/specials
     if (await handlePublic(req, res, pathname, prisma)) return;
 
-    sendHTML(res, 404, '<h1>Page not found</h1><p><a href="/">Back to home</a></p>');
+    // Branded 404 for public paths (admin gets a plain 404 to avoid leaking nav)
+    if (pathname.startsWith('/admin')) {
+      sendHTML(res, 404, '<h1>Page not found</h1><p><a href="/admin">Back to admin</a></p>');
+    } else {
+      const locations = await getLocations(prisma).catch(() => []);
+      sendHTML(res, 404, generateNotFoundPage({ locations, requestedPath: pathname }));
+    }
   } catch (error) {
     console.error('Error:', error);
     sendSafeServerError(res);
@@ -67,68 +74,6 @@ const server = http.createServer((req, res) => {
     sendSafeServerError(res);
   });
 });
-
-// One-time seed: add Snacks category to locations if missing
-const SNACKS_SEED = {
-  cary: [
-    { name: 'Pimento Cheese', price: 10, displayOrder: 0 },
-    { name: 'Antipasto', price: 10, displayOrder: 1 },
-  ],
-  durham: [
-    { name: 'Sopressata & Cheddar Snack Tray', description: 'Sopressata salami, sharp cheddar & crackers', price: 8, displayOrder: 0 },
-    { name: 'San Carlo Chips, Lime & Pink Pepper', description: 'Italian-style kettle chips with lime and pink peppercorn', price: 5, displayOrder: 1 },
-  ],
-  raleigh: [
-    { name: 'Sopressata & Cheddar Snack Tray', description: 'Sopressata salami, sharp cheddar & crackers', price: 8, displayOrder: 0 },
-    { name: 'San Carlo Chips, Lime & Pink Pepper', description: 'Italian-style kettle chips with lime and pink peppercorn', price: 5, displayOrder: 1 },
-  ],
-  greensboro: [
-    { name: 'Sopressata & Cheddar Snack Tray', description: 'Sopressata salami, sharp cheddar & crackers', price: 8, displayOrder: 0 },
-    { name: 'San Carlo Chips, Lime & Pink Pepper', description: 'Italian-style kettle chips with lime and pink peppercorn', price: 5, displayOrder: 1 },
-  ],
-  'winston-salem': [
-    { name: 'Sopressata & Cheddar Snack Tray', description: 'Sopressata salami, sharp cheddar & crackers', price: 8, displayOrder: 0 },
-    { name: 'San Carlo Chips, Lime & Pink Pepper', description: 'Italian-style kettle chips with lime and pink peppercorn', price: 5, displayOrder: 1 },
-  ],
-};
-
-async function seedSnacks() {
-  if (!prisma) return;
-  for (const [slug, items] of Object.entries(SNACKS_SEED)) {
-    try {
-      const loc = await prisma.location.findFirst({ where: { slug, isActive: true } });
-      if (!loc) continue;
-      const existing = await prisma.menuCategory.findFirst({ where: { locationId: loc.id, name: 'Snacks' }, include: { items: true } });
-      if (existing) {
-        // Update existing item prices to match seed data
-        for (const seedItem of items) {
-          const match = (existing.items || []).find(i => i.name === seedItem.name);
-          if (match && (Number(match.price) !== seedItem.price || (seedItem.description && match.description !== seedItem.description))) {
-            const data = { price: seedItem.price };
-            if (seedItem.description) data.description = seedItem.description;
-            await prisma.menuItem.update({ where: { id: match.id }, data });
-            console.log(`Updated ${slug} snack "${seedItem.name}" price to $${seedItem.price}.`);
-          }
-        }
-        continue;
-      }
-      const cats = await prisma.menuCategory.findMany({ where: { locationId: loc.id }, orderBy: { displayOrder: 'desc' }, take: 1 });
-      const nextOrder = cats.length > 0 ? cats[0].displayOrder + 1 : 0;
-      await prisma.menuCategory.create({
-        data: {
-          locationId: loc.id,
-          name: 'Snacks',
-          displayOrder: nextOrder,
-          isActive: true,
-          items: { create: items.map(i => ({ ...i, isAvailable: true })) },
-        },
-      });
-      console.log(`Seeded ${slug} Snacks menu category.`);
-    } catch (err) {
-      console.warn(`${slug} snacks seed skipped:`, err.message);
-    }
-  }
-}
 
 const GIFT_CARD_RECIPIENTS = [
   'carrie@dramanddraught.com',
@@ -258,6 +203,5 @@ function scheduleGiftCardDrawing() {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`Dram & Draught server running on port ${PORT}`);
   console.log('Ready to serve location pages!');
-  seedSnacks();
   scheduleGiftCardDrawing();
 });

@@ -68,10 +68,12 @@ async function handleAdminMenu(req, res, pathname, prisma) {
       const body = await parseBody(req);
       const action = body._action || '';
 
+      const flashError = (detail) => `/admin/menu/${slug}?msg=${encodeURIComponent('error|' + detail)}`;
+
       try {
         if (action === 'addCategory') {
           const name = normalizeText(body.name);
-          if (!name) { redirect(res, `/admin/menu/${slug}?msg=error`); return true; }
+          if (!name) { redirect(res, flashError('Category name is required.')); return true; }
           const max = await prisma.menuCategory.findFirst({
             where: { locationId: location.id },
             orderBy: { displayOrder: 'desc' },
@@ -94,7 +96,7 @@ async function handleAdminMenu(req, res, pathname, prisma) {
         if (action === 'editCategory') {
           const categoryId = String(body.categoryId || '');
           const name = normalizeText(body.name);
-          if (!categoryId || !name) { redirect(res, `/admin/menu/${slug}?msg=error`); return true; }
+          if (!categoryId || !name) { redirect(res, flashError('Category name is required.')); return true; }
           await prisma.menuCategory.update({
             where: { id: categoryId },
             data: {
@@ -143,7 +145,7 @@ async function handleAdminMenu(req, res, pathname, prisma) {
         if (action === 'addItem') {
           const categoryId = String(body.categoryId || '');
           const name = normalizeText(body.name);
-          if (!categoryId || !name) { redirect(res, `/admin/menu/${slug}?msg=error`); return true; }
+          if (!categoryId || !name) { redirect(res, flashError('Item name is required.')); return true; }
           const category = await prisma.menuCategory.findUnique({ where: { id: categoryId } });
           if (!category || category.locationId !== location.id) {
             redirect(res, `/admin/menu/${slug}`); return true;
@@ -173,7 +175,7 @@ async function handleAdminMenu(req, res, pathname, prisma) {
         if (action === 'editItem') {
           const itemId = String(body.itemId || '');
           const name = normalizeText(body.name);
-          if (!itemId || !name) { redirect(res, `/admin/menu/${slug}?msg=error`); return true; }
+          if (!itemId || !name) { redirect(res, flashError('Item name is required.')); return true; }
           // Verify item belongs to this location
           const item = await prisma.menuItem.findUnique({
             where: { id: itemId },
@@ -243,7 +245,7 @@ async function handleAdminMenu(req, res, pathname, prisma) {
         return true;
       } catch (err) {
         console.error('Admin menu action error:', err.message || err);
-        redirect(res, `/admin/menu/${slug}?msg=error`);
+        redirect(res, flashError(err.message || 'Database error.'));
         return true;
       }
     }

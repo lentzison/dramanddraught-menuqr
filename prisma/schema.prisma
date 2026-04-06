@@ -229,6 +229,11 @@ model Event {
   // Custom questions as JSON: [{id, label, type, required}]
   customQuestions  Json?
 
+  // Page content sections (rich event page builder).
+  // JSON array of {id, type, ...content} entries rendered in order.
+  // Types: text, image, details, button, video, divider
+  sections         Json?
+
   // Post-signup
   confirmationMessage String?
   notifyEmail      String?   // Email to notify when someone signs up

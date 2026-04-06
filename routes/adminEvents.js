@@ -35,6 +35,72 @@ function parseCapacity(value) {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+// Validate that an image src is either a https/http URL or a small data URL.
+function sanitizeImageSrc(src) {
+  if (!src) return null;
+  const str = String(src).trim();
+  if (!str) return null;
+  if (/^data:image\/(jpeg|jpg|png|gif|webp);base64,/i.test(str)) {
+    // Cap at ~750KB encoded (~560KB binary) to keep DB rows reasonable
+    if (str.length > 750 * 1024) return null;
+    return str;
+  }
+  if (/^https?:\/\//i.test(str)) {
+    return str.slice(0, 2000);
+  }
+  return null;
+}
+
+// Build a section object from form fields based on its type. Generates a fresh id when not provided.
+function buildSectionFromForm(body, existingId = null) {
+  const type = String(body.type || 'text').toLowerCase();
+  const id = existingId || `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+
+  if (type === 'text') {
+    return { id, type, heading: normalizeText(body.heading) || null, body: normalizeText(body.body) || null };
+  }
+  if (type === 'image') {
+    const src = sanitizeImageSrc(body.src);
+    if (!src) return null;
+    return { id, type, src, caption: normalizeText(body.caption) || null, alt: normalizeText(body.alt) || null };
+  }
+  if (type === 'details') {
+    const labels = Array.isArray(body.detail_label) ? body.detail_label : (body.detail_label ? [body.detail_label] : []);
+    const values = Array.isArray(body.detail_value) ? body.detail_value : (body.detail_value ? [body.detail_value] : []);
+    const items = [];
+    for (let i = 0; i < labels.length; i++) {
+      const label = normalizeText(labels[i]);
+      const value = normalizeText(values[i]);
+      if (label || value) items.push({ label, value });
+    }
+    return { id, type, title: normalizeText(body.title) || null, items };
+  }
+  if (type === 'button') {
+    const url = normalizeText(body.url);
+    if (!url) return null;
+    return {
+      id,
+      type,
+      label: normalizeText(body.label) || 'Learn More',
+      url: url.slice(0, 2000),
+      style: ['primary', 'secondary'].includes(String(body.style)) ? body.style : 'primary',
+    };
+  }
+  if (type === 'video') {
+    const url = normalizeText(body.url);
+    if (!url) return null;
+    return { id, type, url: url.slice(0, 2000), caption: normalizeText(body.caption) || null };
+  }
+  if (type === 'divider') {
+    return { id, type };
+  }
+  return null;
+}
+
+function getSections(event) {
+  return Array.isArray(event.sections) ? event.sections : [];
+}
+
 function parseCustomQuestions(body) {
   // Expect arrays: custom_label[], custom_type[], custom_required[]
   const labels = Array.isArray(body['custom_label']) ? body['custom_label'] : (body['custom_label'] ? [body['custom_label']] : []);
@@ -238,7 +304,7 @@ async function handleAdminEvents(req, res, pathname, prisma) {
       return true;
     }
 
-    // POST: update or delete
+    // POST: update, delete, or section CRUD
     if (req.method === 'POST') {
       const body = await parseBody(req);
       const action = body._action || '';
@@ -251,7 +317,55 @@ async function handleAdminEvents(req, res, pathname, prisma) {
         return true;
       }
 
-      // Default = update
+      // ─── Section actions ───
+      if (action === 'addSection') {
+        const newSection = buildSectionFromForm(body);
+        if (!newSection) { redirect(res, `/admin/events/${eventId}?msg=error#sections`); return true; }
+        const next = [...getSections(event), newSection];
+        await prisma.event.update({ where: { id: eventId }, data: { sections: next } });
+        redirect(res, `/admin/events/${eventId}?msg=saved#sections`);
+        return true;
+      }
+
+      if (action === 'editSection') {
+        const sectionId = String(body.sectionId || '');
+        if (!sectionId) { redirect(res, `/admin/events/${eventId}#sections`); return true; }
+        const sections = getSections(event);
+        const idx = sections.findIndex(s => s.id === sectionId);
+        if (idx === -1) { redirect(res, `/admin/events/${eventId}#sections`); return true; }
+        const updated = buildSectionFromForm(body, sectionId);
+        if (!updated) { redirect(res, `/admin/events/${eventId}?msg=error#sections`); return true; }
+        const next = [...sections];
+        next[idx] = updated;
+        await prisma.event.update({ where: { id: eventId }, data: { sections: next } });
+        redirect(res, `/admin/events/${eventId}?msg=saved#sections`);
+        return true;
+      }
+
+      if (action === 'deleteSection') {
+        const sectionId = String(body.sectionId || '');
+        const next = getSections(event).filter(s => s.id !== sectionId);
+        await prisma.event.update({ where: { id: eventId }, data: { sections: next } });
+        redirect(res, `/admin/events/${eventId}?msg=deleted#sections`);
+        return true;
+      }
+
+      if (action === 'moveSection') {
+        const sectionId = String(body.sectionId || '');
+        const direction = String(body.direction || '');
+        const sections = [...getSections(event)];
+        const idx = sections.findIndex(s => s.id === sectionId);
+        if (idx === -1) { redirect(res, `/admin/events/${eventId}#sections`); return true; }
+        const swapWith = direction === 'up' ? idx - 1 : idx + 1;
+        if (swapWith >= 0 && swapWith < sections.length) {
+          [sections[idx], sections[swapWith]] = [sections[swapWith], sections[idx]];
+          await prisma.event.update({ where: { id: eventId }, data: { sections } });
+        }
+        redirect(res, `/admin/events/${eventId}?msg=reordered#sections`);
+        return true;
+      }
+
+      // Default = update event metadata
       const title = normalizeText(body.title);
       if (!title) { redirect(res, `/admin/events/${eventId}?msg=error`); return true; }
 

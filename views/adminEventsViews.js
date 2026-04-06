@@ -34,6 +34,115 @@ function formatFriendlyDate(value) {
   });
 }
 
+// Render the inline edit form for a single section, by type. Used both for
+// existing sections (when expanded) and the "add new section" panel.
+function renderSectionEditFields(section, idPrefix) {
+  const type = section?.type || 'text';
+  if (type === 'text') {
+    return `
+      <label for="${idPrefix}-heading">Heading <span style="color:#888; font-weight:400; font-size:0.78rem">(optional)</span></label>
+      <input type="text" id="${idPrefix}-heading" name="heading" value="${escHTML(section?.heading || '')}" placeholder="e.g. About the Event" />
+      <label for="${idPrefix}-body">Body Text</label>
+      <textarea id="${idPrefix}-body" name="body" rows="5" placeholder="What guests should know. Plain text or one paragraph per blank line.">${escHTML(section?.body || '')}</textarea>
+    `;
+  }
+  if (type === 'image') {
+    const hasSrc = !!section?.src;
+    return `
+      <label>Image</label>
+      <div class="sec-img-upload" data-prefix="${idPrefix}">
+        <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" id="${idPrefix}-file" class="sec-img-file" />
+        <div class="sec-img-hint">Click to choose a file (max ~500&#8239;KB), or paste a hosted image URL below.</div>
+        <input type="text" id="${idPrefix}-url-input" placeholder="https://... (optional alternative)" class="sec-img-url-input" value="${hasSrc && /^https?:\/\//i.test(section.src) ? escHTML(section.src) : ''}" />
+        <input type="hidden" id="${idPrefix}-src" name="src" value="${hasSrc ? escHTML(section.src) : ''}" />
+        <div class="sec-img-preview-wrap">
+          <img id="${idPrefix}-preview" class="sec-img-preview" src="${hasSrc ? escHTML(section.src) : ''}" alt="" style="${hasSrc ? '' : 'display:none'}" />
+          ${hasSrc ? `<button type="button" class="btn btn-secondary btn-sm sec-img-clear" data-prefix="${idPrefix}">Remove image</button>` : ''}
+        </div>
+      </div>
+      <label for="${idPrefix}-caption">Caption <span style="color:#888; font-weight:400; font-size:0.78rem">(optional)</span></label>
+      <input type="text" id="${idPrefix}-caption" name="caption" value="${escHTML(section?.caption || '')}" placeholder="Shown beneath the image" />
+      <label for="${idPrefix}-alt">Alt Text <span style="color:#888; font-weight:400; font-size:0.78rem">(for accessibility)</span></label>
+      <input type="text" id="${idPrefix}-alt" name="alt" value="${escHTML(section?.alt || '')}" placeholder="Describe the image briefly" />
+    `;
+  }
+  if (type === 'details') {
+    const items = Array.isArray(section?.items) && section.items.length > 0 ? section.items : [{ label: '', value: '' }];
+    const rows = items.map(it => `
+      <div class="sec-detail-row">
+        <input type="text" name="detail_label" value="${escHTML(it.label || '')}" placeholder="e.g. Date" />
+        <input type="text" name="detail_value" value="${escHTML(it.value || '')}" placeholder="e.g. Saturday, October 15" />
+        <button type="button" class="btn btn-secondary btn-sm sec-detail-remove">×</button>
+      </div>
+    `).join('');
+    return `
+      <label for="${idPrefix}-title">Title <span style="color:#888; font-weight:400; font-size:0.78rem">(optional)</span></label>
+      <input type="text" id="${idPrefix}-title" name="title" value="${escHTML(section?.title || '')}" placeholder="e.g. Event Info" />
+      <label>Details</label>
+      <div class="sec-detail-list" id="${idPrefix}-details">${rows}</div>
+      <button type="button" class="btn btn-secondary btn-sm sec-detail-add" data-target="${idPrefix}-details">+ Add Row</button>
+    `;
+  }
+  if (type === 'button') {
+    const style = section?.style || 'primary';
+    return `
+      <label for="${idPrefix}-label">Button Label <span style="color:#f87171">*</span></label>
+      <input type="text" id="${idPrefix}-label" name="label" value="${escHTML(section?.label || '')}" placeholder="e.g. Get Tickets" required />
+      <label for="${idPrefix}-url">Link URL <span style="color:#f87171">*</span></label>
+      <input type="url" id="${idPrefix}-url" name="url" value="${escHTML(section?.url || '')}" placeholder="https://eventbrite.com/..." required />
+      <label>Style</label>
+      <div style="display:flex; gap:14px;">
+        <label class="ev-check"><input type="radio" name="style" value="primary" ${style === 'primary' ? 'checked' : ''} /> Primary (gold, prominent)</label>
+        <label class="ev-check"><input type="radio" name="style" value="secondary" ${style === 'secondary' ? 'checked' : ''} /> Secondary (outline)</label>
+      </div>
+    `;
+  }
+  if (type === 'video') {
+    return `
+      <label for="${idPrefix}-url">Video URL <span style="color:#f87171">*</span></label>
+      <input type="url" id="${idPrefix}-url" name="url" value="${escHTML(section?.url || '')}" placeholder="https://youtube.com/watch?v=... or https://vimeo.com/..." required />
+      <div style="color:#888; font-size:0.78rem; margin-top:4px;">YouTube, Vimeo, and other common video URLs work. Will be embedded automatically.</div>
+      <label for="${idPrefix}-caption">Caption <span style="color:#888; font-weight:400; font-size:0.78rem">(optional)</span></label>
+      <input type="text" id="${idPrefix}-caption" name="caption" value="${escHTML(section?.caption || '')}" placeholder="Shown beneath the video" />
+    `;
+  }
+  if (type === 'divider') {
+    return `<p style="color:#888; font-size:0.85rem; margin-top:8px;">A simple horizontal divider. No options needed.</p>`;
+  }
+  return `<p style="color:#888;">Unknown section type</p>`;
+}
+
+function sectionPreviewSummary(section) {
+  if (!section) return '';
+  const type = section.type || 'text';
+  if (type === 'text') {
+    if (section.heading) return escHTML(section.heading);
+    if (section.body) return escHTML(section.body.slice(0, 80) + (section.body.length > 80 ? '…' : ''));
+    return '<em style="color:#666">Empty text</em>';
+  }
+  if (type === 'image') {
+    return section.caption ? escHTML(section.caption) : '<em style="color:#666">Image</em>';
+  }
+  if (type === 'details') {
+    const count = Array.isArray(section.items) ? section.items.length : 0;
+    return `${section.title ? escHTML(section.title) + ' · ' : ''}${count} row${count === 1 ? '' : 's'}`;
+  }
+  if (type === 'button') {
+    return `${escHTML(section.label || 'Button')} → ${escHTML((section.url || '').slice(0, 60))}`;
+  }
+  if (type === 'video') {
+    return escHTML((section.url || '').slice(0, 60));
+  }
+  if (type === 'divider') {
+    return '<em style="color:#666">— divider —</em>';
+  }
+  return '';
+}
+
+function sectionTypeIcon(type) {
+  return ({ text: 'T', image: '📷', details: '⋮', button: '▶', video: '►', divider: '—' })[type] || '?';
+}
+
 function eventStatusBadge(event) {
   if (event.isCancelled) return '<span class="ev-badge ev-badge-cancelled">Cancelled</span>';
   if (!event.isActive) return '<span class="ev-badge ev-badge-inactive">Hidden</span>';
@@ -142,6 +251,285 @@ function eventsList(events, user, flashMsg) {
       </div>
     ` : rows}
   `, user, { pathname: '/admin/events', flashMsg });
+}
+
+// ─── Page sections editor (rich content for the public event page) ───
+function renderSectionsCard(event, actionUrl) {
+  const sections = Array.isArray(event.sections) ? event.sections : [];
+  const totalCount = sections.length;
+
+  const sectionRows = sections.map((s, idx) => {
+    const isFirst = idx === 0;
+    const isLast = idx === totalCount - 1;
+    const editPrefix = `sec-edit-${s.id}`;
+    return `
+      <div class="sec-row" id="sec-${s.id}">
+        <div class="sec-row-summary">
+          <span class="sec-row-icon">${sectionTypeIcon(s.type)}</span>
+          <div class="sec-row-info">
+            <div class="sec-row-type">${escHTML((s.type || '').toUpperCase())}</div>
+            <div class="sec-row-preview">${sectionPreviewSummary(s)}</div>
+          </div>
+          <div class="sec-row-actions">
+            <form method="POST" action="${actionUrl}" class="sec-inline">
+              <input type="hidden" name="_action" value="moveSection" />
+              <input type="hidden" name="sectionId" value="${escHTML(s.id)}" />
+              <button type="submit" name="direction" value="up" class="btn btn-secondary btn-sm"${isFirst ? ' disabled' : ''}>↑</button>
+              <button type="submit" name="direction" value="down" class="btn btn-secondary btn-sm"${isLast ? ' disabled' : ''}>↓</button>
+            </form>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="toggleSecEdit('${editPrefix}')">Edit</button>
+            <form method="POST" action="${actionUrl}" class="sec-inline" onsubmit="return confirm('Delete this section?')">
+              <input type="hidden" name="_action" value="deleteSection" />
+              <input type="hidden" name="sectionId" value="${escHTML(s.id)}" />
+              <button type="submit" class="btn btn-danger btn-sm">Del</button>
+            </form>
+          </div>
+        </div>
+        <div class="sec-row-edit" id="${editPrefix}" style="display:none">
+          <form method="POST" action="${actionUrl}" enctype="application/x-www-form-urlencoded">
+            <input type="hidden" name="_action" value="editSection" />
+            <input type="hidden" name="sectionId" value="${escHTML(s.id)}" />
+            <input type="hidden" name="type" value="${escHTML(s.type)}" />
+            ${renderSectionEditFields(s, editPrefix)}
+            <div class="form-actions">
+              <button type="submit" class="btn btn-primary btn-sm">Save Section</button>
+              <button type="button" class="btn btn-secondary btn-sm" onclick="toggleSecEdit('${editPrefix}')">Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Build "add new section" panel — six type buttons that reveal a typed form
+  const addPanels = ['text', 'image', 'details', 'button', 'video', 'divider'].map(t => {
+    const stub = { type: t, items: t === 'details' ? [{ label: '', value: '' }] : undefined };
+    return `
+      <div class="sec-add-panel" id="sec-add-${t}" style="display:none">
+        <form method="POST" action="${actionUrl}">
+          <input type="hidden" name="_action" value="addSection" />
+          <input type="hidden" name="type" value="${t}" />
+          ${renderSectionEditFields(stub, `sec-new-${t}`)}
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary btn-sm">Add ${t.charAt(0).toUpperCase() + t.slice(1)} Section</button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="hideAddPanel('${t}')">Cancel</button>
+          </div>
+        </form>
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="ev-section ev-sections-card" id="sections">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:4px">
+        <div>
+          <h2>Page Sections</h2>
+          <p class="ev-section-hint">Build out the event page with text, images, details, buttons, and videos. Sections show up in order on the public page below the event details.</p>
+        </div>
+      </div>
+
+      ${sectionRows || '<div class="sec-empty">No sections yet. Add your first one below.</div>'}
+
+      <div class="sec-add-bar">
+        <span style="color:#888; font-size:0.85rem; margin-right:6px">+ Add section:</span>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="showAddPanel('text')">Text</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="showAddPanel('image')">Image</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="showAddPanel('details')">Details</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="showAddPanel('button')">Button / Link</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="showAddPanel('video')">Video</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="showAddPanel('divider')">Divider</button>
+      </div>
+
+      ${addPanels}
+    </div>
+
+    <style>
+      .ev-sections-card .sec-row {
+        background:#111;
+        border:1px solid #222;
+        border-radius:10px;
+        margin-bottom:10px;
+      }
+      .ev-sections-card .sec-row-summary {
+        display:flex;
+        align-items:center;
+        gap:12px;
+        padding:12px 14px;
+      }
+      .ev-sections-card .sec-row-icon {
+        width:34px; height:34px;
+        background:#1a1a1a;
+        border-radius:8px;
+        display:flex; align-items:center; justify-content:center;
+        color:#d4af37; font-weight:800; font-size:1rem;
+        flex-shrink:0;
+      }
+      .ev-sections-card .sec-row-info { flex:1; min-width:0; }
+      .ev-sections-card .sec-row-type { color:#d4af37; font-size:0.7rem; font-weight:800; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:2px; }
+      .ev-sections-card .sec-row-preview { color:#bbb; font-size:0.88rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .ev-sections-card .sec-row-actions { display:flex; gap:5px; align-items:center; flex-wrap:wrap; }
+      .ev-sections-card .sec-inline { display:inline-flex; gap:4px; margin:0; }
+      .ev-sections-card .sec-row-edit {
+        background:#0d0d0d;
+        border-top:1px solid #222;
+        border-radius:0 0 10px 10px;
+        padding:14px 16px;
+      }
+      .ev-sections-card .sec-add-bar {
+        display:flex;
+        flex-wrap:wrap;
+        gap:6px;
+        padding:14px 0 0;
+        margin-top:12px;
+        border-top:1px dashed #2a2a2a;
+        align-items:center;
+      }
+      .ev-sections-card .sec-add-panel {
+        background:#0d0d0d;
+        border:1px solid rgba(212,175,55,0.3);
+        border-radius:10px;
+        padding:16px;
+        margin-top:12px;
+      }
+      .ev-sections-card .sec-empty {
+        background:#111;
+        border:1px dashed #2a2a2a;
+        border-radius:10px;
+        padding:24px 14px;
+        text-align:center;
+        color:#666;
+        font-size:0.88rem;
+      }
+      .ev-sections-card .sec-img-upload {
+        background:#0d0d0d;
+        border:1px solid #222;
+        border-radius:8px;
+        padding:14px;
+        margin-bottom:8px;
+      }
+      .ev-sections-card .sec-img-hint { color:#888; font-size:0.78rem; margin:6px 0 8px; }
+      .ev-sections-card .sec-img-url-input { margin-bottom:10px !important; }
+      .ev-sections-card .sec-img-preview-wrap { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+      .ev-sections-card .sec-img-preview { max-width:200px; max-height:140px; border-radius:6px; border:1px solid #333; }
+      .ev-sections-card .sec-detail-list { margin-bottom:10px; }
+      .ev-sections-card .sec-detail-row {
+        display:grid;
+        grid-template-columns:1fr 2fr auto;
+        gap:8px;
+        margin-bottom:6px;
+        align-items:center;
+      }
+      .ev-sections-card .sec-detail-row input { margin:0 !important; }
+      .ev-sections-card .sec-detail-remove {
+        background:transparent;
+        border:1px solid #444;
+        color:#888;
+        border-radius:6px;
+        padding:6px 12px;
+        cursor:pointer;
+        font-size:0.9rem;
+      }
+      .ev-sections-card .sec-detail-remove:hover { border-color:#f87171; color:#f87171; }
+    </style>
+
+    <script>
+      function toggleSecEdit(id) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.style.display = el.style.display === 'none' ? 'block' : 'none';
+      }
+      function showAddPanel(t) {
+        ['text','image','details','button','video','divider'].forEach(function(x) {
+          var p = document.getElementById('sec-add-' + x);
+          if (p) p.style.display = (x === t) ? 'block' : 'none';
+        });
+      }
+      function hideAddPanel(t) {
+        var p = document.getElementById('sec-add-' + t);
+        if (p) p.style.display = 'none';
+      }
+
+      // Image upload via FileReader → base64 data URL
+      document.addEventListener('change', function(e) {
+        if (!e.target.classList.contains('sec-img-file')) return;
+        var input = e.target;
+        var prefix = input.id.replace(/-file$/, '');
+        var srcInput = document.getElementById(prefix + '-src');
+        var preview = document.getElementById(prefix + '-preview');
+        var urlInput = document.getElementById(prefix + '-url-input');
+        var file = input.files && input.files[0];
+        if (!file) return;
+        if (file.size > 750 * 1024) {
+          alert('Image is too large. Max ~500 KB. Try compressing the image, or paste a hosted URL instead.');
+          input.value = '';
+          return;
+        }
+        var reader = new FileReader();
+        reader.onload = function() {
+          if (srcInput) srcInput.value = reader.result;
+          if (preview) { preview.src = reader.result; preview.style.display = ''; }
+          if (urlInput) urlInput.value = '';
+        };
+        reader.readAsDataURL(file);
+      });
+      // URL input → set the hidden src field
+      document.addEventListener('input', function(e) {
+        if (!e.target.classList.contains('sec-img-url-input')) return;
+        var input = e.target;
+        var prefix = input.id.replace(/-url-input$/, '');
+        var srcInput = document.getElementById(prefix + '-src');
+        var preview = document.getElementById(prefix + '-preview');
+        var url = (input.value || '').trim();
+        if (srcInput) srcInput.value = url;
+        if (preview) {
+          if (/^https?:\\/\\//i.test(url)) { preview.src = url; preview.style.display = ''; }
+          else { preview.style.display = 'none'; }
+        }
+      });
+      // Remove image
+      document.addEventListener('click', function(e) {
+        if (e.target.classList && e.target.classList.contains('sec-img-clear')) {
+          var prefix = e.target.getAttribute('data-prefix');
+          var srcInput = document.getElementById(prefix + '-src');
+          var preview = document.getElementById(prefix + '-preview');
+          var urlInput = document.getElementById(prefix + '-url-input');
+          var fileInput = document.getElementById(prefix + '-file');
+          if (srcInput) srcInput.value = '';
+          if (preview) { preview.src = ''; preview.style.display = 'none'; }
+          if (urlInput) urlInput.value = '';
+          if (fileInput) fileInput.value = '';
+        }
+      });
+
+      // Details rows: add and remove
+      document.addEventListener('click', function(e) {
+        if (e.target.classList && e.target.classList.contains('sec-detail-add')) {
+          var targetId = e.target.getAttribute('data-target');
+          var list = document.getElementById(targetId);
+          if (!list) return;
+          var row = document.createElement('div');
+          row.className = 'sec-detail-row';
+          row.innerHTML =
+            '<input type="text" name="detail_label" placeholder="e.g. Date" />' +
+            '<input type="text" name="detail_value" placeholder="e.g. Saturday, October 15" />' +
+            '<button type="button" class="btn btn-secondary btn-sm sec-detail-remove">×</button>';
+          list.appendChild(row);
+        }
+        if (e.target.classList && e.target.classList.contains('sec-detail-remove')) {
+          var row = e.target.closest('.sec-detail-row');
+          if (row) row.remove();
+        }
+      });
+
+      // If URL has #sections, scroll there after page load
+      if (window.location.hash === '#sections') {
+        setTimeout(function() {
+          var el = document.getElementById('sections');
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
+      }
+    </script>
+  `;
 }
 
 // ─── Event editor (create or edit) ───
@@ -420,6 +808,8 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
         <a href="/admin/events" class="btn btn-secondary">Cancel</a>
       </div>
     </form>
+
+    ${!isNew ? renderSectionsCard(event, actionUrl) : ''}
 
     ${!isNew ? `
       <div class="ev-delete-section">

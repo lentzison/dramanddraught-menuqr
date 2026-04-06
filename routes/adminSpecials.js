@@ -1556,6 +1556,29 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       const proto = (req.headers['x-forwarded-proto'] || (req.socket && req.socket.encrypted ? 'https' : 'http'));
       const baseUrl = proto + '://' + hostHeader;
       const linkLocationOptions = locations.map(l => '<option value="' + esc(l.slug) + '">' + esc(l.name) + '</option>').join('');
+
+      // Load events per location for the link builder dropdown
+      let eventsByLocation = {};
+      try {
+        if (prisma.event) {
+          const allEvents = await prisma.event.findMany({
+            where: { isActive: true, isCancelled: false },
+            orderBy: [{ startDate: 'desc' }],
+            select: { id: true, slug: true, title: true, locationId: true, startDate: true },
+            take: 200,
+          });
+          const locById = {};
+          locations.forEach(l => { locById[l.id] = l.slug; });
+          allEvents.forEach(ev => {
+            const slug = locById[ev.locationId];
+            if (!slug || !ev.slug) return;
+            if (!eventsByLocation[slug]) eventsByLocation[slug] = [];
+            eventsByLocation[slug].push({ slug: ev.slug, title: ev.title });
+          });
+        }
+      } catch (err) {
+        console.warn('Trackable links: event load failed:', err.message);
+      }
       const linkBuilderSection = `
         <div class="a-card" style="margin-top:24px;background:#111;border:1px solid rgba(96,165,250,0.3);">
           <h3 class="a-heading" style="color:#60a5fa;">Trackable Links</h3>
@@ -1577,12 +1600,21 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
                 <option value="/menu">Full Menu</option>
                 <option value="/draft">Draft List</option>
                 <option value="/flights">Flights</option>
+                <option value="/lubrication-cup">Lubrication Cup</option>
+                <option value="__event__">Event ↓ (pick below)</option>
               </select>
             </div>
             <div>
               <label style="display:block;font-size:0.72rem;color:#888;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:5px;">Source Tag</label>
               <input type="text" id="tl-source" placeholder="e.g. instagram, event" value="instagram" style="width:100%;padding:8px 10px;background:#1a1a1d;color:#ccc;border:1px solid #333;border-radius:6px;font-size:0.85rem;" />
             </div>
+          </div>
+          <div id="tl-event-row" style="display:none;margin-bottom:12px;">
+            <label style="display:block;font-size:0.72rem;color:#888;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:5px;">Pick Event</label>
+            <select id="tl-event-slug" style="width:100%;padding:8px 10px;background:#1a1a1d;color:#ccc;border:1px solid #333;border-radius:6px;font-size:0.85rem;">
+              <option value="">— Select an event —</option>
+            </select>
+            <div id="tl-event-empty" style="display:none;color:#888;font-size:0.78rem;margin-top:6px;">No active events at this location yet. Create one in <a href="/admin/events" style="color:#60a5fa;">Events</a>.</div>
           </div>
           <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px;">
             <span style="color:#666;font-size:0.76rem;margin-right:4px;align-self:center;">Quick picks:</span>
@@ -1606,18 +1638,48 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
             var urlIn = document.getElementById('tl-url');
             var copyBtn = document.getElementById('tl-copy');
             var copied = document.getElementById('tl-copied');
+            var eventRow = document.getElementById('tl-event-row');
+            var eventSel = document.getElementById('tl-event-slug');
+            var eventEmpty = document.getElementById('tl-event-empty');
             var base = ${JSON.stringify(baseUrl)};
+            var eventsByLocation = ${JSON.stringify(eventsByLocation)};
+
+            function refreshEventOptions() {
+              if (!eventSel) return;
+              var loc = locSel.value;
+              var events = eventsByLocation[loc] || [];
+              eventSel.innerHTML = '<option value="">— Select an event —</option>' +
+                events.map(function(ev) {
+                  return '<option value="' + ev.slug + '">' + ev.title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</option>';
+                }).join('');
+              if (eventEmpty) eventEmpty.style.display = events.length === 0 ? 'block' : 'none';
+            }
             function update() {
               var loc = locSel.value;
-              var page = pageSel.value;
+              var pageVal = pageSel.value;
               var src = (srcIn.value || '').trim().toLowerCase().replace(/[^a-z0-9_.\\-]/g, '');
-              var url = base + '/' + loc + page;
+
+              if (eventRow) eventRow.style.display = pageVal === '__event__' ? 'block' : 'none';
+
+              var pagePath;
+              if (pageVal === '__event__') {
+                var evSlug = eventSel ? eventSel.value : '';
+                if (!evSlug) {
+                  urlIn.value = base + '/' + loc + ' (pick an event above)';
+                  return;
+                }
+                pagePath = '/events/' + evSlug;
+              } else {
+                pagePath = pageVal;
+              }
+              var url = base + '/' + loc + pagePath;
               if (src) url += '?src=' + encodeURIComponent(src);
               urlIn.value = url;
             }
-            locSel.addEventListener('change', update);
+            locSel.addEventListener('change', function() { refreshEventOptions(); update(); });
             pageSel.addEventListener('change', update);
             srcIn.addEventListener('input', update);
+            if (eventSel) eventSel.addEventListener('change', update);
             document.querySelectorAll('.tl-quick').forEach(function(btn) {
               btn.addEventListener('click', function() {
                 srcIn.value = btn.getAttribute('data-src');
@@ -1634,6 +1696,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
                 document.execCommand && document.execCommand('copy');
               }
             });
+            refreshEventOptions();
             update();
           })();
         </script>`;

@@ -72,6 +72,80 @@ function renderStatusBanner(status, event) {
   return '';
 }
 
+// Convert a YouTube/Vimeo URL into an embeddable iframe src.
+function videoEmbedUrl(url) {
+  if (!url) return null;
+  const str = String(url).trim();
+  // YouTube watch URL
+  let m = str.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([\w-]{11})/);
+  if (m) return `https://www.youtube.com/embed/${m[1]}`;
+  // Vimeo
+  m = str.match(/vimeo\.com\/(?:video\/)?(\d+)/);
+  if (m) return `https://player.vimeo.com/video/${m[1]}`;
+  return null;
+}
+
+// Render an array of page sections (text/image/details/button/video/divider)
+function renderSections(sections) {
+  if (!Array.isArray(sections) || sections.length === 0) return '';
+  return sections.map(s => {
+    const type = s && s.type;
+    if (type === 'text') {
+      const heading = s.heading ? `<h2 class="ev-sec-heading">${escHTML(s.heading)}</h2>` : '';
+      const body = s.body
+        ? s.body.split(/\n\n+/).map(p => `<p>${escHTML(p).replace(/\n/g, '<br/>')}</p>`).join('')
+        : '';
+      return `<section class="ev-sec ev-sec-text">${heading}<div class="ev-sec-body">${body}</div></section>`;
+    }
+    if (type === 'image') {
+      if (!s.src) return '';
+      // Allow data URLs (uploaded) and http(s) URLs only
+      if (!/^data:image\/(jpeg|jpg|png|gif|webp);base64,/i.test(s.src) && !/^https?:\/\//i.test(s.src)) return '';
+      return `<section class="ev-sec ev-sec-image">
+        <img src="${escHTML(s.src)}" alt="${escHTML(s.alt || s.caption || '')}" loading="lazy" />
+        ${s.caption ? `<div class="ev-sec-caption">${escHTML(s.caption)}</div>` : ''}
+      </section>`;
+    }
+    if (type === 'details') {
+      const items = Array.isArray(s.items) ? s.items.filter(it => it && (it.label || it.value)) : [];
+      if (items.length === 0 && !s.title) return '';
+      return `<section class="ev-sec ev-sec-details">
+        ${s.title ? `<div class="ev-sec-details-title">${escHTML(s.title)}</div>` : ''}
+        <div class="ev-sec-details-list">
+          ${items.map(it => `
+            <div class="ev-sec-details-row">
+              <div class="ev-sec-details-label">${escHTML(it.label || '')}</div>
+              <div class="ev-sec-details-value">${escHTML(it.value || '')}</div>
+            </div>
+          `).join('')}
+        </div>
+      </section>`;
+    }
+    if (type === 'button') {
+      if (!s.url) return '';
+      const styleClass = s.style === 'secondary' ? 'ev-sec-btn-secondary' : 'ev-sec-btn-primary';
+      // Open external links in a new tab; rel for safety
+      return `<section class="ev-sec ev-sec-button">
+        <a href="${escHTML(s.url)}" class="ev-sec-btn ${styleClass}" target="_blank" rel="noopener noreferrer">${escHTML(s.label || 'Learn More')}</a>
+      </section>`;
+    }
+    if (type === 'video') {
+      const embed = videoEmbedUrl(s.url);
+      if (!embed) return '';
+      return `<section class="ev-sec ev-sec-video">
+        <div class="ev-sec-video-frame">
+          <iframe src="${escHTML(embed)}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+        </div>
+        ${s.caption ? `<div class="ev-sec-caption">${escHTML(s.caption)}</div>` : ''}
+      </section>`;
+    }
+    if (type === 'divider') {
+      return `<hr class="ev-sec-divider" />`;
+    }
+    return '';
+  }).join('');
+}
+
 function renderCustomFields(event, prevValues = {}) {
   const questions = Array.isArray(event.customQuestions) ? event.customQuestions : [];
   if (!questions.length) return '';
@@ -283,6 +357,135 @@ function generateEventPage(location, event, signupCount, options = {}) {
         .ev-status-closed { background: rgba(251,146,60,0.08); border: 1px solid rgba(251,146,60,0.3); }
         .ev-status-closed .ev-status-title { color: #fdba74; }
 
+        /* ─── Page sections ─── */
+        .ev-sec {
+          margin-bottom: 22px;
+        }
+        .ev-sec-text {
+          background: var(--panel);
+          border: 1px solid var(--line);
+          border-radius: 16px;
+          padding: 22px 24px;
+        }
+        .ev-sec-heading {
+          font-family: 'Playfair Display', Georgia, serif;
+          color: var(--gold);
+          font-size: 1.3rem;
+          font-weight: 800;
+          margin-bottom: 12px;
+          line-height: 1.2;
+        }
+        .ev-sec-body {
+          color: var(--steel);
+          font-size: 0.95rem;
+          line-height: 1.65;
+        }
+        .ev-sec-body p { margin-bottom: 10px; }
+        .ev-sec-body p:last-child { margin-bottom: 0; }
+
+        .ev-sec-image {
+          border-radius: 16px;
+          overflow: hidden;
+          background: var(--panel);
+          border: 1px solid var(--line);
+        }
+        .ev-sec-image img {
+          width: 100%;
+          height: auto;
+          display: block;
+        }
+        .ev-sec-caption {
+          color: var(--muted);
+          font-size: 0.82rem;
+          font-style: italic;
+          padding: 10px 16px;
+          text-align: center;
+        }
+
+        .ev-sec-details {
+          background: var(--panel);
+          border: 1px solid var(--line);
+          border-radius: 16px;
+          padding: 22px 24px;
+        }
+        .ev-sec-details-title {
+          font-family: 'Playfair Display', Georgia, serif;
+          color: var(--gold);
+          font-size: 1.15rem;
+          font-weight: 800;
+          margin-bottom: 14px;
+        }
+        .ev-sec-details-list { display: flex; flex-direction: column; gap: 0; }
+        .ev-sec-details-row {
+          display: grid;
+          grid-template-columns: minmax(110px, 38%) 1fr;
+          gap: 12px;
+          padding: 10px 0;
+          border-bottom: 1px solid var(--line);
+        }
+        .ev-sec-details-row:last-child { border-bottom: none; }
+        .ev-sec-details-label {
+          color: var(--smoke);
+          font-size: 0.7rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.12em;
+          padding-top: 2px;
+        }
+        .ev-sec-details-value {
+          color: var(--text);
+          font-size: 0.95rem;
+          font-weight: 600;
+        }
+
+        .ev-sec-button { text-align: center; }
+        .ev-sec-btn {
+          display: inline-block;
+          padding: 14px 32px;
+          border-radius: 12px;
+          font-size: 0.95rem;
+          font-weight: 800;
+          letter-spacing: 0.04em;
+          text-decoration: none;
+          transition: filter 0.2s, transform 0.05s;
+        }
+        .ev-sec-btn-primary {
+          background: linear-gradient(135deg, var(--gold), var(--amber));
+          color: #0c0c0c;
+          box-shadow: 0 12px 28px rgba(210,170,103,0.18);
+        }
+        .ev-sec-btn-primary:hover { filter: brightness(1.1); text-decoration: none; }
+        .ev-sec-btn-secondary {
+          background: transparent;
+          color: var(--gold);
+          border: 1px solid var(--gold);
+        }
+        .ev-sec-btn-secondary:hover { background: rgba(210,170,103,0.08); text-decoration: none; }
+
+        .ev-sec-video-frame {
+          position: relative;
+          padding-bottom: 56.25%;
+          height: 0;
+          background: var(--panel);
+          border: 1px solid var(--line);
+          border-radius: 16px;
+          overflow: hidden;
+        }
+        .ev-sec-video-frame iframe {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+        }
+
+        .ev-sec-divider {
+          border: none;
+          height: 1px;
+          background: linear-gradient(90deg, transparent, var(--line-strong), transparent);
+          margin: 24px 0;
+        }
+
         .ev-form {
           background: var(--panel);
           border: 1px solid var(--line);
@@ -381,6 +584,8 @@ function generateEventPage(location, event, signupCount, options = {}) {
           ${descriptionHtml ? `<div class="ev-description">${descriptionHtml}</div>` : ''}
           ${event.capacity ? `<div class="ev-capacity">${signupCount} / ${event.capacity} signed up</div>` : ''}
         </div>
+
+        ${renderSections(event.sections)}
 
         ${renderStatusBanner(status, event)}
 

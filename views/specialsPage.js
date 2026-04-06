@@ -255,7 +255,10 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
   }
 
   let _flightNoteId = 0;
-  const flightSection = (isToday && fridayFlights.length > 0) ? `
+  // Show flights on either today's specials OR the Friday tab (the day they actually run).
+  // Without this, viewing Friday from any other day of the week hides the flight even
+  // though it's the headline special for that day.
+  const flightSection = ((isToday || isFriday) && fridayFlights.length > 0) ? `
     <div class="section">
       <div class="section-header">
         <h2>${isFriday ? "This Friday's" : 'Featured'} Flight${fridayFlights.length > 1 ? 's' : ''}</h2>

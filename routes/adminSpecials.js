@@ -1630,7 +1630,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
                 <option value="/menu">Full Menu</option>
                 <option value="/draft">Draft List</option>
                 <option value="/flights">Flights</option>
-                <option value="/lubrication-cup">Lubrication Cup</option>
+                <option value="/events/lubrication-cup">Lubrication Cup (legacy slug)</option>
                 <option value="__event__">Event ↓ (pick below)</option>
               </select>
             </div>

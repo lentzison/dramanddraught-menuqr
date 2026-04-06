@@ -36,7 +36,6 @@ const {
 const { generateDraftPage } = require('../views/draftPage');
 const { generateFlightsPage } = require('../views/flightsPage');
 const { generateMenuPage } = require('../views/menuPage');
-const { generateLubricationCupPage } = require('../views/lubricationCupPage');
 const { generateEventPage, generateEventConfirmationPage, eventStatus } = require('../views/eventPage');
 const { generateNotFoundPage } = require('../views/notFoundPage');
 const { trackPageView, buildTrackingScript } = require('../analytics');
@@ -1315,18 +1314,15 @@ async function handlePublic(req, res, pathname, prisma) {
     return true;
   }
 
-  // Lubrication Cup page: /winston-salem/lubrication-cup
+  // Legacy redirect: /:slug/lubrication-cup → /:slug/events/lubrication-cup
+  // The old hardcoded page has been replaced with a real event in /admin/events
+  // that admins can edit. This 301 keeps printed/QR/social links working.
   const cupMatch = pathname.match(/^\/([a-z0-9-]+)\/lubrication-cup$/);
   if (cupMatch) {
     const slug = cupMatch[1];
-    const locs = await getLocations(prisma);
-    const location = locs.find((l) => l.slug === slug);
-    if (location) {
-      const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/lubrication-cup`, getQueryString(req));
-      sendHTML(res, 200, injectTracking(generateLubricationCupPage(location), sid));
-      return true;
-    }
-    await send404(req, res, prisma);
+    const target = `/${slug}/events/lubrication-cup` + getQueryString(req);
+    res.writeHead(301, { Location: target });
+    res.end();
     return true;
   }
 

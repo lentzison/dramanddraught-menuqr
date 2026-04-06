@@ -36,6 +36,8 @@ function formatEventTime(value) {
 function eventStatus(event, signupCount, now = new Date()) {
   if (event.isCancelled) return { key: 'cancelled', message: 'This event has been cancelled.' };
   if (!event.isActive) return { key: 'hidden', message: 'This event is not currently available.' };
+  // Info-only events have no signup form at all and no status banner.
+  if (event.signupsEnabled === false) return { key: 'no-signups' };
   const promoteFrom = event.promoteFrom ? new Date(event.promoteFrom) : null;
   if (promoteFrom && now < promoteFrom) return { key: 'upcoming', message: `Signups open ${formatEventDate(promoteFrom)} at ${formatEventTime(promoteFrom)}.` };
   const promoteUntil = event.promoteUntil ? new Date(event.promoteUntil) : (event.startDate ? new Date(event.startDate) : null);
@@ -842,7 +844,7 @@ function generateEventPage(location, event, signupCount, options = {}) {
             </div>
           </div>
           ${descriptionHtml ? `<div class="ev-description">${descriptionHtml}</div>` : ''}
-          ${event.capacity ? `<div class="ev-capacity">${signupCount} / ${event.capacity} signed up</div>` : ''}
+          ${event.capacity && event.signupsEnabled !== false ? `<div class="ev-capacity">${signupCount} / ${event.capacity} signed up</div>` : ''}
         </div>
 
         ${renderSections(event.sections)}

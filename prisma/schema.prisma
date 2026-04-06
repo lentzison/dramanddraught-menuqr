@@ -220,6 +220,10 @@ model Event {
   // Capacity
   capacity         Int?      // null = unlimited
 
+  // Whether the signup form is shown at all on the public page.
+  // Some events (e.g. info-only announcements) don't collect signups.
+  signupsEnabled   Boolean   @default(true)
+
   // Standard signup field toggles (name is always required)
   collectEmail     Boolean   @default(true)
   collectPhone     Boolean   @default(true)

@@ -540,17 +540,6 @@ function renderSectionsCard(event, actionUrl) {
         color:#666;
         font-size:0.88rem;
       }
-      .ev-sections-card .sec-img-upload {
-        background:#0d0d0d;
-        border:1px solid #222;
-        border-radius:8px;
-        padding:14px;
-        margin-bottom:8px;
-      }
-      .ev-sections-card .sec-img-hint { color:#888; font-size:0.78rem; margin:6px 0 8px; }
-      .ev-sections-card .sec-img-url-input { margin-bottom:10px !important; }
-      .ev-sections-card .sec-img-preview-wrap { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-      .ev-sections-card .sec-img-preview { max-width:200px; max-height:140px; border-radius:6px; border:1px solid #333; }
       .ev-sections-card .sec-detail-list { margin-bottom:10px; }
       .ev-sections-card .sec-detail-row {
         display:grid;
@@ -622,57 +611,8 @@ function renderSectionsCard(event, actionUrl) {
         if (p) p.style.display = 'none';
       }
 
-      // Image upload via FileReader → base64 data URL
-      document.addEventListener('change', function(e) {
-        if (!e.target.classList.contains('sec-img-file')) return;
-        var input = e.target;
-        var prefix = input.id.replace(/-file$/, '');
-        var srcInput = document.getElementById(prefix + '-src');
-        var preview = document.getElementById(prefix + '-preview');
-        var urlInput = document.getElementById(prefix + '-url-input');
-        var file = input.files && input.files[0];
-        if (!file) return;
-        if (file.size > 750 * 1024) {
-          alert('Image is too large. Max ~500 KB. Try compressing the image, or paste a hosted URL instead.');
-          input.value = '';
-          return;
-        }
-        var reader = new FileReader();
-        reader.onload = function() {
-          if (srcInput) srcInput.value = reader.result;
-          if (preview) { preview.src = reader.result; preview.style.display = ''; }
-          if (urlInput) urlInput.value = '';
-        };
-        reader.readAsDataURL(file);
-      });
-      // URL input → set the hidden src field
-      document.addEventListener('input', function(e) {
-        if (!e.target.classList.contains('sec-img-url-input')) return;
-        var input = e.target;
-        var prefix = input.id.replace(/-url-input$/, '');
-        var srcInput = document.getElementById(prefix + '-src');
-        var preview = document.getElementById(prefix + '-preview');
-        var url = (input.value || '').trim();
-        if (srcInput) srcInput.value = url;
-        if (preview) {
-          if (/^https?:\\/\\//i.test(url)) { preview.src = url; preview.style.display = ''; }
-          else { preview.style.display = 'none'; }
-        }
-      });
-      // Remove image
-      document.addEventListener('click', function(e) {
-        if (e.target.classList && e.target.classList.contains('sec-img-clear')) {
-          var prefix = e.target.getAttribute('data-prefix');
-          var srcInput = document.getElementById(prefix + '-src');
-          var preview = document.getElementById(prefix + '-preview');
-          var urlInput = document.getElementById(prefix + '-url-input');
-          var fileInput = document.getElementById(prefix + '-file');
-          if (srcInput) srcInput.value = '';
-          if (preview) { preview.src = ''; preview.style.display = 'none'; }
-          if (urlInput) urlInput.value = '';
-          if (fileInput) fileInput.value = '';
-        }
-      });
+      // (Image upload handlers live in the main editor script — work for both
+      // banner image and section images via global event delegation.)
 
       // Details rows: add and remove
       document.addEventListener('click', function(e) {
@@ -891,6 +831,19 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
       .ev-delete-section h3 { color:#f87171; font-size:0.85rem; text-transform:uppercase; letter-spacing:0.08em; margin:0 0 6px; }
       .ev-delete-section p { color:#888; font-size:0.82rem; margin:0 0 12px; }
 
+      /* Reusable image upload widget — used by banner and section images */
+      .sec-img-upload {
+        background:#0d0d0d;
+        border:1px solid #222;
+        border-radius:8px;
+        padding:14px;
+        margin-bottom:8px;
+      }
+      .sec-img-hint { color:#888; font-size:0.78rem; margin:6px 0 8px; }
+      .sec-img-url-input { margin-bottom:10px !important; }
+      .sec-img-preview-wrap { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+      .sec-img-preview { max-width:240px; max-height:160px; border-radius:6px; border:1px solid #333; }
+
       @media (max-width:768px) {
         .ev-field-grid { grid-template-columns:1fr; }
         .ev-standard-fields { grid-template-columns:1fr; }
@@ -935,8 +888,21 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
         <label for="ev-description">Description</label>
         <textarea id="ev-description" name="description" rows="4" placeholder="Tell people what the event is about, what to expect, what to bring...">${escHTML(event?.description || '')}</textarea>
 
-        <label for="ev-image">Banner Image URL <span style="color:#888; font-weight:400; font-size:0.8rem">(optional)</span></label>
-        <input type="text" id="ev-image" name="image" value="${escHTML(event?.image || '')}" placeholder="https://..." />
+        <label>Banner Image <span style="color:#888; font-weight:400; font-size:0.8rem">(optional &mdash; shown above the event details)</span></label>
+        ${(() => {
+          const hasSrc = !!event?.image;
+          return `
+        <div class="sec-img-upload" data-prefix="ev-banner">
+          <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" id="ev-banner-file" class="sec-img-file" />
+          <div class="sec-img-hint">Click to choose a file (max ~500&#8239;KB), or paste a hosted image URL below.</div>
+          <input type="text" id="ev-banner-url-input" placeholder="https://... (optional alternative)" class="sec-img-url-input" value="${hasSrc && /^https?:\/\//i.test(event.image) ? escHTML(event.image) : ''}" />
+          <input type="hidden" id="ev-banner-src" name="image" value="${hasSrc ? escHTML(event.image) : ''}" />
+          <div class="sec-img-preview-wrap">
+            <img id="ev-banner-preview" class="sec-img-preview" src="${hasSrc ? escHTML(event.image) : ''}" alt="" style="${hasSrc ? '' : 'display:none'}" />
+            ${hasSrc ? `<button type="button" class="btn btn-secondary btn-sm sec-img-clear" data-prefix="ev-banner">Remove image</button>` : ''}
+          </div>
+        </div>`;
+        })()}
       </div>
 
       <!-- ─── Dates ─── -->
@@ -970,7 +936,12 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
       <!-- ─── Signup form config ─── -->
       <div class="ev-section">
         <h2>Signup Form</h2>
-        <p class="ev-section-hint">What do you want to ask people who sign up? Name is always required.</p>
+        <p class="ev-section-hint">For events that collect signups (registrations, RSVPs, ticket holds). Turn this off for info-only events that don't need a form.</p>
+
+        <label class="ev-check" style="border:1px solid #2a2a2a; background:#111; padding:12px 14px; border-radius:8px; margin-bottom:14px">
+          <input type="checkbox" name="signupsEnabled" ${!event || event.signupsEnabled !== false ? 'checked' : ''} />
+          <strong>Show signup form on the public page</strong>
+        </label>
 
         <label style="margin-bottom:8px">Standard Fields</label>
         <div class="ev-standard-fields">
@@ -1101,6 +1072,58 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
             }
           });
         }
+
+        // ─── Image upload widget (used by banner AND section images) ───
+        // File picker → base64 data URL
+        document.addEventListener('change', function(e) {
+          if (!e.target.classList || !e.target.classList.contains('sec-img-file')) return;
+          var input = e.target;
+          var prefix = input.id.replace(/-file$/, '');
+          var srcInput = document.getElementById(prefix + '-src');
+          var preview = document.getElementById(prefix + '-preview');
+          var urlInput = document.getElementById(prefix + '-url-input');
+          var file = input.files && input.files[0];
+          if (!file) return;
+          if (file.size > 750 * 1024) {
+            alert('Image is too large. Max ~500 KB. Try compressing the image, or paste a hosted URL instead.');
+            input.value = '';
+            return;
+          }
+          var reader = new FileReader();
+          reader.onload = function() {
+            if (srcInput) srcInput.value = reader.result;
+            if (preview) { preview.src = reader.result; preview.style.display = ''; }
+            if (urlInput) urlInput.value = '';
+          };
+          reader.readAsDataURL(file);
+        });
+        // URL input → set the hidden src field + preview
+        document.addEventListener('input', function(e) {
+          if (!e.target.classList || !e.target.classList.contains('sec-img-url-input')) return;
+          var input = e.target;
+          var prefix = input.id.replace(/-url-input$/, '');
+          var srcInput = document.getElementById(prefix + '-src');
+          var preview = document.getElementById(prefix + '-preview');
+          var url = (input.value || '').trim();
+          if (srcInput) srcInput.value = url;
+          if (preview) {
+            if (/^https?:\\/\\//i.test(url)) { preview.src = url; preview.style.display = ''; }
+            else { preview.style.display = 'none'; }
+          }
+        });
+        // Remove image button
+        document.addEventListener('click', function(e) {
+          if (!e.target.classList || !e.target.classList.contains('sec-img-clear')) return;
+          var prefix = e.target.getAttribute('data-prefix');
+          var srcInput = document.getElementById(prefix + '-src');
+          var preview = document.getElementById(prefix + '-preview');
+          var urlInput = document.getElementById(prefix + '-url-input');
+          var fileInput = document.getElementById(prefix + '-file');
+          if (srcInput) srcInput.value = '';
+          if (preview) { preview.src = ''; preview.style.display = 'none'; }
+          if (urlInput) urlInput.value = '';
+          if (fileInput) fileInput.value = '';
+        });
       })();
     </script>
   `, user, { pathname: isNew ? '/admin/events/new' : `/admin/events/${event.id}`, flashMsg });

@@ -5,6 +5,7 @@ const { adminLayout } = require('../views/adminLayout');
 const { getSpiritCategories, getSpiritCatalog, getHalfPriceSpirits, getUpcomingSpiritFlightsAdmin, buildSpiritFlightBuilderUrl } = require('../bartenderDb');
 const { sendJSON } = require('../helpers');
 const { sanitizeImageSrc } = require('../views/imageUploadWidget');
+const { writeAudit } = require('../auditLog');
 const OP_IMAGE_REGEN_TOKEN = process.env.OP_SPECIAL_IMAGE_REGEN_TOKEN || 'menuqr-special-image-regenerate';
 
 function normalizeText(value) {
@@ -688,6 +689,11 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
             data: { dayOfWeek: day, locationId: locationId, name: body.name, tagline: body.tagline || null, description: body.description || null, isActive: body.isActive === 'on' },
           });
         }
+        writeAudit(prisma, req, user, {
+          action: existing ? 'update' : 'create', resourceType: 'day_theme',
+          resourceLabel: body.name, locationSlug: locationSlug || null,
+          details: { day },
+        });
         redirect(res, pathname + '?msg=saved');
         return true;
       }
@@ -715,6 +721,10 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
             },
           });
         }
+        writeAudit(prisma, req, user, {
+          action: 'update', resourceType: 'half_price', locationSlug: locationSlug || null,
+          details: { day, picksCount: Array.isArray(config.picks) ? config.picks.length : 0 },
+        });
         redirect(res, pathname + '?msg=saved');
         return true;
       }
@@ -748,7 +758,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
             orderBy: { displayOrder: 'desc' },
           });
           const fallbackOrder = maxOrderSpecial ? maxOrderSpecial.displayOrder + 1 : 0;
-          await prisma.dailySpecial.create({
+          const createdSpecial = await prisma.dailySpecial.create({
             data: {
               dayThemeId: theme.id,
               name: body.specialName,
@@ -765,6 +775,11 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
             }
           });
           await normalizeSpecialDisplayOrder(prisma, theme.id);
+          writeAudit(prisma, req, user, {
+            action: 'create', resourceType: 'daily_special', resourceId: createdSpecial.id,
+            resourceLabel: createdSpecial.name, locationSlug: locationSlug || null,
+            details: { day },
+          });
         }
         redirect(res, pathname + '?msg=created');
         return true;
@@ -789,6 +804,11 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
         }).catch(() => {});
         const updated = await prisma.dailySpecial.findUnique({ where: { id: body.specialId }});
         if (updated && updated.dayThemeId) await normalizeSpecialDisplayOrder(prisma, updated.dayThemeId);
+        writeAudit(prisma, req, user, {
+          action: 'update', resourceType: 'daily_special', resourceId: body.specialId,
+          resourceLabel: body.specialName, locationSlug: locationSlug || null,
+          details: { day },
+        });
         redirect(res, pathname + '?msg=saved');
         return true;
       }
@@ -918,6 +938,11 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
         if (current && current.dayThemeId) {
           await normalizeSpecialDisplayOrder(prisma, current.dayThemeId);
         }
+        writeAudit(prisma, req, user, {
+          action: 'delete', resourceType: 'daily_special', resourceId: body.specialId,
+          resourceLabel: current ? current.name : null, locationSlug: locationSlug || null,
+          details: { day },
+        });
         redirect(res, pathname + '?msg=deleted');
         return true;
       }

@@ -6,6 +6,7 @@ const {
   eventSignupsView,
 } = require('../views/adminEventsViews');
 const { sanitizeImageSrc } = require('../views/imageUploadWidget');
+const { writeAudit } = require('../auditLog');
 
 function normalizeText(value) {
   return String(value || '').trim();
@@ -274,6 +275,12 @@ async function handleAdminEvents(req, res, pathname, prisma) {
             isCancelled: false,
           },
         });
+        // Find slug for audit context
+        const loc = locations.find(l => l.id === locationId);
+        writeAudit(prisma, req, user, {
+          action: 'create', resourceType: 'event', resourceId: created.id,
+          resourceLabel: created.title, locationSlug: loc ? loc.slug : null,
+        });
         redirect(res, `/admin/events/${created.id}?msg=created`);
         return true;
       } catch (err) {
@@ -361,6 +368,10 @@ async function handleAdminEvents(req, res, pathname, prisma) {
         await prisma.event.delete({ where: { id: eventId } }).catch((err) => {
           console.error('Error deleting event:', err.message);
         });
+        writeAudit(prisma, req, user, {
+          action: 'delete', resourceType: 'event', resourceId: eventId,
+          resourceLabel: event.title, locationSlug: event.location?.slug || null,
+        });
         redirect(res, '/admin/events?msg=deleted');
         return true;
       }
@@ -393,6 +404,11 @@ async function handleAdminEvents(req, res, pathname, prisma) {
               isActive: false, // Default new copies to inactive so they don't go live immediately
               isCancelled: false,
             },
+          });
+          writeAudit(prisma, req, user, {
+            action: 'duplicate', resourceType: 'event', resourceId: copy.id,
+            resourceLabel: copy.title, locationSlug: event.location?.slug || null,
+            details: { copiedFromId: eventId },
           });
           redirect(res, `/admin/events/${copy.id}?msg=created`);
           return true;
@@ -486,6 +502,10 @@ async function handleAdminEvents(req, res, pathname, prisma) {
             isActive: body.isActive === 'on',
             isCancelled: body.isCancelled === 'on',
           },
+        });
+        writeAudit(prisma, req, user, {
+          action: 'update', resourceType: 'event', resourceId: eventId,
+          resourceLabel: title, locationSlug: event.location?.slug || null,
         });
         redirect(res, `/admin/events/${eventId}?msg=saved`);
         return true;

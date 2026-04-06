@@ -305,6 +305,7 @@ function adminLayout(title, content, user, options = {}) {
         <a href="/admin/flights"${navClass('/admin/flights')}>Flights</a>
         <a href="/admin/feedback"${navClass('/admin/feedback')}>Feedback</a>
         <a href="/admin/analytics"${navClass('/admin/analytics')}>Analytics</a>
+        <a href="/admin/activity"${navClass('/admin/activity')}>Activity</a>
         <span class="nav-spacer"></span>
         ${user ? `<span class="nav-user">${userName}</span><a href="/admin/logout">Logout</a>` : ''}
       </nav>

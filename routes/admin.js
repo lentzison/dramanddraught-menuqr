@@ -3,6 +3,7 @@ const { authenticate, createSession, destroySession, requireAuth, refreshSession
 const { loginPage } = require('../views/adminLayout');
 const { locationsList, locationEditor } = require('../views/adminLocationViews');
 const { adminDashboard } = require('../views/adminDashboard');
+const { adminActivityView } = require('../views/adminActivityView');
 
 const DAYS = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
 function getEasternToday() {
@@ -175,6 +176,43 @@ async function handleAdmin(req, res, pathname, prisma) {
   if (pathname === '/admin/_ping') {
     const ok = refreshSession(req, res);
     sendJSON(res, ok ? 200 : 401, { ok });
+    return true;
+  }
+
+  // ─── Activity feed (audit log) ───
+  if (pathname === '/admin/activity') {
+    const user = requireAuth(req, res);
+    if (!user) { redirect(res, '/admin/login'); return true; }
+    if (!prisma || !prisma.auditLog) {
+      sendHTML(res, 200, adminActivityView([], { location: '', action: '', resourceType: '' }, [], user, ''));
+      return true;
+    }
+    const url = require('url');
+    const parsed = url.parse(req.url, true);
+    const filters = {
+      location: parsed.query.location || '',
+      action: parsed.query.action || '',
+      resourceType: parsed.query.resourceType || '',
+    };
+    const where = {};
+    if (filters.location) where.locationSlug = filters.location;
+    if (filters.action) where.action = filters.action;
+    if (filters.resourceType) where.resourceType = filters.resourceType;
+
+    const [entries, locations] = await Promise.all([
+      prisma.auditLog.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: 200,
+      }).catch(() => []),
+      prisma.location.findMany({
+        where: { isActive: true },
+        orderBy: { name: 'asc' },
+        select: { slug: true, name: true },
+      }).catch(() => []),
+    ]);
+    const flashMsg = getFlashMsg(req.url);
+    sendHTML(res, 200, adminActivityView(entries, filters, locations, user, flashMsg));
     return true;
   }
 

@@ -370,3 +370,29 @@ model GiftCardDrawing {
 
   @@unique([month, year])
 }
+
+// Audit log: tracks every mutation made via the admin so multi-admin
+// teams can see who changed what and when. Best-effort — failures to
+// write are swallowed so they never break the user-facing operation.
+model AuditLog {
+  id            String   @id @default(uuid())
+  // Who: copied from session at write time so deleted users still resolve
+  userId        String?
+  userEmail     String?
+  userName      String?
+  // What
+  action        String   // e.g. "create", "update", "delete", "duplicate"
+  resourceType  String   // e.g. "event", "menu_item", "daily_special"
+  resourceId    String?  // entity id, when applicable
+  resourceLabel String?  // human-readable name at the time, e.g. "Lubrication Cup"
+  locationSlug  String?  // optional location scope
+  // Optional structured details (changed fields, before/after, etc.)
+  details       Json?
+  ipAddress     String?
+  createdAt     DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([resourceType, createdAt])
+  @@index([userId, createdAt])
+  @@index([locationSlug, createdAt])
+}

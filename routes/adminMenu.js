@@ -2,6 +2,7 @@ const { sendHTML, parseBody, redirect, getFlashMsg } = require('../helpers');
 const { requireAuth } = require('../auth');
 const { menuLocationsList, menuLocationEditor } = require('../views/adminMenuViews');
 const { sanitizeImageSrc } = require('../views/imageUploadWidget');
+const { writeAudit } = require('../auditLog');
 
 function parsePriceInput(value) {
   if (value == null || value === '') return null;
@@ -81,7 +82,7 @@ async function handleAdminMenu(req, res, pathname, prisma) {
             select: { displayOrder: true },
           });
           const nextOrder = max ? max.displayOrder + 1 : 0;
-          await prisma.menuCategory.create({
+          const created = await prisma.menuCategory.create({
             data: {
               locationId: location.id,
               name,
@@ -89,6 +90,10 @@ async function handleAdminMenu(req, res, pathname, prisma) {
               displayOrder: nextOrder,
               isActive: true,
             },
+          });
+          writeAudit(prisma, req, user, {
+            action: 'create', resourceType: 'menu_category', resourceId: created.id,
+            resourceLabel: created.name, locationSlug: slug,
           });
           redirect(res, `/admin/menu/${slug}?msg=saved`);
           return true;
@@ -106,6 +111,10 @@ async function handleAdminMenu(req, res, pathname, prisma) {
               isActive: body.isActive === 'on',
             },
           });
+          writeAudit(prisma, req, user, {
+            action: 'update', resourceType: 'menu_category', resourceId: categoryId,
+            resourceLabel: name, locationSlug: slug,
+          });
           redirect(res, `/admin/menu/${slug}?msg=saved`);
           return true;
         }
@@ -113,8 +122,13 @@ async function handleAdminMenu(req, res, pathname, prisma) {
         if (action === 'deleteCategory') {
           const categoryId = String(body.categoryId || '');
           if (categoryId) {
+            const cat = await prisma.menuCategory.findUnique({ where: { id: categoryId } }).catch(() => null);
             // Cascade will remove items via Prisma relation
             await prisma.menuCategory.delete({ where: { id: categoryId } });
+            writeAudit(prisma, req, user, {
+              action: 'delete', resourceType: 'menu_category', resourceId: categoryId,
+              resourceLabel: cat ? cat.name : null, locationSlug: slug,
+            });
           }
           redirect(res, `/admin/menu/${slug}?msg=deleted`);
           return true;
@@ -157,7 +171,7 @@ async function handleAdminMenu(req, res, pathname, prisma) {
             select: { displayOrder: true },
           });
           const nextOrder = max ? max.displayOrder + 1 : 0;
-          await prisma.menuItem.create({
+          const createdItem = await prisma.menuItem.create({
             data: {
               categoryId,
               name,
@@ -168,6 +182,10 @@ async function handleAdminMenu(req, res, pathname, prisma) {
               isAvailable: true,
               displayOrder: nextOrder,
             },
+          });
+          writeAudit(prisma, req, user, {
+            action: 'create', resourceType: 'menu_item', resourceId: createdItem.id,
+            resourceLabel: createdItem.name, locationSlug: slug,
           });
           redirect(res, `/admin/menu/${slug}?msg=saved`);
           return true;
@@ -196,6 +214,10 @@ async function handleAdminMenu(req, res, pathname, prisma) {
               isAvailable: body.isAvailable === 'on',
             },
           });
+          writeAudit(prisma, req, user, {
+            action: 'update', resourceType: 'menu_item', resourceId: itemId,
+            resourceLabel: name, locationSlug: slug,
+          });
           redirect(res, `/admin/menu/${slug}?msg=saved`);
           return true;
         }
@@ -209,6 +231,10 @@ async function handleAdminMenu(req, res, pathname, prisma) {
             });
             if (item && item.category.locationId === location.id) {
               await prisma.menuItem.delete({ where: { id: itemId } });
+              writeAudit(prisma, req, user, {
+                action: 'delete', resourceType: 'menu_item', resourceId: itemId,
+                resourceLabel: item.name, locationSlug: slug,
+              });
             }
           }
           redirect(res, `/admin/menu/${slug}?msg=deleted`);

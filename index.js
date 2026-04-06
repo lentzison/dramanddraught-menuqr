@@ -8,6 +8,7 @@ try { prisma = require('./db'); } catch { prisma = null; }
 const { handlePublic } = require('./routes/public');
 const { handleAdmin } = require('./routes/admin');
 const { handleAdminSpecials } = require('./routes/adminSpecials');
+const { handleAdminMenu } = require('./routes/adminMenu');
 
 const PORT = parseInt(process.env.PORT || '80', 10);
 
@@ -32,6 +33,11 @@ const handler = async (req, res) => {
     // Admin specials routes (session auth): /admin/specials/*, /admin/flights/*, /admin/bottles/*
     if (pathname.startsWith('/admin/specials') || pathname.startsWith('/admin/flights') || pathname.startsWith('/admin/bottles') || pathname.startsWith('/admin/feedback') || pathname.startsWith('/admin/analytics')) {
       if (prisma && await handleAdminSpecials(req, res, pathname, prisma)) return;
+    }
+
+    // Admin food menu routes: /admin/menu, /admin/menu/:slug
+    if (pathname.startsWith('/admin/menu')) {
+      if (await handleAdminMenu(req, res, pathname, prisma)) return;
     }
 
     // Admin routes: /admin/login, /admin/logout, /admin, /admin/seed, /admin/location/*

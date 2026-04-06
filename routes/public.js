@@ -46,6 +46,14 @@ function injectTracking(html, sessionId) {
   if (!script) return html;
   return html.replace('</body>', script + '</body>');
 }
+
+// Extract the query string (including leading ?) from req.url so source tags
+// like ?src=event get picked up by trackPageView on every route.
+function getQueryString(req) {
+  if (!req || !req.url) return '';
+  const idx = req.url.indexOf('?');
+  return idx >= 0 ? req.url.slice(idx) : '';
+}
 const BRAND_LOGO_PATH = path.join(__dirname, '..', 'assets', 'dram-draught-logo-white.png');
 
 function getEasternDayFallback() {
@@ -888,7 +896,7 @@ async function handleDraft(req, res, prisma, locationSlug) {
   } else {
     tapError = true;
   }
-  const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/draft`, null);
+  const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/draft`, getQueryString(req));
   sendHTML(res, 200, injectTracking(generateDraftPage(location, taps, tapError), sid));
   return true;
 }
@@ -920,7 +928,7 @@ async function handleMenu(req, res, prisma, locationSlug) {
     menuError = true;
   }
 
-  const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/menu`, null);
+  const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/menu`, getQueryString(req));
   sendHTML(res, 200, injectTracking(generateMenuPage(location, menu, menuError), sid));
   return true;
 }
@@ -1094,7 +1102,7 @@ async function handlePublic(req, res, pathname, prisma) {
   // Homepage
   if (pathname === '/') {
     const locs = await getLocations(prisma);
-    const sid = await trackPageView(req, res, prisma, '', null, '/', null);
+    const sid = await trackPageView(req, res, prisma, '', null, '/', getQueryString(req));
     sendHTML(res, 200, injectTracking(generateHomepage(locs), sid));
     return true;
   }
@@ -1145,7 +1153,7 @@ async function handlePublic(req, res, pathname, prisma) {
     } catch (err) {
       console.warn('Error loading featured flights:', err.message);
     }
-    const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/flights`, null);
+    const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/flights`, getQueryString(req));
     sendHTML(res, 200, injectTracking(generateFlightsPage(location, flights), sid));
     return true;
   }
@@ -1157,7 +1165,7 @@ async function handlePublic(req, res, pathname, prisma) {
     const locs = await getLocations(prisma);
     const location = locs.find((l) => l.slug === slug);
     if (location) {
-      const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/lubrication-cup`, null);
+      const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/lubrication-cup`, getQueryString(req));
       sendHTML(res, 200, injectTracking(generateLubricationCupPage(location), sid));
       return true;
     }
@@ -1187,7 +1195,7 @@ async function handlePublic(req, res, pathname, prisma) {
       try {
         showFlightsButton = await hasFeaturedFlights(slug);
       } catch (err) { console.warn('Featured flights check error:', err.message); }
-      const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}`, null);
+      const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}`, getQueryString(req));
       sendHTML(res, 200, injectTracking(generateLocationPage(location, locs, menuCategories, { showFlightsButton }), sid));
       return true;
     }

@@ -1,0 +1,267 @@
+const { sendHTML, parseBody, redirect, getFlashMsg } = require('../helpers');
+const { requireAuth } = require('../auth');
+const { menuLocationsList, menuLocationEditor } = require('../views/adminMenuViews');
+
+function parsePriceInput(value) {
+  if (value == null || value === '') return null;
+  const str = String(value).replace(/[$,\s]/g, '');
+  if (!str) return null;
+  const num = Number(str);
+  if (!Number.isFinite(num) || num < 0) return null;
+  // Clamp to 2 decimal places
+  return Math.round(num * 100) / 100;
+}
+
+function normalizeText(value) {
+  return String(value || '').trim();
+}
+
+async function swapOrder(prisma, model, a, b, orderField = 'displayOrder') {
+  // Swap two records' displayOrder values atomically
+  const tempOrder = a[orderField];
+  await prisma[model].update({ where: { id: a.id }, data: { [orderField]: b[orderField] } });
+  await prisma[model].update({ where: { id: b.id }, data: { [orderField]: tempOrder } });
+}
+
+async function handleAdminMenu(req, res, pathname, prisma) {
+  if (!pathname.startsWith('/admin/menu')) return false;
+
+  const user = requireAuth(req, res);
+  if (!user) { redirect(res, '/admin/login'); return true; }
+  if (!prisma) { sendHTML(res, 500, '<p>DB not available</p>'); return true; }
+
+  // ─── List locations ───
+  if (pathname === '/admin/menu') {
+    const flashMsg = getFlashMsg(req.url);
+    let locations;
+    try {
+      locations = await prisma.location.findMany({
+        where: { isActive: true },
+        orderBy: { name: 'asc' },
+        include: { _count: { select: { menuCategories: true } } },
+      });
+    } catch (err) {
+      // Fall back: plain query + manual per-location counts
+      console.warn('Admin menu _count include failed, falling back:', err.message);
+      locations = await prisma.location.findMany({
+        where: { isActive: true },
+        orderBy: { name: 'asc' },
+      }).catch(() => []);
+      for (const loc of locations) {
+        loc._count = {
+          menuCategories: await prisma.menuCategory.count({ where: { locationId: loc.id } }).catch(() => 0),
+        };
+      }
+    }
+    sendHTML(res, 200, menuLocationsList(locations, user, flashMsg));
+    return true;
+  }
+
+  // ─── Per-location editor ───
+  const locMatch = pathname.match(/^\/admin\/menu\/([a-z0-9-]+)$/);
+  if (locMatch) {
+    const slug = locMatch[1];
+    const location = await prisma.location.findUnique({ where: { slug } }).catch(() => null);
+    if (!location) { sendHTML(res, 404, '<h1>Location not found</h1>'); return true; }
+
+    if (req.method === 'POST') {
+      const body = await parseBody(req);
+      const action = body._action || '';
+
+      try {
+        if (action === 'addCategory') {
+          const name = normalizeText(body.name);
+          if (!name) { redirect(res, `/admin/menu/${slug}?msg=error`); return true; }
+          const max = await prisma.menuCategory.findFirst({
+            where: { locationId: location.id },
+            orderBy: { displayOrder: 'desc' },
+            select: { displayOrder: true },
+          });
+          const nextOrder = max ? max.displayOrder + 1 : 0;
+          await prisma.menuCategory.create({
+            data: {
+              locationId: location.id,
+              name,
+              description: normalizeText(body.description) || null,
+              displayOrder: nextOrder,
+              isActive: true,
+            },
+          });
+          redirect(res, `/admin/menu/${slug}?msg=saved`);
+          return true;
+        }
+
+        if (action === 'editCategory') {
+          const categoryId = String(body.categoryId || '');
+          const name = normalizeText(body.name);
+          if (!categoryId || !name) { redirect(res, `/admin/menu/${slug}?msg=error`); return true; }
+          await prisma.menuCategory.update({
+            where: { id: categoryId },
+            data: {
+              name,
+              description: normalizeText(body.description) || null,
+              isActive: body.isActive === 'on',
+            },
+          });
+          redirect(res, `/admin/menu/${slug}?msg=saved`);
+          return true;
+        }
+
+        if (action === 'deleteCategory') {
+          const categoryId = String(body.categoryId || '');
+          if (categoryId) {
+            // Cascade will remove items via Prisma relation
+            await prisma.menuCategory.delete({ where: { id: categoryId } });
+          }
+          redirect(res, `/admin/menu/${slug}?msg=deleted`);
+          return true;
+        }
+
+        if (action === 'moveCategory') {
+          const categoryId = String(body.categoryId || '');
+          const direction = String(body.direction || '');
+          const current = await prisma.menuCategory.findUnique({ where: { id: categoryId } });
+          if (!current || current.locationId !== location.id) {
+            redirect(res, `/admin/menu/${slug}`); return true;
+          }
+          const neighbor = await prisma.menuCategory.findFirst({
+            where: {
+              locationId: location.id,
+              displayOrder: direction === 'up'
+                ? { lt: current.displayOrder }
+                : { gt: current.displayOrder },
+            },
+            orderBy: { displayOrder: direction === 'up' ? 'desc' : 'asc' },
+          });
+          if (neighbor) {
+            await swapOrder(prisma, 'menuCategory', current, neighbor);
+          }
+          redirect(res, `/admin/menu/${slug}?msg=reordered`);
+          return true;
+        }
+
+        if (action === 'addItem') {
+          const categoryId = String(body.categoryId || '');
+          const name = normalizeText(body.name);
+          if (!categoryId || !name) { redirect(res, `/admin/menu/${slug}?msg=error`); return true; }
+          const category = await prisma.menuCategory.findUnique({ where: { id: categoryId } });
+          if (!category || category.locationId !== location.id) {
+            redirect(res, `/admin/menu/${slug}`); return true;
+          }
+          const max = await prisma.menuItem.findFirst({
+            where: { categoryId },
+            orderBy: { displayOrder: 'desc' },
+            select: { displayOrder: true },
+          });
+          const nextOrder = max ? max.displayOrder + 1 : 0;
+          await prisma.menuItem.create({
+            data: {
+              categoryId,
+              name,
+              description: normalizeText(body.description) || null,
+              price: parsePriceInput(body.price),
+              image: normalizeText(body.image) || null,
+              isFeatured: body.isFeatured === 'on',
+              isAvailable: true,
+              displayOrder: nextOrder,
+            },
+          });
+          redirect(res, `/admin/menu/${slug}?msg=saved`);
+          return true;
+        }
+
+        if (action === 'editItem') {
+          const itemId = String(body.itemId || '');
+          const name = normalizeText(body.name);
+          if (!itemId || !name) { redirect(res, `/admin/menu/${slug}?msg=error`); return true; }
+          // Verify item belongs to this location
+          const item = await prisma.menuItem.findUnique({
+            where: { id: itemId },
+            include: { category: true },
+          });
+          if (!item || item.category.locationId !== location.id) {
+            redirect(res, `/admin/menu/${slug}`); return true;
+          }
+          await prisma.menuItem.update({
+            where: { id: itemId },
+            data: {
+              name,
+              description: normalizeText(body.description) || null,
+              price: parsePriceInput(body.price),
+              image: normalizeText(body.image) || null,
+              isFeatured: body.isFeatured === 'on',
+              isAvailable: body.isAvailable === 'on',
+            },
+          });
+          redirect(res, `/admin/menu/${slug}?msg=saved`);
+          return true;
+        }
+
+        if (action === 'deleteItem') {
+          const itemId = String(body.itemId || '');
+          if (itemId) {
+            const item = await prisma.menuItem.findUnique({
+              where: { id: itemId },
+              include: { category: true },
+            });
+            if (item && item.category.locationId === location.id) {
+              await prisma.menuItem.delete({ where: { id: itemId } });
+            }
+          }
+          redirect(res, `/admin/menu/${slug}?msg=deleted`);
+          return true;
+        }
+
+        if (action === 'moveItem') {
+          const itemId = String(body.itemId || '');
+          const direction = String(body.direction || '');
+          const current = await prisma.menuItem.findUnique({
+            where: { id: itemId },
+            include: { category: true },
+          });
+          if (!current || current.category.locationId !== location.id) {
+            redirect(res, `/admin/menu/${slug}`); return true;
+          }
+          const neighbor = await prisma.menuItem.findFirst({
+            where: {
+              categoryId: current.categoryId,
+              displayOrder: direction === 'up'
+                ? { lt: current.displayOrder }
+                : { gt: current.displayOrder },
+            },
+            orderBy: { displayOrder: direction === 'up' ? 'desc' : 'asc' },
+          });
+          if (neighbor) {
+            await swapOrder(prisma, 'menuItem', current, neighbor);
+          }
+          redirect(res, `/admin/menu/${slug}?msg=reordered`);
+          return true;
+        }
+
+        // Unknown action
+        redirect(res, `/admin/menu/${slug}`);
+        return true;
+      } catch (err) {
+        console.error('Admin menu action error:', err.message || err);
+        redirect(res, `/admin/menu/${slug}?msg=error`);
+        return true;
+      }
+    }
+
+    // GET: load menu and render editor
+    const categories = await prisma.menuCategory.findMany({
+      where: { locationId: location.id },
+      include: {
+        items: { orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }] },
+      },
+      orderBy: [{ displayOrder: 'asc' }, { name: 'asc' }],
+    });
+    const flashMsg = getFlashMsg(req.url);
+    sendHTML(res, 200, menuLocationEditor(location, categories, user, flashMsg));
+    return true;
+  }
+
+  return false;
+}
+
+module.exports = { handleAdminMenu };

@@ -30,10 +30,6 @@ function renderUpcomingEvents(location, upcomingEvents) {
           <h3 class="loc-event-title"><a href="${escHTML(href)}">${escHTML(event.title)}</a></h3>
           <p class="loc-event-time">${escHTML(formatEventTime(event.startDate))}${event.endDate ? ' &middot; until ' + escHTML(formatEventTime(event.endDate)) : ''}</p>
           ${event.description ? `<p class="loc-event-copy">${escHTML(String(event.description).trim().replace(/\s+/g, ' ').slice(0, 150))}${String(event.description).trim().replace(/\s+/g, ' ').length > 150 ? '&hellip;' : ''}</p>` : ''}
-          <div class="loc-event-actions">
-            ${event.capacity ? `<span class="loc-event-capacity">${escHTML(String(event.signupCount || 0))} / ${escHTML(String(event.capacity))} signed up</span>` : ''}
-            <a href="${escHTML(href)}" class="loc-event-link">${escHTML(meta.cta)}</a>
-          </div>
         </div>
       </article>
     `;
@@ -44,8 +40,6 @@ function renderUpcomingEvents(location, upcomingEvents) {
       <div class="loc-events-head">
         <div>
           <div class="loc-events-kicker">Upcoming Events</div>
-          <h3>Plan your next night out</h3>
-          <p>${upcomingEvents.length} live ${upcomingEvents.length === 1 ? 'event' : 'events'} at ${escHTML(location.name)}.</p>
         </div>
         <a href="/${escHTML(location.slug)}/events" class="loc-events-view-all">All Events</a>
       </div>

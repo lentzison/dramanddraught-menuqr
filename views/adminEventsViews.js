@@ -738,7 +738,7 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
     const locSlug = event.location?.slug || '';
     const publicUrl = locSlug && event.slug ? `/${locSlug}/events/${event.slug}` : '';
     publicUrlBlock = `
-      <div class="ev-public-url">
+      <div class="ev-public-url" id="ev-public-url" hidden>
         <div class="ev-public-url-label">Share link</div>
         <div class="ev-public-url-row">
           <input type="text" id="ev-share-url" data-base="${escHTML(publicUrl)}" readonly value="${escHTML(publicUrl)}" />
@@ -763,50 +763,114 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
     `;
   }
 
-  const sectionsCount = !isNew && Array.isArray(event.sections) ? event.sections.length : 0;
   const editorJumpNav = `
     <nav class="ev-jump-nav" aria-label="Event editor sections">
       <a href="#event-details">Details</a>
       <a href="#event-when">When</a>
-      <a href="#event-signup-form">Form</a>
-      <a href="#event-signup-settings">Follow-up</a>
-      <a href="#event-visibility">Visibility</a>
+      <a href="#event-signups">Signups</a>
       ${!isNew ? '<a href="#sections">Page Builder</a>' : ''}
     </nav>
   `;
-  const editorSummary = `
-    <div class="ev-editor-summary">
-      <div class="ev-editor-summary-card">
-        <div class="ev-editor-summary-label">State</div>
-        <div class="ev-editor-summary-value">${isNew ? '<span class="ev-badge ev-badge-scheduled">New Draft</span>' : eventStatusBadge(event)}</div>
-      </div>
-      <div class="ev-editor-summary-card">
-        <div class="ev-editor-summary-label">Signups</div>
-        <div class="ev-editor-summary-value">${event?.signupsEnabled === false ? 'Info-only page' : `${signupCount} ${signupCount === 1 ? 'signup' : 'signups'}`}</div>
-      </div>
-      <div class="ev-editor-summary-card">
-        <div class="ev-editor-summary-label">Sections</div>
-        <div class="ev-editor-summary-value">${sectionsCount}</div>
-      </div>
-    </div>
-  `;
+  const statusBadgeHtml = isNew
+    ? '<span class="ev-badge ev-badge-scheduled">New Draft</span>'
+    : eventStatusBadge(event);
+  const signupsLinkHtml = !isNew
+    ? `<a href="/admin/events/${escHTML(event.id)}/signups" class="ev-meta-link">${signupCount} ${signupCount === 1 ? 'signup' : 'signups'} →</a>`
+    : '<span class="ev-meta-muted">Not saved yet</span>';
+  const headerToggles = !isNew
+    ? `
+      <label class="ev-pill-toggle"><input type="checkbox" name="isActive" form="ev-form" ${event.isActive ? 'checked' : ''} /><span>Active</span></label>
+      <label class="ev-pill-toggle ev-pill-toggle-danger"><input type="checkbox" name="isCancelled" form="ev-form" ${event.isCancelled ? 'checked' : ''} /><span>Cancelled</span></label>
+    `
+    : `
+      <label class="ev-pill-toggle"><input type="checkbox" name="isActive" form="ev-form" checked /><span>Active</span></label>
+    `;
 
   return adminLayout(title, `
     <style>
-      .ev-editor-head { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:18px; }
-      .ev-editor-head .ev-back { color:#888; font-size:0.85rem; text-decoration:none; }
+      .ev-editor-head {
+        display:flex;
+        flex-direction:column;
+        gap:10px;
+        padding:14px 18px;
+        margin-bottom:14px;
+        background:#141414;
+        border:1px solid #262626;
+        border-radius:12px;
+      }
+      .ev-editor-head .ev-back { color:#888; font-size:0.8rem; text-decoration:none; }
       .ev-editor-head .ev-back:hover { color:#d4af37; }
+      .ev-editor-head h1 { margin:2px 0 0; font-size:1.3rem; }
+      .ev-header-row {
+        display:flex;
+        align-items:center;
+        gap:12px;
+        flex-wrap:wrap;
+      }
+      .ev-header-row-top { justify-content:space-between; }
+      .ev-header-row-meta {
+        padding-top:10px;
+        border-top:1px solid #222;
+        font-size:0.85rem;
+        color:#bbb;
+      }
+      .ev-header-toggles { display:flex; gap:8px; flex-wrap:wrap; }
+      .ev-pill-toggle {
+        display:inline-flex;
+        align-items:center;
+        gap:6px;
+        padding:7px 12px;
+        border:1px solid #2a2a2a;
+        border-radius:999px;
+        background:#0f0f0f;
+        font-size:0.78rem;
+        font-weight:700;
+        color:#999;
+        cursor:pointer;
+        margin:0;
+      }
+      .ev-pill-toggle input { width:auto; margin:0; accent-color:#4ade80; }
+      .ev-pill-toggle:has(input:checked) {
+        color:#4ade80;
+        border-color:rgba(74,222,128,0.45);
+        background:rgba(74,222,128,0.1);
+      }
+      .ev-pill-toggle-danger:has(input:checked) {
+        color:#f87171;
+        border-color:rgba(248,113,113,0.45);
+        background:rgba(248,113,113,0.1);
+      }
+      .ev-meta-link {
+        color:#93c5fd;
+        text-decoration:none;
+        font-weight:600;
+        font-size:0.85rem;
+        background:none;
+        border:none;
+        padding:0;
+        cursor:pointer;
+        font-family:inherit;
+      }
+      .ev-meta-link:hover { color:#d4af37; }
+      .ev-meta-muted { color:#666; font-size:0.85rem; }
+      .ev-header-actions { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-left:auto; }
 
       .ev-jump-nav {
         display:flex;
         gap:8px;
         flex-wrap:wrap;
         margin-bottom:14px;
+        position:sticky;
+        top:0;
+        z-index:20;
+        padding:10px 0;
+        background:#0a0a0a;
+        border-bottom:1px solid #1a1a1a;
       }
       .ev-jump-nav a {
         display:inline-flex;
         align-items:center;
-        min-height:36px;
+        min-height:34px;
         padding:0 12px;
         border-radius:999px;
         border:1px solid #2a2a2a;
@@ -818,31 +882,6 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
         background:#141414;
       }
       .ev-jump-nav a:hover { color:#d4af37; border-color:rgba(212,175,55,0.35); }
-      .ev-editor-summary {
-        display:grid;
-        grid-template-columns:repeat(3, minmax(0, 1fr));
-        gap:12px;
-        margin-bottom:18px;
-      }
-      .ev-editor-summary-card {
-        background:#141414;
-        border:1px solid #262626;
-        border-radius:12px;
-        padding:14px 16px;
-      }
-      .ev-editor-summary-label {
-        color:#777;
-        font-size:0.7rem;
-        text-transform:uppercase;
-        letter-spacing:0.1em;
-        font-weight:700;
-        margin-bottom:6px;
-      }
-      .ev-editor-summary-value {
-        color:#f2f2f2;
-        font-size:0.98rem;
-        font-weight:700;
-      }
 
       .ev-public-url {
         background:rgba(96,165,250,0.08);
@@ -851,6 +890,7 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
         padding:14px 16px;
         margin-bottom:20px;
       }
+      .ev-public-url[hidden] { display:none; }
       .ev-public-url-label { font-size:0.72rem; color:#93c5fd; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:8px; }
       .ev-public-url-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
       .ev-public-url-row input { flex:1; min-width:260px; background:#0d0d0d; color:#d4af37; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:0.85rem; }
@@ -955,25 +995,35 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
       .sec-img-preview { max-width:240px; max-height:160px; border-radius:6px; border:1px solid #333; }
 
       @media (max-width:768px) {
-        .ev-editor-summary { grid-template-columns:1fr; }
         .ev-field-grid { grid-template-columns:1fr; }
         .ev-standard-fields { grid-template-columns:1fr; }
         .cq-row-grid { grid-template-columns:1fr; }
         .cq-required-col, .cq-del-col { align-items:flex-start; }
+        .ev-jump-nav { position:static; }
+        .ev-header-actions { width:100%; justify-content:space-between; }
       }
     </style>
 
     <div class="ev-editor-head">
-      <div>
-        <a href="/admin/events" class="ev-back">← Back to events</a>
-        <h1 style="margin:4px 0 0">${escHTML(title)}</h1>
+      <div class="ev-header-row ev-header-row-top">
+        <div>
+          <a href="/admin/events" class="ev-back">← Back to events</a>
+          <h1>${escHTML(title)}</h1>
+        </div>
+        <div class="ev-header-actions">
+          <div class="ev-header-toggles">${headerToggles}</div>
+          <button type="submit" form="ev-form" class="btn btn-primary">${isNew ? 'Create Event' : 'Save'}</button>
+        </div>
       </div>
-      ${!isNew && signupCount > 0 ? `<a href="/admin/events/${escHTML(event.id)}/signups" class="btn btn-primary">View ${signupCount} Signup${signupCount === 1 ? '' : 's'}</a>` : ''}
+      <div class="ev-header-row ev-header-row-meta">
+        ${statusBadgeHtml}
+        ${signupsLinkHtml}
+        ${!isNew ? '<button type="button" id="ev-share-toggle" class="ev-meta-link">Share ↗</button>' : ''}
+      </div>
     </div>
 
     ${publicUrlBlock}
     ${editorJumpNav}
-    ${editorSummary}
 
     <form method="POST" action="${actionUrl}" id="ev-form" data-autosave="event-${escHTML(event?.id || 'new')}">
       <!-- ─── Basics ─── -->
@@ -1046,17 +1096,28 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
         </div>
       </div>
 
-      <!-- ─── Signup form config ─── -->
-      <div class="ev-section" id="event-signup-form">
-        <h2>Signup Form</h2>
-        <p class="ev-section-hint">For events that collect signups (registrations, RSVPs, ticket holds). Turn this off for info-only events that don't need a form.</p>
+      <!-- ─── Signups (form + settings combined) ─── -->
+      <div class="ev-section" id="event-signups">
+        <h2>Signups</h2>
+        <p class="ev-section-hint">Configure the form, limits, and confirmation message. Turn the form off for info-only events.</p>
 
         <label class="ev-check" style="border:1px solid #2a2a2a; background:#111; padding:12px 14px; border-radius:8px; margin-bottom:14px">
           <input type="checkbox" name="signupsEnabled" ${!event || event.signupsEnabled !== false ? 'checked' : ''} />
           <strong>Show signup form on the public page</strong>
         </label>
 
-        <label style="margin-bottom:8px">Standard Fields</label>
+        <div class="ev-field-grid">
+          <div>
+            <label for="ev-capacity">Max Signups <span style="color:#888; font-weight:400; font-size:0.8rem">(leave blank for no limit)</span></label>
+            <input type="number" id="ev-capacity" name="capacity" min="1" value="${escHTML(event?.capacity || '')}" placeholder="e.g. 50" />
+          </div>
+          <div>
+            <label for="ev-notify">Notification Email <span style="color:#888; font-weight:400; font-size:0.8rem">(optional)</span></label>
+            <input type="email" id="ev-notify" name="notifyEmail" value="${escHTML(event?.notifyEmail || '')}" placeholder="Get emailed when someone signs up" />
+          </div>
+        </div>
+
+        <label style="margin-top:18px; margin-bottom:8px">Standard Fields</label>
         <div class="ev-standard-fields">
           <label class="ev-check"><input type="checkbox" name="collectEmail" ${!event || event.collectEmail ? 'checked' : ''} /> Email address</label>
           <label class="ev-check"><input type="checkbox" name="collectPhone" ${!event || event.collectPhone ? 'checked' : ''} /> Phone number</label>
@@ -1070,35 +1131,9 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
         </p>
         <div id="cq-list" class="cq-list">${customQuestionRows}</div>
         <button type="button" id="cq-add" class="btn btn-secondary btn-sm">+ Add Custom Question</button>
-      </div>
 
-      <!-- ─── Capacity / post-signup ─── -->
-      <div class="ev-section" id="event-signup-settings">
-        <h2>Signup Settings</h2>
-        <p class="ev-section-hint">Optional limits and what to show after someone signs up.</p>
-
-        <div class="ev-field-grid">
-          <div>
-            <label for="ev-capacity">Max Signups <span style="color:#888; font-weight:400; font-size:0.8rem">(leave blank for no limit)</span></label>
-            <input type="number" id="ev-capacity" name="capacity" min="1" value="${escHTML(event?.capacity || '')}" placeholder="e.g. 50" />
-          </div>
-          <div>
-            <label for="ev-notify">Notification Email <span style="color:#888; font-weight:400; font-size:0.8rem">(optional)</span></label>
-            <input type="email" id="ev-notify" name="notifyEmail" value="${escHTML(event?.notifyEmail || '')}" placeholder="Get emailed when someone signs up" />
-          </div>
-        </div>
-
-        <label for="ev-confirm">Confirmation Message <span style="color:#888; font-weight:400; font-size:0.8rem">(shown after signup)</span></label>
+        <label for="ev-confirm" style="margin-top:18px">Confirmation Message <span style="color:#888; font-weight:400; font-size:0.8rem">(shown after signup)</span></label>
         <textarea id="ev-confirm" name="confirmationMessage" rows="3" placeholder="Thanks for signing up! We'll see you at the event. Check your email for details.">${escHTML(event?.confirmationMessage || '')}</textarea>
-      </div>
-
-      <!-- ─── State toggles ─── -->
-      <div class="ev-section" id="event-visibility">
-        <h2>Visibility</h2>
-        <p class="ev-section-hint">Control whether the event signup page is available to guests.</p>
-
-        <label class="ev-check"><input type="checkbox" name="isActive" ${!event || event.isActive ? 'checked' : ''} /> <strong>Active</strong> &mdash; page is live and accepting signups (within the promotion window)</label>
-        ${!isNew ? `<label class="ev-check"><input type="checkbox" name="isCancelled" ${event.isCancelled ? 'checked' : ''} /> <strong>Cancelled</strong> &mdash; show a cancellation notice instead of the signup form</label>` : ''}
       </div>
 
       <div class="form-actions">
@@ -1166,6 +1201,20 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
         if (shareInput) {
           // Initialize URL with the absolute origin so it's copy-ready
           applySrc('');
+        }
+        // Share panel toggle (button in header expands/collapses the share box)
+        var shareToggle = document.getElementById('ev-share-toggle');
+        var sharePanel = document.getElementById('ev-public-url');
+        if (shareToggle && sharePanel) {
+          shareToggle.addEventListener('click', function() {
+            var open = !sharePanel.hasAttribute('hidden');
+            if (open) {
+              sharePanel.setAttribute('hidden', '');
+            } else {
+              sharePanel.removeAttribute('hidden');
+              sharePanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+          });
         }
         if (copyBtn) copyBtn.addEventListener('click', copyUrl);
         document.querySelectorAll('.ev-share-btn').forEach(function(btn) {

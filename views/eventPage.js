@@ -1104,7 +1104,6 @@ function generateEventPage(location, event, signupCount, options = {}) {
               ${descriptionHtml ? `<div class="ev-description">${descriptionHtml}</div>` : ''}
               <div class="ev-detail-chips">
                 ${event.signupsEnabled === false ? '<span class="ev-detail-chip">Info only</span>' : ''}
-                ${event.capacity ? `<span class="ev-detail-chip">${signupCount} / ${event.capacity} signed up</span>` : ''}
                 ${canSignup && spotsLeft != null ? `<span class="ev-detail-chip">${spotsLeft} ${spotsLeft === 1 ? 'spot' : 'spots'} left</span>` : ''}
               </div>
             </div>

@@ -44,7 +44,6 @@ function renderEventCard(location, event) {
         ${blurb ? `<p class="evx-card-copy">${escHTML(blurb)}</p>` : ''}
         <div class="evx-card-meta">
           ${event.endDate ? `<span>Ends ${escHTML(formatEventTime(event.endDate))}</span>` : ''}
-          ${event.capacity ? `<span>${signupCount} / ${escHTML(String(event.capacity))} signed up</span>` : ''}
           ${event.signupsEnabled === false ? '<span>No signup form</span>' : ''}
         </div>
         <div class="evx-card-actions">

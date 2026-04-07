@@ -320,11 +320,7 @@ function generateEventPage(location, event, signupCount, options = {}) {
     <aside class="ev-side-card">
       <div class="ev-side-kicker">Reserve Your Spot</div>
       <h2 class="ev-side-title">Join this event</h2>
-      <p class="ev-side-copy">
-        ${event.capacity
-          ? `${spotsLeft} ${spotsLeft === 1 ? 'spot' : 'spots'} left right now.`
-          : 'Signups are open now.'}
-      </p>
+      <p class="ev-side-copy">Signups are open now.</p>
       ${signupForm}
     </aside>
   ` : status.key === 'no-signups' ? `
@@ -1104,7 +1100,6 @@ function generateEventPage(location, event, signupCount, options = {}) {
               ${descriptionHtml ? `<div class="ev-description">${descriptionHtml}</div>` : ''}
               <div class="ev-detail-chips">
                 ${event.signupsEnabled === false ? '<span class="ev-detail-chip">Info only</span>' : ''}
-                ${canSignup && spotsLeft != null ? `<span class="ev-detail-chip">${spotsLeft} ${spotsLeft === 1 ? 'spot' : 'spots'} left</span>` : ''}
               </div>
             </div>
 

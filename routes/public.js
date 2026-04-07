@@ -37,6 +37,7 @@ const { generateDraftPage } = require('../views/draftPage');
 const { generateFlightsPage } = require('../views/flightsPage');
 const { generateMenuPage } = require('../views/menuPage');
 const { generateEventPage, generateEventConfirmationPage, eventStatus } = require('../views/eventPage');
+const { generateEventsIndexPage } = require('../views/eventsIndexPage');
 const { generateNotFoundPage } = require('../views/notFoundPage');
 const { trackPageView, buildTrackingScript } = require('../analytics');
 
@@ -1032,6 +1033,74 @@ async function handleLubricationCupSignup(req, res) {
   return true;
 }
 
+async function loadEventRowsWithCounts(prisma, query) {
+  if (!prisma) return [];
+  return prisma.event.findMany({
+    ...query,
+    include: {
+      _count: { select: { signups: true } },
+    },
+  }).catch(async (err) => {
+    console.warn('Public events include failed, falling back:', err.message);
+    const rows = await prisma.event.findMany(query).catch(() => []);
+    for (const ev of rows) {
+      ev._count = {
+        signups: await prisma.eventSignup.count({ where: { eventId: ev.id } }).catch(() => 0),
+      };
+    }
+    return rows;
+  });
+}
+
+async function getPublicEventsForLocation(prisma, locationId, options = {}) {
+  if (!prisma || !locationId) return { upcoming: [], recent: [] };
+  const now = new Date();
+  const upcomingTake = Math.max(parseInt(options.upcomingTake, 10) || 0, 0);
+  const recentTake = Math.max(parseInt(options.recentTake, 10) || 0, 0);
+
+  const baseWhere = {
+    locationId,
+    isActive: true,
+    isCancelled: false,
+  };
+
+  const upcoming = upcomingTake > 0
+    ? await loadEventRowsWithCounts(prisma, {
+        where: {
+          ...baseWhere,
+          OR: [
+            { startDate: { gte: now } },
+            { endDate: { gte: now } },
+            { promoteUntil: { gte: now } },
+          ],
+        },
+        orderBy: [{ startDate: 'asc' }],
+        take: upcomingTake,
+      })
+    : [];
+
+  const recent = recentTake > 0
+    ? await loadEventRowsWithCounts(prisma, {
+        where: {
+          ...baseWhere,
+          startDate: { lt: now },
+        },
+        orderBy: [{ startDate: 'desc' }],
+        take: recentTake,
+      })
+    : [];
+
+  const mapEvent = (ev) => ({
+    ...ev,
+    signupCount: ev._count?.signups || 0,
+  });
+
+  return {
+    upcoming: upcoming.map(mapEvent),
+    recent: recent.map(mapEvent),
+  };
+}
+
 async function handlePublic(req, res, pathname, prisma) {
   if (pathname === '/assets/dram-draught-logo-white.png') {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
@@ -1300,6 +1369,26 @@ async function handlePublic(req, res, pathname, prisma) {
     return true;
   }
 
+  // Events index: /{slug}/events
+  const eventsIndexMatch = pathname.match(/^\/([a-z0-9-]+)\/events$/);
+  if (eventsIndexMatch) {
+    const [, locSlug] = eventsIndexMatch;
+    const locs = await getLocations(prisma);
+    const location = locs.find((l) => l.slug === locSlug);
+    if (!location || !prisma) {
+      await send404(req, res, prisma);
+      return true;
+    }
+
+    const { upcoming, recent } = await getPublicEventsForLocation(prisma, location.id, {
+      upcomingTake: 12,
+      recentTake: 4,
+    });
+    const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/events`, getQueryString(req));
+    sendHTML(res, 200, injectTracking(generateEventsIndexPage(location, upcoming, recent), sid));
+    return true;
+  }
+
   // Event page: /{slug}/events/{eventSlug}
   const eventPageMatch = pathname.match(/^\/([a-z0-9-]+)\/events\/([a-z0-9-]+)$/);
   if (eventPageMatch) {
@@ -1357,8 +1446,13 @@ async function handlePublic(req, res, pathname, prisma) {
       try {
         showFlightsButton = await hasFeaturedFlights(slug);
       } catch (err) { console.warn('Featured flights check error:', err.message); }
+      const { upcoming: upcomingEvents } = await getPublicEventsForLocation(prisma, location.id, { upcomingTake: 3 });
       const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}`, getQueryString(req));
-      sendHTML(res, 200, injectTracking(generateLocationPage(location, locs, menuCategories, { showFlightsButton }), sid));
+      sendHTML(res, 200, injectTracking(generateLocationPage(location, locs, menuCategories, {
+        showFlightsButton,
+        upcomingEvents,
+        hasEvents: upcomingEvents.length > 0,
+      }), sid));
       return true;
     }
     await send404(req, res, prisma);

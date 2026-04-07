@@ -403,8 +403,15 @@ function renderSectionsCard(event, actionUrl) {
             <form method="POST" action="${actionUrl}" class="sec-inline">
               <input type="hidden" name="_action" value="moveSection" />
               <input type="hidden" name="sectionId" value="${escHTML(s.id)}" />
+              <button type="submit" name="direction" value="top" class="btn btn-secondary btn-sm"${isFirst ? ' disabled' : ''}>⇡</button>
               <button type="submit" name="direction" value="up" class="btn btn-secondary btn-sm"${isFirst ? ' disabled' : ''}>↑</button>
               <button type="submit" name="direction" value="down" class="btn btn-secondary btn-sm"${isLast ? ' disabled' : ''}>↓</button>
+              <button type="submit" name="direction" value="bottom" class="btn btn-secondary btn-sm"${isLast ? ' disabled' : ''}>⇣</button>
+            </form>
+            <form method="POST" action="${actionUrl}" class="sec-inline">
+              <input type="hidden" name="_action" value="duplicateSection" />
+              <input type="hidden" name="sectionId" value="${escHTML(s.id)}" />
+              <button type="submit" class="btn btn-secondary btn-sm">Copy</button>
             </form>
             <button type="button" class="btn btn-secondary btn-sm" onclick="toggleSecEdit('${editPrefix}')">Edit</button>
             <form method="POST" action="${actionUrl}" class="sec-inline" onsubmit="return confirm('Delete this section?')">
@@ -736,7 +743,7 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
         <div class="ev-public-url-row">
           <input type="text" id="ev-share-url" data-base="${escHTML(publicUrl)}" readonly value="${escHTML(publicUrl)}" />
           <button type="button" id="ev-copy-url" class="btn btn-primary btn-sm">Copy</button>
-          ${publicUrl ? `<a id="ev-open-url" href="${escHTML(publicUrl)}" target="_blank" class="btn btn-secondary btn-sm">Open ↗</a>` : ''}
+          ${publicUrl ? `<a id="ev-open-url" href="${escHTML(publicUrl)}" target="_blank" class="btn btn-secondary btn-sm">Preview ↗</a>` : ''}
         </div>
         <div class="ev-public-url-hint">
           Pick where you're sharing this link below. Each option adds a tag so Analytics can show you exactly which channel brought people in.
@@ -756,11 +763,86 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
     `;
   }
 
+  const sectionsCount = !isNew && Array.isArray(event.sections) ? event.sections.length : 0;
+  const editorJumpNav = `
+    <nav class="ev-jump-nav" aria-label="Event editor sections">
+      <a href="#event-details">Details</a>
+      <a href="#event-when">When</a>
+      <a href="#event-signup-form">Form</a>
+      <a href="#event-signup-settings">Follow-up</a>
+      <a href="#event-visibility">Visibility</a>
+      ${!isNew ? '<a href="#sections">Page Builder</a>' : ''}
+    </nav>
+  `;
+  const editorSummary = `
+    <div class="ev-editor-summary">
+      <div class="ev-editor-summary-card">
+        <div class="ev-editor-summary-label">State</div>
+        <div class="ev-editor-summary-value">${isNew ? '<span class="ev-badge ev-badge-scheduled">New Draft</span>' : eventStatusBadge(event)}</div>
+      </div>
+      <div class="ev-editor-summary-card">
+        <div class="ev-editor-summary-label">Signups</div>
+        <div class="ev-editor-summary-value">${event?.signupsEnabled === false ? 'Info-only page' : `${signupCount} ${signupCount === 1 ? 'signup' : 'signups'}`}</div>
+      </div>
+      <div class="ev-editor-summary-card">
+        <div class="ev-editor-summary-label">Sections</div>
+        <div class="ev-editor-summary-value">${sectionsCount}</div>
+      </div>
+    </div>
+  `;
+
   return adminLayout(title, `
     <style>
       .ev-editor-head { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:18px; }
       .ev-editor-head .ev-back { color:#888; font-size:0.85rem; text-decoration:none; }
       .ev-editor-head .ev-back:hover { color:#d4af37; }
+
+      .ev-jump-nav {
+        display:flex;
+        gap:8px;
+        flex-wrap:wrap;
+        margin-bottom:14px;
+      }
+      .ev-jump-nav a {
+        display:inline-flex;
+        align-items:center;
+        min-height:36px;
+        padding:0 12px;
+        border-radius:999px;
+        border:1px solid #2a2a2a;
+        color:#bbb;
+        text-decoration:none;
+        font-size:0.78rem;
+        font-weight:700;
+        letter-spacing:0.04em;
+        background:#141414;
+      }
+      .ev-jump-nav a:hover { color:#d4af37; border-color:rgba(212,175,55,0.35); }
+      .ev-editor-summary {
+        display:grid;
+        grid-template-columns:repeat(3, minmax(0, 1fr));
+        gap:12px;
+        margin-bottom:18px;
+      }
+      .ev-editor-summary-card {
+        background:#141414;
+        border:1px solid #262626;
+        border-radius:12px;
+        padding:14px 16px;
+      }
+      .ev-editor-summary-label {
+        color:#777;
+        font-size:0.7rem;
+        text-transform:uppercase;
+        letter-spacing:0.1em;
+        font-weight:700;
+        margin-bottom:6px;
+      }
+      .ev-editor-summary-value {
+        color:#f2f2f2;
+        font-size:0.98rem;
+        font-weight:700;
+      }
 
       .ev-public-url {
         background:rgba(96,165,250,0.08);
@@ -873,6 +955,7 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
       .sec-img-preview { max-width:240px; max-height:160px; border-radius:6px; border:1px solid #333; }
 
       @media (max-width:768px) {
+        .ev-editor-summary { grid-template-columns:1fr; }
         .ev-field-grid { grid-template-columns:1fr; }
         .ev-standard-fields { grid-template-columns:1fr; }
         .cq-row-grid { grid-template-columns:1fr; }
@@ -889,10 +972,12 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
     </div>
 
     ${publicUrlBlock}
+    ${editorJumpNav}
+    ${editorSummary}
 
     <form method="POST" action="${actionUrl}" id="ev-form" data-autosave="event-${escHTML(event?.id || 'new')}">
       <!-- ─── Basics ─── -->
-      <div class="ev-section">
+      <div class="ev-section" id="event-details">
         <h2>Event Details</h2>
         <p class="ev-section-hint">What is the event called and where is it happening?</p>
 
@@ -934,7 +1019,7 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
       </div>
 
       <!-- ─── Dates ─── -->
-      <div class="ev-section">
+      <div class="ev-section" id="event-when">
         <h2>When</h2>
         <p class="ev-section-hint">When does the event happen and when should the signup page be visible?</p>
 
@@ -962,7 +1047,7 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
       </div>
 
       <!-- ─── Signup form config ─── -->
-      <div class="ev-section">
+      <div class="ev-section" id="event-signup-form">
         <h2>Signup Form</h2>
         <p class="ev-section-hint">For events that collect signups (registrations, RSVPs, ticket holds). Turn this off for info-only events that don't need a form.</p>
 
@@ -988,7 +1073,7 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
       </div>
 
       <!-- ─── Capacity / post-signup ─── -->
-      <div class="ev-section">
+      <div class="ev-section" id="event-signup-settings">
         <h2>Signup Settings</h2>
         <p class="ev-section-hint">Optional limits and what to show after someone signs up.</p>
 
@@ -1008,7 +1093,7 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
       </div>
 
       <!-- ─── State toggles ─── -->
-      <div class="ev-section">
+      <div class="ev-section" id="event-visibility">
         <h2>Visibility</h2>
         <p class="ev-section-hint">Control whether the event signup page is available to guests.</p>
 
@@ -1201,6 +1286,16 @@ function eventSignupsView(event, signups, user, flashMsg) {
 
   const rows = signups.map(s => {
     const answers = s.customAnswers || {};
+    const searchText = [
+      s.name || '',
+      s.email || '',
+      s.phone || '',
+      s.notes || '',
+      ...customDefs.map(q => {
+        if (q.type === 'image') return '';
+        return answers[q.id] == null ? '' : answers[q.id];
+      }),
+    ].join(' ').toLowerCase();
     const customCells = customDefs.map(q => {
       const raw = answers[q.id];
       if (raw == null || raw === '') return '<td><span style="color:#555">—</span></td>';
@@ -1211,7 +1306,7 @@ function eventSignupsView(event, signups, user, flashMsg) {
       return `<td>${escHTML(String(raw))}</td>`;
     }).join('');
     return `
-      <tr>
+      <tr data-search="${escHTML(searchText)}">
         <td style="white-space:nowrap">${escHTML(formatFriendlyDate(s.createdAt))}</td>
         <td><strong>${escHTML(s.name || '')}</strong></td>
         <td>${s.email ? `<a href="mailto:${escHTML(s.email)}">${escHTML(s.email)}</a>` : '<span style="color:#555">—</span>'}</td>
@@ -1242,6 +1337,8 @@ function eventSignupsView(event, signups, user, flashMsg) {
   ].filter(Boolean).join('');
 
   const capacityText = event.capacity ? ` / ${event.capacity}` : '';
+  const remainingSpots = event.capacity ? Math.max(event.capacity - signups.length, 0) : null;
+  const totalGuests = event.collectPartySize ? signups.reduce((sum, s) => sum + (s.partySize || 1), 0) : null;
 
   return adminLayout(`${event.title} Signups`, `
     <style>
@@ -1252,12 +1349,25 @@ function eventSignupsView(event, signups, user, flashMsg) {
       .evs-stat { background:#1a1a1a; border:1px solid #2a2a2a; border-radius:10px; padding:14px 20px; }
       .evs-stat-num { font-size:1.6rem; font-weight:800; color:#d4af37; line-height:1; }
       .evs-stat-lbl { font-size:0.72rem; color:#888; text-transform:uppercase; letter-spacing:0.08em; margin-top:6px; }
+      .evs-toolbar { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
+      .evs-search {
+        min-width:260px;
+        max-width:420px;
+        width:100%;
+        background:#111;
+        border:1px solid #2a2a2a;
+        border-radius:10px;
+        padding:12px 14px;
+        color:#eee;
+      }
+      .evs-filter-note { color:#888; font-size:0.82rem; }
       .evs-table-wrap { background:#1a1a1a; border:1px solid #2a2a2a; border-radius:12px; overflow-x:auto; }
       .evs-table { width:100%; border-collapse:collapse; font-size:0.88rem; }
       .evs-table th { background:#111; color:#888; text-align:left; padding:10px 14px; border-bottom:1px solid #2a2a2a; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.06em; font-weight:700; }
       .evs-table td { padding:12px 14px; border-bottom:1px solid #1f1f1f; color:#ccc; vertical-align:top; }
       .evs-table tr:last-child td { border-bottom:none; }
       .evs-empty { padding:40px; text-align:center; color:#666; }
+      .evs-empty[hidden] { display:none; }
     </style>
 
     <div class="evs-head">
@@ -1279,13 +1389,26 @@ function eventSignupsView(event, signups, user, flashMsg) {
         <div class="evs-stat-num">${signups.length}${escHTML(capacityText)}</div>
         <div class="evs-stat-lbl">Total Signups</div>
       </div>
-      ${event.collectPartySize ? `
+      ${totalGuests != null ? `
         <div class="evs-stat">
-          <div class="evs-stat-num">${signups.reduce((sum, s) => sum + (s.partySize || 1), 0)}</div>
+          <div class="evs-stat-num">${totalGuests}</div>
           <div class="evs-stat-lbl">Total Guests</div>
         </div>
       ` : ''}
+      ${remainingSpots != null ? `
+        <div class="evs-stat">
+          <div class="evs-stat-num">${remainingSpots}</div>
+          <div class="evs-stat-lbl">${remainingSpots === 0 ? 'Event Full' : 'Spots Remaining'}</div>
+        </div>
+      ` : ''}
     </div>
+
+    ${signups.length > 0 ? `
+      <div class="evs-toolbar">
+        <input type="search" id="evs-search" class="evs-search" placeholder="Search by name, email, phone, notes, or answers" />
+        <div id="evs-filter-note" class="evs-filter-note">Showing all ${signups.length} signups</div>
+      </div>
+    ` : ''}
 
     ${signups.length === 0 ? `
       <div class="evs-table-wrap">
@@ -1298,10 +1421,33 @@ function eventSignupsView(event, signups, user, flashMsg) {
       <div class="evs-table-wrap">
         <table class="evs-table">
           <thead><tr>${headers}</tr></thead>
-          <tbody>${rows}</tbody>
+          <tbody id="evs-rows">${rows}</tbody>
         </table>
       </div>
     `}
+    <script>
+      (function() {
+        var search = document.getElementById('evs-search');
+        var note = document.getElementById('evs-filter-note');
+        var rows = Array.from(document.querySelectorAll('#evs-rows tr'));
+        if (!search || rows.length === 0) return;
+        search.addEventListener('input', function() {
+          var query = String(search.value || '').trim().toLowerCase();
+          var visible = 0;
+          rows.forEach(function(row) {
+            var haystack = row.getAttribute('data-search') || '';
+            var match = !query || haystack.indexOf(query) !== -1;
+            row.hidden = !match;
+            if (match) visible++;
+          });
+          if (note) {
+            note.textContent = query
+              ? 'Showing ' + visible + ' of ' + rows.length + ' signups'
+              : 'Showing all ' + rows.length + ' signups';
+          }
+        });
+      })();
+    </script>
   `, user, { pathname: `/admin/events/${event.id}/signups`, flashMsg });
 }
 

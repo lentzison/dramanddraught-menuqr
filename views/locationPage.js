@@ -2,12 +2,67 @@ const { getLinkButtons, getOpenState } = require('../helpers');
 const { vintageThemeCss } = require('./publicTheme');
 const { brandMarkCss, renderBrandMark } = require('./brandMark');
 const { escHTML } = require('./escapeHtml');
+const { eventStatus, formatEventDate, formatEventTime } = require('./eventPage');
+
+function locationEventMeta(event) {
+  const status = eventStatus(event, event.signupCount || 0);
+  if (status.key === 'open') return { label: 'Signups Open', tone: 'open', cta: 'Sign Up' };
+  if (status.key === 'upcoming') return { label: 'Opens Soon', tone: 'scheduled', cta: 'View Details' };
+  if (status.key === 'full') return { label: 'Fully Booked', tone: 'full', cta: 'View Details' };
+  if (status.key === 'closed') return { label: 'Signups Closed', tone: 'closed', cta: 'View Details' };
+  if (status.key === 'no-signups') return { label: 'Info Only', tone: 'info', cta: 'View Event' };
+  return { label: 'Event', tone: 'neutral', cta: 'View Event' };
+}
+
+function renderUpcomingEvents(location, upcomingEvents) {
+  if (!Array.isArray(upcomingEvents) || upcomingEvents.length === 0) return '';
+  const cards = upcomingEvents.slice(0, 3).map((event, index) => {
+    const meta = locationEventMeta(event);
+    const href = `/${location.slug}/events/${event.slug}`;
+    return `
+      <article class="loc-event-card${index === 0 ? ' loc-event-card-featured' : ''}">
+        ${event.image ? `<a href="${escHTML(href)}" class="loc-event-image-link"><img src="${escHTML(event.image)}" alt="${escHTML(event.title)}" class="loc-event-image" loading="lazy" /></a>` : ''}
+        <div class="loc-event-body">
+          <div class="loc-event-top">
+            <span class="loc-event-badge loc-event-badge-${escHTML(meta.tone)}">${escHTML(meta.label)}</span>
+            <span class="loc-event-date">${escHTML(formatEventDate(event.startDate))}</span>
+          </div>
+          <h3 class="loc-event-title"><a href="${escHTML(href)}">${escHTML(event.title)}</a></h3>
+          <p class="loc-event-time">${escHTML(formatEventTime(event.startDate))}${event.endDate ? ' &middot; until ' + escHTML(formatEventTime(event.endDate)) : ''}</p>
+          ${event.description ? `<p class="loc-event-copy">${escHTML(String(event.description).trim().replace(/\s+/g, ' ').slice(0, 150))}${String(event.description).trim().replace(/\s+/g, ' ').length > 150 ? '&hellip;' : ''}</p>` : ''}
+          <div class="loc-event-actions">
+            ${event.capacity ? `<span class="loc-event-capacity">${escHTML(String(event.signupCount || 0))} / ${escHTML(String(event.capacity))} signed up</span>` : ''}
+            <a href="${escHTML(href)}" class="loc-event-link">${escHTML(meta.cta)}</a>
+          </div>
+        </div>
+      </article>
+    `;
+  }).join('');
+
+  return `
+    <section class="loc-events container">
+      <div class="loc-events-head">
+        <div>
+          <div class="loc-events-kicker">Upcoming Events</div>
+          <h3>Plan your next night out</h3>
+          <p>${upcomingEvents.length} live ${upcomingEvents.length === 1 ? 'event' : 'events'} at ${escHTML(location.name)}.</p>
+        </div>
+        <a href="/${escHTML(location.slug)}/events" class="loc-events-view-all">All Events</a>
+      </div>
+      <div class="loc-events-grid">${cards}</div>
+    </section>
+  `;
+}
 
 function generateLocationPage(location, allLocations = [], menuCategories = [], options = {}) {
+  const upcomingEvents = Array.isArray(options.upcomingEvents) ? options.upcomingEvents : [];
   const quickLinks = [
     { label: "Today's Specials", url: `/${location.slug}/specials` },
     { label: 'On Draft', url: `/${location.slug}/draft` },
   ];
+  if (options.hasEvents) {
+    quickLinks.push({ label: 'Upcoming Events', url: `/${location.slug}/events` });
+  }
   if (options.showFlightsButton) {
     quickLinks.push({ label: 'Spirit Flights', url: `/${location.slug}/flights` });
   }
@@ -379,44 +434,158 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
         .review-success {
           color: #86efac;
         }
-        .event-banner {
-          display: block;
-          text-align: center;
-          text-decoration: none;
-          margin: 18px auto 0;
-          max-width: 480px;
-          padding: 14px 20px;
-          border: 1px solid rgba(210,170,103,0.3);
-          border-radius: 14px;
-          background: linear-gradient(180deg, rgba(210,170,103,0.06), rgba(210,170,103,0.02));
-          transition: border-color 0.2s, transform 0.15s, background 0.2s;
+        .loc-events {
+          max-width: 980px;
+          padding-top: 16px;
         }
-        .event-banner:hover {
-          border-color: rgba(210,170,103,0.55);
-          background: linear-gradient(180deg, rgba(210,170,103,0.1), rgba(210,170,103,0.04));
-          transform: translateY(-1px);
+        .loc-events-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: end;
+          gap: 12px;
+          flex-wrap: wrap;
+          margin-bottom: 14px;
         }
-        .event-date {
-          display: block;
+        .loc-events-kicker {
           color: var(--gold);
-          font-size: 0.68rem;
+          font-size: 0.7rem;
           font-weight: 800;
           letter-spacing: 0.18em;
           text-transform: uppercase;
-          margin-bottom: 3px;
+          margin-bottom: 8px;
         }
-        .event-name {
-          display: block;
+        .loc-events-head h3 {
+          margin: 0;
           color: var(--cream);
-          font-size: 1.05rem;
-          font-weight: 800;
+          font-family: 'Playfair Display', 'Iowan Old Style', Georgia, serif;
+          font-size: 1.9rem;
         }
-        .event-detail {
+        .loc-events-head p {
+          margin: 6px 0 0;
+          color: var(--muted);
+          line-height: 1.5;
+        }
+        .loc-events-view-all {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 44px;
+          padding: 0 16px;
+          border-radius: 999px;
+          border: 1px solid rgba(210,170,103,0.26);
+          color: var(--accent-light);
+          text-decoration: none;
+          font-size: 0.82rem;
+          font-weight: 700;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          background: rgba(210,170,103,0.08);
+        }
+        .loc-events-view-all:hover { border-color: rgba(210,170,103,0.55); text-decoration: none; }
+        .loc-events-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+          gap: 14px;
+        }
+        .loc-event-card {
+          overflow: hidden;
+          border-radius: 18px;
+          border: 1px solid var(--line);
+          background: linear-gradient(180deg, rgba(20,21,24,0.96), rgba(9,9,10,0.99));
+          box-shadow: 0 14px 30px rgba(0,0,0,0.22);
+        }
+        .loc-event-card-featured {
+          background:
+            linear-gradient(180deg, rgba(20,21,24,0.96), rgba(9,9,10,0.99)),
+            radial-gradient(circle at top, rgba(210,170,103,0.10), transparent 58%);
+        }
+        .loc-event-image-link { display: block; }
+        .loc-event-image {
           display: block;
+          width: 100%;
+          height: 180px;
+          object-fit: cover;
+          border-bottom: 1px solid var(--line);
+        }
+        .loc-event-body { padding: 16px; }
+        .loc-event-top {
+          display: flex;
+          justify-content: space-between;
+          gap: 10px;
+          align-items: center;
+          flex-wrap: wrap;
+          margin-bottom: 10px;
+        }
+        .loc-event-badge {
+          display: inline-flex;
+          align-items: center;
+          min-height: 28px;
+          padding: 0 10px;
+          border-radius: 999px;
+          font-size: 0.7rem;
+          font-weight: 800;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+        .loc-event-badge-open { background: rgba(34,197,94,0.18); color: #86efac; }
+        .loc-event-badge-scheduled { background: rgba(96,165,250,0.18); color: #bfdbfe; }
+        .loc-event-badge-full,
+        .loc-event-badge-closed { background: rgba(251,146,60,0.18); color: #fdba74; }
+        .loc-event-badge-info { background: rgba(210,170,103,0.16); color: var(--accent-light); }
+        .loc-event-badge-neutral { background: rgba(148,163,184,0.18); color: #cbd5e1; }
+        .loc-event-date {
           color: var(--muted);
           font-size: 0.78rem;
-          margin-top: 2px;
         }
+        .loc-event-title {
+          margin: 0 0 6px;
+          font-size: 1.2rem;
+          line-height: 1.1;
+        }
+        .loc-event-title a {
+          color: var(--cream);
+          text-decoration: none;
+        }
+        .loc-event-title a:hover { color: var(--gold); }
+        .loc-event-time {
+          color: var(--gold);
+          font-size: 0.84rem;
+          margin: 0 0 10px;
+          letter-spacing: 0.04em;
+        }
+        .loc-event-copy {
+          color: var(--muted);
+          font-size: 0.86rem;
+          line-height: 1.55;
+          margin-bottom: 14px;
+        }
+        .loc-event-actions {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 10px;
+          flex-wrap: wrap;
+        }
+        .loc-event-capacity {
+          color: var(--muted);
+          font-size: 0.76rem;
+        }
+        .loc-event-link {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 42px;
+          padding: 0 16px;
+          border-radius: 12px;
+          background: linear-gradient(180deg, var(--accent-light), var(--gold) 64%, var(--amber));
+          color: var(--ink);
+          text-decoration: none;
+          font-size: 0.84rem;
+          font-weight: 800;
+          letter-spacing: 0.05em;
+          text-transform: uppercase;
+        }
+        .loc-event-link:hover { text-decoration: none; filter: brightness(1.04); }
         .menu-section {
           max-width: 480px;
           margin: 18px auto 6px;
@@ -544,6 +713,12 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
           .link-btn {
             min-height: 68px;
           }
+          .loc-events-head {
+            align-items: start;
+          }
+          .loc-event-image {
+            height: 160px;
+          }
         }
       </style>
     </head>
@@ -565,13 +740,7 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
           </div>
         </details>
       </div>
-      ${location.slug === 'winston-salem' ? `
-      <a href="/${location.slug}/lubrication-cup" class="event-banner stagger" style="animation-delay:0.06s;">
-        <span class="event-date">April 20th</span>
-        <span class="event-name">The Lubrication Cup</span>
-        <span class="event-detail">Bartender Speed Competition &middot; 7 PM</span>
-      </a>
-      ` : ''}
+      ${renderUpcomingEvents(location, upcomingEvents)}
       ${menuCategories.length > 0 ? menuCategories.map(cat => `
       <div class="menu-section">
         <div class="menu-section-hdr">${escHTML(cat.name)}</div>

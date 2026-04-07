@@ -80,10 +80,14 @@ function pickArray(body, key) {
   return [v];
 }
 
+function generateSectionId() {
+  return `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
 // Build a section object from form fields based on its type. Generates a fresh id when not provided.
 function buildSectionFromForm(body, existingId = null) {
   const type = String(body.type || 'text').toLowerCase();
-  const id = existingId || `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  const id = existingId || generateSectionId();
   const bgStyle = normalizeBgStyle(body.bgStyle);
 
   if (type === 'text') {
@@ -180,6 +184,14 @@ function buildSectionFromForm(body, existingId = null) {
 
 function getSections(event) {
   return Array.isArray(event.sections) ? event.sections : [];
+}
+
+function cloneSection(section) {
+  if (!section || typeof section !== 'object') return null;
+  return {
+    ...JSON.parse(JSON.stringify(section)),
+    id: generateSectionId(),
+  };
 }
 
 function parseCustomQuestions(body) {
@@ -292,7 +304,7 @@ async function handleAdminEvents(req, res, pathname, prisma) {
             promoteFrom: parseDateTimeLocal(body.promoteFrom),
             promoteUntil: parseDateTimeLocal(body.promoteUntil),
             capacity: parseCapacity(body.capacity),
-            signupsEnabled: body.signupsEnabled !== 'off',
+            signupsEnabled: body.signupsEnabled === 'on',
             collectEmail: body.collectEmail === 'on',
             collectPhone: body.collectPhone === 'on',
             collectPartySize: body.collectPartySize === 'on',
@@ -300,7 +312,7 @@ async function handleAdminEvents(req, res, pathname, prisma) {
             customQuestions: customQuestions.length > 0 ? customQuestions : null,
             confirmationMessage: normalizeText(body.confirmationMessage) || null,
             notifyEmail: normalizeText(body.notifyEmail) || null,
-            isActive: body.isActive !== 'off',
+            isActive: body.isActive === 'on',
             isCancelled: false,
           },
         });
@@ -481,16 +493,40 @@ async function handleAdminEvents(req, res, pathname, prisma) {
         return true;
       }
 
+      if (action === 'duplicateSection') {
+        const sectionId = String(body.sectionId || '');
+        const sections = getSections(event);
+        const idx = sections.findIndex(s => s.id === sectionId);
+        if (idx === -1) { redirect(res, `/admin/events/${eventId}#sections`); return true; }
+        const copy = cloneSection(sections[idx]);
+        if (!copy) { redirect(res, `/admin/events/${eventId}?msg=error#sections`); return true; }
+        const next = [...sections];
+        next.splice(idx + 1, 0, copy);
+        await prisma.event.update({ where: { id: eventId }, data: { sections: next } });
+        redirect(res, `/admin/events/${eventId}?msg=saved#sections`);
+        return true;
+      }
+
       if (action === 'moveSection') {
         const sectionId = String(body.sectionId || '');
         const direction = String(body.direction || '');
         const sections = [...getSections(event)];
         const idx = sections.findIndex(s => s.id === sectionId);
         if (idx === -1) { redirect(res, `/admin/events/${eventId}#sections`); return true; }
-        const swapWith = direction === 'up' ? idx - 1 : idx + 1;
-        if (swapWith >= 0 && swapWith < sections.length) {
-          [sections[idx], sections[swapWith]] = [sections[swapWith], sections[idx]];
+        if (direction === 'top' && idx > 0) {
+          const [item] = sections.splice(idx, 1);
+          sections.unshift(item);
           await prisma.event.update({ where: { id: eventId }, data: { sections } });
+        } else if (direction === 'bottom' && idx < sections.length - 1) {
+          const [item] = sections.splice(idx, 1);
+          sections.push(item);
+          await prisma.event.update({ where: { id: eventId }, data: { sections } });
+        } else {
+          const swapWith = direction === 'up' ? idx - 1 : idx + 1;
+          if (swapWith >= 0 && swapWith < sections.length) {
+            [sections[idx], sections[swapWith]] = [sections[swapWith], sections[idx]];
+            await prisma.event.update({ where: { id: eventId }, data: { sections } });
+          }
         }
         redirect(res, `/admin/events/${eventId}?msg=reordered#sections`);
         return true;

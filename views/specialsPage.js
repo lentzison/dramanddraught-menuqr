@@ -172,7 +172,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
     </div>
   ` : '';
 
-  const spiritListUrl = `https://public.apps.dramanddraught.com/spirits/${location.slug}`;
+  const spiritListUrl = `/${location.slug}/spirits`;
 
   // Today's hours
   const todayHours = getTodayHours(location, activeDay);
@@ -430,7 +430,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
     <div class="section">
       <div class="warning-card">
         <p>Some sections are temporarily unavailable (${warningLabels.join(', ')}).</p>
-        <a href="${spiritListUrl}" class="spirit-link" target="_blank">Browse Our Spirit List →</a>
+        <a href="${spiritListUrl}" class="spirit-link">Browse Our Spirit List →</a>
       </div>
     </div>
   ` : '';
@@ -440,7 +440,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
     <div class="section">
       <div class="empty-card">
         <p>${escHTML(themeDescription || `No individual specials for ${dayLabel}.`)}</p>
-        <a href="${spiritListUrl}" class="spirit-link" target="_blank">Browse Our Spirit List →</a>
+        <a href="${spiritListUrl}" class="spirit-link">Browse Our Spirit List →</a>
       </div>
     </div>
   ` : '';
@@ -1127,7 +1127,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         </div>
         ` : ''}
 
-        <a href="${spiritListUrl}" class="spirit-cta" target="_blank">Browse Our Full Spirit List →</a>
+        <a href="${spiritListUrl}" class="spirit-cta">Browse Our Full Spirit List →</a>
 
         <div class="footer">
           <a href="/${location.slug}" class="back-link">← Back to ${escHTML(location.name)}</a>

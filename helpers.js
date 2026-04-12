@@ -1933,31 +1933,7 @@ function uniqueLinks(links) {
 function getDefaultLinks(location) {
   const loc = location || {};
   const slug = String(loc.slug || '').toLowerCase();
-  const name = String(loc.name || '').toLowerCase();
-
-  const spiritUrlsBySlug = {
-    'cary': 'https://public.apps.dramanddraught.com/spirits/cary',
-    'charlotte': 'https://public.apps.dramanddraught.com/spirits/charlotte',
-    'durham': 'https://public.apps.dramanddraught.com/spirits/durham',
-    'greensboro': 'https://public.apps.dramanddraught.com/spirits/greensboro',
-    'raleigh': 'https://public.apps.dramanddraught.com/spirits/raleigh',
-    'wilmington': 'https://public.apps.dramanddraught.com/spirits/wilmington',
-    'winston-salem': 'https://public.apps.dramanddraught.com/spirits/winston-salem',
-    'winston': 'https://public.apps.dramanddraught.com/spirits/winston-salem',
-  };
-
-  const spiritUrlsByName = {
-    'cary': 'https://public.apps.dramanddraught.com/spirits/cary',
-    'charlotte': 'https://public.apps.dramanddraught.com/spirits/charlotte',
-    'durham': 'https://public.apps.dramanddraught.com/spirits/durham',
-    'greensboro': 'https://public.apps.dramanddraught.com/spirits/greensboro',
-    'raleigh': 'https://public.apps.dramanddraught.com/spirits/raleigh',
-    'wilmington': 'https://public.apps.dramanddraught.com/spirits/wilmington',
-    'winston-salem': 'https://public.apps.dramanddraught.com/spirits/winston-salem',
-    'winston': 'https://public.apps.dramanddraught.com/spirits/winston-salem',
-  };
-
-  const spiritUrl = spiritUrlsBySlug[slug] || spiritUrlsByName[name];
+  const spiritUrl = slug ? `/${slug}/spirits` : '';
   const address = [loc.address, loc.city, loc.state, loc.zipCode].filter(Boolean).join(', ');
   const hasMenu = typeof loc.menuUrl === 'string' && loc.menuUrl.trim().length > 0;
 

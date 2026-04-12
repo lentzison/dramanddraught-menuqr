@@ -13,7 +13,7 @@ const TAP_TYPE_LABELS = {
 const TAP_TYPE_ORDER = ['STANDARD', 'NITRO', 'WINE', 'COCKTAIL'];
 
 function generateDraftPage(location, taps = [], hasError = false) {
-  const spiritListUrl = `https://public.apps.dramanddraught.com/spirits/${location.slug}`;
+  const spiritListUrl = `/${location.slug}/spirits`;
   const openState = getOpenState(location);
   const statusClass = openState.isOpen === true ? 'status-open' : openState.isOpen === false ? 'status-closed' : 'status-unknown';
   const availabilityMessage = hasError ? 'Draft list is temporarily unavailable.' : 'Draft list coming soon!';
@@ -72,7 +72,7 @@ function generateDraftPage(location, taps = [], hasError = false) {
       <div class="section">
         <div class="empty-card">
           <p>${availabilityMessage}</p>
-          <a href="${spiritListUrl}" class="spirit-link" target="_blank">Browse Our Spirit List →</a>
+          <a href="${spiritListUrl}" class="spirit-link">Browse Our Spirit List →</a>
         </div>
       </div>
     `);
@@ -384,13 +384,13 @@ function generateDraftPage(location, taps = [], hasError = false) {
           <div class="section">
             <div class="warning-card">
               <p>${availabilityMessage}</p>
-              <a href="${spiritListUrl}" class="spirit-link" target="_blank">Browse Our Spirit List →</a>
+              <a href="${spiritListUrl}" class="spirit-link">Browse Our Spirit List →</a>
             </div>
           </div>
         ` : ''}
         ${sectionsHTML}
 
-        <a href="${spiritListUrl}" class="spirit-cta" target="_blank">Browse Our Full Spirit List →</a>
+        <a href="${spiritListUrl}" class="spirit-cta">Browse Our Full Spirit List →</a>
 
         <div class="footer">
           <a href="/${location.slug}" class="back-link">← Back to ${escHTML(location.name)}</a>

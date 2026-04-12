@@ -20,7 +20,7 @@ function generateMenuPage(location, menuCategories = [], hasError = false) {
     ? `
       <div class="empty-card">
         <p>${hasError ? 'Menu data is temporarily unavailable.' : 'No menu has been published for this location yet.'}</p>
-        <a href="https://public.apps.dramanddraught.com/spirits/${location.slug}" class="spirit-link" target="_blank">Browse our Spirit List →</a>
+        <a href="/${location.slug}/spirits" class="spirit-link">Browse our Spirit List →</a>
       </div>
     `
     : '';
@@ -321,6 +321,7 @@ function generateMenuPage(location, menuCategories = [], hasError = false) {
         <div class="actions">
           <a class="action-link" href="/${location.slug}/specials">Today's Specials</a>
           <a class="action-link" href="/${location.slug}/draft">On Draft</a>
+          <a class="action-link" href="/${location.slug}/spirits">Spirit List</a>
         </div>
       </div>
 

@@ -194,6 +194,12 @@ function formatCurrency(value) {
   return `$${fixed}`;
 }
 
+function parseMaybeNumber(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const numeric = typeof value === 'number' ? value : parseFloat(String(value));
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 function buildSpiritFlightBuilderUrl(locationId = '', flightDate = '') {
   const params = new URLSearchParams();
   if (locationId) params.set('locationId', locationId);
@@ -517,6 +523,74 @@ async function getSpiritCatalog(locationSlug, filters = {}) {
   }
 }
 
+async function getSpiritList(locationSlug) {
+  try {
+    const db = getPool();
+    const extLocId = await getExternalLocationId(db, locationSlug);
+    if (extLocId == null) {
+      return { items: [], error: `Could not resolve location: ${locationSlug}` };
+    }
+
+    const result = await db.query(`
+      SELECT
+        sp."productId",
+        sp.name,
+        sp."primaryCategory",
+        sp."subCategory",
+        sp."bottleSize",
+        sp."imageUrl",
+        slp."oneOzPrice",
+        slp."oneHalfOzPrice",
+        slp."twoOzPrice",
+        slp."isAllocated",
+        sd.abv,
+        sd.region,
+        sd.distillery,
+        sd.style,
+        sd.description,
+        sd."tastingNotes",
+        sd."noseNotes",
+        sd."palateNotes",
+        sd."finishNotes"
+      FROM "SpiritProduct" sp
+      JOIN "SpiritLocationPrice" slp ON slp."productId" = sp."productId"
+      LEFT JOIN "SpiritDetail" sd ON sd."productId" = sp."productId"
+      WHERE slp."locationExternalId" = $1
+        AND sp."isActive" = true
+        AND slp."isActive" = true
+      ORDER BY sp."primaryCategory" ASC, sp.name ASC
+    `, [extLocId]);
+
+    return {
+      items: result.rows.map((row) => ({
+        productId: row.productId,
+        name: row.name,
+        primaryCategory: row.primaryCategory || 'Other',
+        subCategory: row.subCategory || null,
+        bottleSize: row.bottleSize || null,
+        imageUrl: row.imageUrl || null,
+        oneOzPrice: parseMaybeNumber(row.oneOzPrice),
+        oneHalfOzPrice: parseMaybeNumber(row.oneHalfOzPrice),
+        twoOzPrice: parseMaybeNumber(row.twoOzPrice),
+        isAllocated: Boolean(row.isAllocated),
+        abv: parseMaybeNumber(row.abv),
+        region: row.region || null,
+        distillery: row.distillery || null,
+        style: row.style || null,
+        description: row.description || null,
+        tastingNotes: row.tastingNotes || null,
+        noseNotes: row.noseNotes || null,
+        palateNotes: row.palateNotes || null,
+        finishNotes: row.finishNotes || null,
+      })),
+      error: null,
+    };
+  } catch (err) {
+    console.error('Error fetching spirit list:', err.message);
+    return { items: [], error: err.message };
+  }
+}
+
 async function getHalfPriceSpirits(locationSlug, config) {
   try {
     if (!config) return { items: [], error: null };
@@ -740,6 +814,7 @@ module.exports = {
   getBarSupportEmailsForLocation,
   getSpiritCategories,
   getSpiritCatalog,
+  getSpiritList,
   getHalfPriceSpirits,
   getLocationIdByMenuqrSlug,
   getSpiritFlight,

@@ -29,6 +29,7 @@ const {
   getBarSupportEmails,
   getBarSupportEmailsForLocation,
   getHalfPriceSpirits,
+  getSpiritList,
   getSpiritFlight,
   getFeaturedFlights,
   hasFeaturedFlights,
@@ -36,6 +37,7 @@ const {
 const { generateDraftPage } = require('../views/draftPage');
 const { generateFlightsPage } = require('../views/flightsPage');
 const { generateMenuPage } = require('../views/menuPage');
+const { generateSpiritsPage } = require('../views/spiritsPage');
 const { generateEventPage, generateEventConfirmationPage, eventStatus } = require('../views/eventPage');
 const { generateEventsIndexPage } = require('../views/eventsIndexPage');
 const { generateNotFoundPage } = require('../views/notFoundPage');
@@ -942,6 +944,34 @@ async function handleMenu(req, res, prisma, locationSlug) {
   return true;
 }
 
+async function handleSpirits(req, res, prisma, locationSlug) {
+  const locs = await getLocations(prisma);
+  const location = locs.find((l) => l.slug === locationSlug);
+  if (!location) {
+    await send404(req, res, prisma);
+    return true;
+  }
+
+  let spirits = [];
+  let spiritsError = false;
+  if (prisma) {
+    try {
+      const loaded = await getSpiritList(locationSlug);
+      spirits = loaded.items || [];
+      spiritsError = !!loaded.error;
+    } catch (err) {
+      spiritsError = true;
+      console.warn('DB error loading spirit list:', err.message);
+    }
+  } else {
+    spiritsError = true;
+  }
+
+  const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/spirits`, getQueryString(req));
+  sendHTML(res, 200, injectTracking(generateSpiritsPage(location, spirits, spiritsError), sid));
+  return true;
+}
+
 const LUBRICATION_CUP_RECIPIENTS = [
   'jax.Daugherty@rndc-usa.com',
   'anna@dramanddraught.com',
@@ -1211,6 +1241,13 @@ async function handlePublic(req, res, pathname, prisma) {
   if (menuMatch) {
     const slug = menuMatch[1];
     return handleMenu(req, res, prisma, slug);
+  }
+
+  // Spirit list page: /{slug}/spirits
+  const spiritsMatch = pathname.match(/^\/([a-z0-9-]+)\/spirits$/);
+  if (spiritsMatch) {
+    const slug = spiritsMatch[1];
+    return handleSpirits(req, res, prisma, slug);
   }
 
   // Flights page: /{slug}/flights

@@ -38,7 +38,7 @@ function renderTastingNotes(pour) {
 }
 
 function generateFlightsPage(location, flights) {
-  const spiritListUrl = `https://app.dramanddraught.com/admin/spirits/locations?locationId=${encodeURIComponent(location.bartenderLocationId || location.id)}`;
+  const spiritListUrl = `/${location.slug}/spirits`;
 
   return `
     <!DOCTYPE html>
@@ -251,7 +251,7 @@ function generateFlightsPage(location, flights) {
           </div>
         `}
 
-        <a href="${spiritListUrl}" class="spirit-cta" target="_blank">Browse Our Full Spirit List &rarr;</a>
+        <a href="${spiritListUrl}" class="spirit-cta">Browse Our Full Spirit List &rarr;</a>
 
         <div class="footer">
           <a href="/${escHTML(location.slug)}" class="back-link">&larr; Back to ${escHTML(location.name)}</a>

@@ -36,8 +36,6 @@ function generateSpiritsPage(location, spirits = [], hasError = false) {
   const items = Array.isArray(spirits) ? spirits : [];
   const categories = Array.from(new Set(items.map((item) => item.primaryCategory || 'Other').filter(Boolean)))
     .sort((a, b) => a.localeCompare(b));
-  const noteCount = items.filter(hasSpiritNotes).length;
-  const allocatedCount = items.filter((item) => item.isAllocated).length;
   const spiritData = items.map((item) => ({
     productId: String(item.productId),
     name: item.name || '',
@@ -199,38 +197,6 @@ function generateSpiritsPage(location, spirits = [], hasError = false) {
           font-size: clamp(1.7rem, 4vw, 2.4rem);
           color: var(--cream);
           letter-spacing: 0.04em;
-        }
-        .hero-copy {
-          color: #d6d2cc;
-          font-size: 0.95rem;
-          margin-top: 10px;
-          line-height: 1.6;
-        }
-        .hero-stats {
-          margin-top: 16px;
-          display: flex;
-          gap: 12px;
-          flex-wrap: wrap;
-          justify-content: center;
-        }
-        .hero-stat {
-          min-width: 120px;
-          padding: 10px 14px;
-          border: 1px solid rgba(255,255,255,0.09);
-          border-radius: 12px;
-          background: rgba(255,255,255,0.04);
-        }
-        .hero-stat strong {
-          display: block;
-          color: var(--cream);
-          font-size: 1.2rem;
-        }
-        .hero-stat span {
-          color: var(--muted);
-          font-size: 0.76rem;
-          letter-spacing: 0.08em;
-          text-transform: uppercase;
-          font-weight: 700;
         }
         .container {
           max-width: 980px;
@@ -596,13 +562,6 @@ function generateSpiritsPage(location, spirits = [], hasError = false) {
       <div class="hero">
         <div class="hero-label">Poured By The Ounce</div>
         <div class="hero-title">Spirit List</div>
-        <p class="hero-copy">Browse the live backbar from the same Bartender dashboard the team uses, now inside the MenuQR layout for ${escHTML(location.name)}.</p>
-        <div class="hero-stats">
-          <div class="hero-stat"><strong>${items.length}</strong><span>${items.length === 1 ? 'Bottle' : 'Bottles'}</span></div>
-          <div class="hero-stat"><strong>${categories.length}</strong><span>${categories.length === 1 ? 'Category' : 'Categories'}</span></div>
-          <div class="hero-stat"><strong>${noteCount}</strong><span>With Notes</span></div>
-          <div class="hero-stat"><strong>${allocatedCount}</strong><span>Allocated</span></div>
-        </div>
       </div>
 
       <div class="container">

@@ -3,11 +3,53 @@ const { vintageThemeCss } = require('./publicTheme');
 const { brandMarkCss, renderBrandMark } = require('./brandMark');
 const { escHTML } = require('./escapeHtml');
 
+const WHISKEY_CATEGORY_ORDER = [
+  'Bourbon',
+  'Rye Whiskey',
+  'Tennessee Whiskey',
+  'American Whiskey',
+  'Canadian Whisky',
+  'Irish Whiskey',
+  'Blended Scotch',
+  'Single Malt Scotch',
+  'Japanese Whisky',
+  'Whiskey',
+  'Flavored Whiskey',
+  'International Whiskey',
+];
+
 function formatMoney(value) {
   if (value === null || value === undefined) return '';
   const numeric = Number.parseFloat(String(value));
   if (Number.isNaN(numeric)) return '';
   return `$${numeric.toFixed(2)}`;
+}
+
+function normalizeCategory(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function getWhiskeyCategoryRank(category) {
+  const normalized = normalizeCategory(category);
+  const explicitIndex = WHISKEY_CATEGORY_ORDER.findIndex((entry) => normalizeCategory(entry) === normalized);
+  if (explicitIndex >= 0) return explicitIndex;
+  if (/(bourbon|whisk|whisky|scotch|rye|tennessee)/i.test(String(category || ''))) return WHISKEY_CATEGORY_ORDER.length;
+  return Number.MAX_SAFE_INTEGER;
+}
+
+function compareSpiritCategories(a, b) {
+  const aRank = getWhiskeyCategoryRank(a);
+  const bRank = getWhiskeyCategoryRank(b);
+  if (aRank !== bRank) return aRank - bRank;
+  return String(a || '').localeCompare(String(b || ''));
+}
+
+function sortSpiritItems(items) {
+  return items.slice().sort((a, b) => {
+    const categoryDiff = compareSpiritCategories(a.primaryCategory || 'Other', b.primaryCategory || 'Other');
+    if (categoryDiff !== 0) return categoryDiff;
+    return String(a.name || '').localeCompare(String(b.name || ''));
+  });
 }
 
 function hasSpiritNotes(spirit) {
@@ -33,9 +75,9 @@ function serializeForScript(value) {
 function generateSpiritsPage(location, spirits = [], hasError = false) {
   const openState = getOpenState(location);
   const statusClass = openState.isOpen === true ? 'status-open' : openState.isOpen === false ? 'status-closed' : 'status-unknown';
-  const items = Array.isArray(spirits) ? spirits : [];
+  const items = sortSpiritItems(Array.isArray(spirits) ? spirits : []);
   const categories = Array.from(new Set(items.map((item) => item.primaryCategory || 'Other').filter(Boolean)))
-    .sort((a, b) => a.localeCompare(b));
+    .sort(compareSpiritCategories);
   const spiritData = items.map((item) => ({
     productId: String(item.productId),
     name: item.name || '',

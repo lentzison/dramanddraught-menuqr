@@ -260,6 +260,22 @@ async function handleFeedback(req, res, prisma) {
     }
   }
 
+  // Sync newsletter opt-in to public site email marketing
+  if (newsletterOptIn && guestEmail) {
+    const publicApiBase = process.env.PUBLIC_WEB_ORIGIN || 'https://public.apps.dramanddraught.com';
+    fetch(`${publicApiBase}/api/public/newsletter/subscribe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: guestEmail,
+        firstName: guestName || '',
+        source: `menuqr-${requestedSlug}`,
+      }),
+    }).catch((err) => {
+      console.warn('[menuqr] Failed to sync newsletter subscriber to public site:', err.message);
+    });
+  }
+
   const staffMailto = buildFeedbackMailto({
     email: senderEmail,
     subject: `Guest Feedback: ${location.name} (${rating}/5)`,

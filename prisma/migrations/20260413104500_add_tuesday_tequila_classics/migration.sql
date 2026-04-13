@@ -60,6 +60,7 @@ missing AS (
     AND existing.id IS NULL
 )
 INSERT INTO "DailySpecial" (
+  "id",
   "dayThemeId",
   "name",
   "description",
@@ -70,6 +71,7 @@ INSERT INTO "DailySpecial" (
   "detailText"
 )
 SELECT
+  gen_random_uuid(),
   m.day_theme_id,
   m.name,
   m.description,

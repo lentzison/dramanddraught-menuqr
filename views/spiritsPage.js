@@ -86,7 +86,6 @@ function generateSpiritsPage(location, spirits = [], hasError = false) {
     distillery: item.distillery || '',
     region: item.region || '',
     style: item.style || '',
-    bottleSize: item.bottleSize || '',
     abv: item.abv,
     oneOzPrice: item.oneOzPrice,
     oneHalfOzPrice: item.oneHalfOzPrice,
@@ -107,7 +106,6 @@ function generateSpiritsPage(location, spirits = [], hasError = false) {
       item.region || null,
       item.style || null,
       item.abv ? `${item.abv}% ABV` : null,
-      item.bottleSize || null,
     ].filter(Boolean);
 
     return `
@@ -745,7 +743,6 @@ function generateSpiritsPage(location, spirits = [], hasError = false) {
               spirit.distillery || '',
               spirit.region || '',
               spirit.abv != null ? spirit.abv + '% ABV' : '',
-              spirit.bottleSize || '',
             ].filter(Boolean);
           }
 

@@ -68,7 +68,8 @@ INSERT INTO "DailySpecial" (
   "category",
   "displayOrder",
   "section",
-  "detailText"
+  "detailText",
+  "updatedAt"
 )
 SELECT
   gen_random_uuid(),
@@ -79,6 +80,7 @@ SELECT
   'cocktail',
   30 + ROW_NUMBER() OVER (PARTITION BY m.day_theme_id ORDER BY m.sort_index) - 1,
   'Tequila Classics',
-  m.detail_text
+  m.detail_text,
+  NOW()
 FROM missing m
 ORDER BY m.day_theme_id, m.sort_index;

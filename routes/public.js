@@ -176,6 +176,96 @@ function buildStaffFeedbackBody(location, rating, guestName, guestEmail, feedbac
   );
 }
 
+// Auto-generated placeholder used when a guest leaves 5 stars without any
+// feedback text. We never want to surface that as a quote on the public site.
+const AUTO_FIVE_STAR_PLACEHOLDER = 'Guest gave a 5-star rating.';
+
+function firstNameOnly(name) {
+  if (!name || typeof name !== 'string') return null;
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+  // Take everything up to the first whitespace so we never surface a last name.
+  // Also strip any trailing punctuation (e.g. "Sarah." → "Sarah").
+  const first = trimmed.split(/\s+/)[0].replace(/[^A-Za-z0-9\-']+$/, '');
+  return first || null;
+}
+
+function applyReviewCors(res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+}
+
+async function handlePublicReviews(req, res, prisma) {
+  applyReviewCors(res);
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return true;
+  }
+
+  if (req.method !== 'GET') {
+    sendJSON(res, 405, { ok: false, error: 'Method Not Allowed' });
+    return true;
+  }
+
+  if (!prisma || !prisma.guestFeedback || typeof prisma.guestFeedback.findMany !== 'function') {
+    sendJSON(res, 200, { ok: true, reviews: [] });
+    return true;
+  }
+
+  const url = new URL(req.url, 'http://placeholder');
+  const limitRaw = parseInt(url.searchParams.get('limit') || '6', 10);
+  const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(limitRaw, 24)) : 6;
+
+  try {
+    // Pull a generous batch so we can filter out the auto-generated placeholder
+    // and still have enough real quotes to hit the requested limit.
+    const rows = await prisma.guestFeedback.findMany({
+      where: { rating: 5 },
+      orderBy: { createdAt: 'desc' },
+      take: limit * 4,
+      select: {
+        id: true,
+        rating: true,
+        guestName: true,
+        feedbackText: true,
+        locationName: true,
+        locationSlug: true,
+        createdAt: true,
+      },
+    });
+
+    const reviews = [];
+    for (const row of rows) {
+      const text = (row.feedbackText || '').trim();
+      if (!text) continue;
+      if (text === AUTO_FIVE_STAR_PLACEHOLDER) continue;
+
+      reviews.push({
+        id: row.id,
+        rating: row.rating,
+        quote: text,
+        firstName: firstNameOnly(row.guestName),
+        locationName: row.locationName || null,
+        locationSlug: row.locationSlug || null,
+        createdAt: row.createdAt ? row.createdAt.toISOString() : null,
+      });
+
+      if (reviews.length >= limit) break;
+    }
+
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    sendJSON(res, 200, { ok: true, reviews });
+    return true;
+  } catch (err) {
+    console.error('[menuqr] reviews API error:', err.message);
+    sendJSON(res, 500, { ok: false, error: 'Failed to load reviews' });
+    return true;
+  }
+}
+
 async function handleFeedback(req, res, prisma) {
   if (req.method !== 'POST') {
     sendHTML(res, 405, '<h1>Method Not Allowed</h1>');
@@ -1186,6 +1276,10 @@ async function handlePublic(req, res, pathname, prisma) {
 
   if (pathname === '/api/feedback') {
     return handleFeedback(req, res, prisma);
+  }
+
+  if (pathname === '/api/public/reviews') {
+    return handlePublicReviews(req, res, prisma);
   }
 
   if (pathname === '/api/lubrication-cup-signup') {

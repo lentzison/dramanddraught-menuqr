@@ -239,14 +239,24 @@ async function handlePublicReviews(req, res, prisma) {
 
     const reviews = [];
     for (const row of rows) {
-      const text = (row.feedbackText || '').trim();
-      if (!text) continue;
-      if (text === AUTO_FIVE_STAR_PLACEHOLDER) continue;
+      const raw = (row.feedbackText || '').trim();
+      if (!raw) continue;
+
+      // Strip the auto-generated placeholder anywhere it appears. Some entries
+      // have it as a prefix followed by the real feedback; we want to surface
+      // the real feedback without the leftover prompt text.
+      let cleaned = raw
+        .split(AUTO_FIVE_STAR_PLACEHOLDER)
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      if (!cleaned) continue;
 
       reviews.push({
         id: row.id,
         rating: row.rating,
-        quote: text,
+        quote: cleaned,
         firstName: firstNameOnly(row.guestName),
         locationName: row.locationName || null,
         locationSlug: row.locationSlug || null,

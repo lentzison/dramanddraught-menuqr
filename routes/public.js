@@ -276,6 +276,46 @@ async function handlePublicReviews(req, res, prisma) {
   }
 }
 
+async function handlePublicFlights(req, res, slug) {
+  applyReviewCors(res);
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return true;
+  }
+
+  if (req.method !== 'GET') {
+    sendJSON(res, 405, { ok: false, error: 'Method Not Allowed' });
+    return true;
+  }
+
+  try {
+    const result = await getFeaturedFlights(slug);
+    const items = (result?.items || []).map((flight) => ({
+      id: flight.id,
+      theme: flight.theme,
+      description: flight.description,
+      isFridayFlight: flight.isFridayFlight,
+      priceLabel: flight.priceLabel,
+      fridayPriceLabel: flight.fridayPriceLabel || null,
+      regularPriceLabel: flight.regularPriceLabel || null,
+      pours: (flight.pours || []).map((pour) => ({
+        spiritName: pour.spiritName,
+        pourSize: pour.pourSize,
+        tastingNotes: pour.tastingNotes || pour.description || null,
+      })),
+    }));
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    sendJSON(res, 200, { ok: true, slug, flights: items, error: result?.error || null });
+    return true;
+  } catch (err) {
+    console.error('[menuqr] flights API error:', err.message);
+    sendJSON(res, 500, { ok: false, error: 'Failed to load flights' });
+    return true;
+  }
+}
+
 async function handleFeedback(req, res, prisma) {
   if (req.method !== 'POST') {
     sendHTML(res, 405, '<h1>Method Not Allowed</h1>');
@@ -1290,6 +1330,13 @@ async function handlePublic(req, res, pathname, prisma) {
 
   if (pathname === '/api/public/reviews') {
     return handlePublicReviews(req, res, prisma);
+  }
+
+  // /api/public/flights/:slug — JSON list of currently active spirit flights
+  // for a given location, used by the public site's per-location specials page.
+  const publicFlightsMatch = pathname.match(/^\/api\/public\/flights\/([a-z0-9-]+)$/);
+  if (publicFlightsMatch) {
+    return handlePublicFlights(req, res, publicFlightsMatch[1]);
   }
 
   if (pathname === '/api/lubrication-cup-signup') {

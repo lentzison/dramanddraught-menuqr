@@ -18,17 +18,17 @@ const END = new Date(Date.UTC(2026, 4, 16, 22, 0, 0));
 
 const TITLE = 'Dram & Draught Spring Neighborhood Market';
 const DESCRIPTION = [
-  'Celebrate the season with us. We\'re opening our doors to local makers, brands, and creative partners for an afternoon of spring spirits, fresh food, and good company — and we\'d love to have you on the floor.',
+  "We're throwing an outdoor spring market at Dram & Draught Greensboro and we'd love to have you in it. Jewelry, ceramics, prints, paintings, vintage, candles, small-batch food, plants, leatherwork. If you make it, bring it.",
   '',
-  'To mark the occasion, every one of our brand-new spring & summer cocktails is $2 off all afternoon. Come pour with us.',
+  "Set up outside, meet our Saturday crowd, and keep 100% of what you sell. Every spring & summer cocktail on our menu is $2 off the whole afternoon.",
 ].join('\n');
 
 const CONFIRMATION_MESSAGE = [
-  "Thanks for applying to the Dram & Draught Spring Neighborhood Market.",
+  "Thanks for applying.",
   "",
-  "Anna and our Greensboro team review every application personally. We'll be in touch by email with a decision — usually within a few days. If you're confirmed, we'll send setup, load-in, and day-of details at the same time.",
+  "Anna reads every application herself. You'll hear back by email (usually within a few days) with a yes or a no. If it's a yes, we'll send load-in details at the same time.",
   "",
-  "Questions in the meantime? Reply to the confirmation email or write to anna@dramanddraught.com.",
+  "Questions in the meantime: anna@dramanddraught.com.",
 ].join('\n');
 
 // Eight spring / summer cocktails, in the order they appear on the menu.
@@ -46,39 +46,40 @@ const COCKTAILS = [
 
 // Sections (rich page content). Stable ids so re-seeding doesn't churn order.
 function buildSections() {
-  const sections = [
-    {
-      id: 'svs-intro',
-      type: 'text',
-      bgStyle: 'default',
-      align: 'left',
-      heading: 'Who this is for',
-      body: [
-        "We're looking for food makers, beverage brands, artists, florists, apparel lines, and anyone whose work fits the spring-social vibe. You'll get a table on the floor, exposure to our Greensboro regulars and walk-in traffic, and a spot on the printed event program.",
-        '',
-        "Vendors set up at 1:00 PM. Doors open to guests at 2:00 PM. We wrap at 6:00 PM.",
-      ].join('\n'),
-    },
+  return [
     {
       id: 'svs-details',
       type: 'details',
       bgStyle: 'gold',
       title: 'The Details',
       items: [
-        { label: 'When', value: 'Saturday, May 16, 2026 · 2:00 – 6:00 PM' },
-        { label: 'Where', value: 'Dram & Draught Greensboro — 300 West Gate City Blvd' },
-        { label: 'Vendor setup', value: '1:00 PM (1 hr before doors)' },
-        { label: 'Spring cocktail deal', value: '$2 off every spring & summer cocktail, all afternoon' },
-        { label: 'Cost to vendor', value: 'No table fee — just bring your best' },
+        { label: 'When', value: 'Saturday, May 16, 2026 · 2 – 6 PM' },
+        { label: 'Where', value: 'Dram & Draught Greensboro · 300 West Gate City Blvd' },
+        { label: 'Load-in', value: '1:00 PM · doors at 2:00 PM' },
+        { label: 'Cocktail deal', value: '$2 off every spring & summer cocktail, all afternoon' },
+        { label: 'Table fee', value: 'Free. You keep 100% of sales' },
       ],
     },
-    // Consolidated cocktail menu — one compact two-column grid of all 8 drinks.
+    {
+      id: 'svs-setup',
+      type: 'text',
+      bgStyle: 'default',
+      align: 'left',
+      heading: 'What to bring',
+      body: [
+        "The market is fully outdoors, so plan your setup for the weather. Bring your own table and your own tent or pop-up. If you need us to provide a table, say so in the form and we'll sort it out.",
+        '',
+        "Power: if you need an outlet at your spot, tell us in the form. We can't guarantee it if we don't know ahead of time.",
+        '',
+        "Selling food or drink samples? Please have proof of general liability insurance with you at load-in.",
+      ].join('\n'),
+    },
     {
       id: 'svs-menu',
       type: 'cocktailmenu',
       bgStyle: 'default',
       title: 'The Spring & Summer Menu',
-      subtitle: 'Every cocktail below is $2 off for the full event',
+      subtitle: 'All $2 off during the market',
       items: COCKTAILS.map(c => ({
         name: c.name,
         abv: c.abv,
@@ -88,42 +89,6 @@ function buildSections() {
       })),
     },
   ];
-
-  sections.push({
-    id: 'svs-faq',
-    type: 'faq',
-    bgStyle: 'default',
-    title: 'Common Questions',
-    items: [
-      {
-        question: 'What does a vendor table look like?',
-        answer: "We provide a 6-ft table, a chair or two, and access to power if needed. Bring your own signage, samples, and card reader. Tablecloths encouraged — spring colors extra encouraged.",
-      },
-      {
-        question: 'Do I need insurance?',
-        answer: "If you're serving samples of food or beverage, please have proof of general liability insurance ready when you load in. For non-consumable vendors, no insurance is required.",
-      },
-      {
-        question: 'How do applications get picked?',
-        answer: "Anna and our Greensboro GM review every application. We prioritize local makers, quality of craft, and vendor mix so the floor has real variety. Everyone hears back — yes or no.",
-      },
-      {
-        question: 'Can I sell from my table?',
-        answer: "Absolutely. You keep 100% of sales. We just ask that you handle your own transactions and sales tax.",
-      },
-    ],
-  });
-
-  sections.push({
-    id: 'svs-closing',
-    type: 'text',
-    bgStyle: 'gold',
-    align: 'center',
-    heading: 'Apply using the form →',
-    body: "Tell us about your business in the form. The more specific you can be about what you'd bring to the floor, the easier it is for us to say yes.",
-  });
-
-  return sections;
 }
 
 // Custom questions collected on the application form. Stable ids so re-seeding

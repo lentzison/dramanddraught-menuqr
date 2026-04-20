@@ -213,21 +213,23 @@ function renderSections(sections) {
     if (type === 'cocktailmenu') {
       const items = Array.isArray(s.items) ? s.items.filter(it => it && it.name) : [];
       if (items.length === 0 && !s.title) return '';
-      const cards = items.map(it => `
-        <div class="cm-card">
-          <div class="cm-card-head">
-            <div class="cm-card-name">${escHTML(it.name || '')}</div>
-            ${it.abv ? `<div class="cm-card-abv">${escHTML(it.abv)}</div>` : ''}
+      const rows = items.map(it => `
+        <div class="cm-row">
+          <div class="cm-row-head">
+            <div class="cm-row-name">${escHTML(it.name || '')}</div>
+            <div class="cm-row-meta">
+              ${it.abv ? `<span class="cm-row-abv">${escHTML(it.abv)}</span>` : ''}
+              ${it.creator ? `<span class="cm-row-creator">${escHTML(it.creator)}</span>` : ''}
+            </div>
           </div>
-          ${it.ingredients ? `<div class="cm-card-pour">${escHTML(it.ingredients)}</div>` : ''}
-          ${it.vibe ? `<div class="cm-card-vibe">${escHTML(it.vibe)}</div>` : ''}
-          ${it.creator ? `<div class="cm-card-creator">${escHTML(it.creator)}</div>` : ''}
+          ${it.ingredients ? `<div class="cm-row-pour">${escHTML(it.ingredients)}</div>` : ''}
+          ${it.vibe ? `<div class="cm-row-vibe">${escHTML(it.vibe)}</div>` : ''}
         </div>
       `).join('');
       return `<section class="ev-sec ev-sec-cocktails${bgStyleClass(s)}">
         ${s.title ? `<div class="ev-sec-details-title">${escHTML(s.title)}</div>` : ''}
         ${s.subtitle ? `<div class="cm-subtitle">${escHTML(s.subtitle)}</div>` : ''}
-        <div class="cm-grid">${cards}</div>
+        <div class="cm-list">${rows}</div>
       </section>`;
     }
 
@@ -1180,94 +1182,84 @@ function generateEventPage(location, event, signupCount, options = {}) {
           line-height: 1.5;
         }
 
-        /* ─── Cocktail menu grid (compact) ─── */
+        /* ─── Cocktail menu (tight printed-menu style) ───
+           Single column list, no cards — hairline dividers between drinks.
+           Reads like a cocktail menu, keeps the page short. */
         .ev-sec-cocktails {
           background: linear-gradient(180deg, rgba(24,25,28,0.95), rgba(15,16,18,0.98));
           border: 1px solid var(--line);
           border-radius: 18px;
-          padding: 26px 26px 22px;
+          padding: 22px 26px 18px;
           box-shadow: 0 12px 32px rgba(0,0,0,0.35);
         }
         .cm-subtitle {
           color: var(--muted);
-          font-size: 0.88rem;
+          font-size: 0.86rem;
           text-align: center;
           margin-top: -6px;
-          margin-bottom: 18px;
+          margin-bottom: 14px;
           font-style: italic;
         }
-        .cm-grid {
-          display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 12px;
+        .cm-list { display: flex; flex-direction: column; }
+        .cm-row {
+          padding: 12px 0;
+          border-bottom: 1px dashed var(--line);
         }
-        .cm-card {
-          background: rgba(255,255,255,0.02);
-          border: 1px solid var(--line);
-          border-radius: 12px;
-          padding: 14px 16px;
-        }
-        .cm-card-head {
+        .cm-row:last-child { border-bottom: none; }
+        .cm-row-head {
           display: flex;
           justify-content: space-between;
           align-items: baseline;
-          gap: 10px;
-          margin-bottom: 6px;
+          gap: 12px;
+          margin-bottom: 4px;
+          flex-wrap: wrap;
         }
-        .cm-card-name {
+        .cm-row-name {
           font-family: 'Playfair Display', Georgia, serif;
           font-weight: 800;
-          font-size: 1.02rem;
+          font-size: 1.05rem;
           color: var(--text);
-          letter-spacing: 0.02em;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
         }
-        .cm-card-abv {
-          font-size: 0.68rem;
-          font-weight: 700;
+        .cm-row-meta {
+          display: flex;
+          gap: 10px;
+          align-items: baseline;
+          flex-wrap: wrap;
+        }
+        .cm-row-abv {
+          font-size: 0.72rem;
+          font-weight: 800;
           color: var(--gold);
-          border: 1px solid var(--line-strong);
-          padding: 2px 7px;
-          border-radius: 999px;
-          letter-spacing: 0.04em;
-          white-space: nowrap;
+          letter-spacing: 0.06em;
         }
-        .cm-card-pour {
-          color: var(--steel);
-          font-size: 0.82rem;
-          line-height: 1.4;
-          margin-bottom: 4px;
-        }
-        .cm-card-vibe {
-          color: var(--muted);
-          font-size: 0.76rem;
-          font-style: italic;
-          margin-bottom: 4px;
-        }
-        .cm-card-creator {
+        .cm-row-creator {
+          font-size: 0.68rem;
           color: var(--smoke);
-          font-size: 0.7rem;
-          letter-spacing: 0.04em;
+          letter-spacing: 0.06em;
           text-transform: uppercase;
           font-weight: 700;
         }
-        @media (max-width: 600px) {
-          .cm-grid { grid-template-columns: 1fr; }
+        .cm-row-pour {
+          color: var(--steel);
+          font-size: 0.88rem;
+          line-height: 1.45;
         }
-        /* Vendor (spring) theme tweaks for the cocktail grid */
+        .cm-row-vibe {
+          color: var(--muted);
+          font-size: 0.8rem;
+          font-style: italic;
+          margin-top: 2px;
+        }
+        /* Vendor (spring) theme tweaks for the cocktail list */
         body.ev-vendor .ev-sec-cocktails {
           background: linear-gradient(180deg, #ffffff, #fff5e4);
           border-color: rgba(111,144,97,0.3);
         }
-        body.ev-vendor .cm-card {
-          background: linear-gradient(180deg, #ffffff, #fdf3dc);
-          border-color: rgba(111,144,97,0.35);
-          box-shadow: 0 4px 12px rgba(144,110,80,0.08);
-        }
-        body.ev-vendor .cm-card-abv {
-          color: #d97a5e;
-          border-color: rgba(217,122,94,0.5);
-          background: rgba(249,193,173,0.2);
-        }
+        body.ev-vendor .cm-row { border-bottom-color: rgba(111,144,97,0.22); }
+        body.ev-vendor .cm-row-abv { color: #d97a5e; }
+        body.ev-vendor .cm-row-creator { color: #6f9061; }
 
         /* ─── FAQ section ─── */
         .ev-sec-faq {

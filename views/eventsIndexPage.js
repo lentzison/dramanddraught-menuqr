@@ -13,10 +13,26 @@ function summarize(text, max = 180) {
 function eventCardMeta(event) {
   const signupCount = event.signupCount || 0;
   const status = eventStatus(event, signupCount);
-  if (status.key === 'open') return { label: 'Signups Open', tone: 'open', cta: 'Sign Up' };
+  // Vendor events double as public promo pages: guests just show up, vendors
+  // apply via the form on the event page. The card should invite both to
+  // learn more, not suggest attendees sign up.
+  const isVendor = event.isVendorEvent === true;
+  if (status.key === 'open') {
+    return isVendor
+      ? { label: 'Apply or Attend', tone: 'open', cta: 'View Event' }
+      : { label: 'Signups Open', tone: 'open', cta: 'Sign Up' };
+  }
   if (status.key === 'upcoming') return { label: 'Opens Soon', tone: 'scheduled', cta: 'View Details' };
-  if (status.key === 'full') return { label: 'Fully Booked', tone: 'full', cta: 'View Details' };
-  if (status.key === 'closed') return { label: 'Signups Closed', tone: 'closed', cta: 'View Details' };
+  if (status.key === 'full') {
+    return isVendor
+      ? { label: 'Applications Closed', tone: 'full', cta: 'View Event' }
+      : { label: 'Fully Booked', tone: 'full', cta: 'View Details' };
+  }
+  if (status.key === 'closed') {
+    return isVendor
+      ? { label: 'Applications Closed', tone: 'closed', cta: 'View Event' }
+      : { label: 'Signups Closed', tone: 'closed', cta: 'View Details' };
+  }
   if (status.key === 'cancelled') return { label: 'Cancelled', tone: 'cancelled', cta: 'View Details' };
   if (status.key === 'no-signups') return { label: 'Info Only', tone: 'info', cta: 'View Event' };
   return { label: 'Event', tone: 'neutral', cta: 'View Event' };

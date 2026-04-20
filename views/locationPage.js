@@ -6,10 +6,23 @@ const { eventStatus, formatEventDate, formatEventTime } = require('./eventPage')
 
 function locationEventMeta(event) {
   const status = eventStatus(event, event.signupCount || 0);
-  if (status.key === 'open') return { label: 'Signups Open', tone: 'open', cta: 'Sign Up' };
+  const isVendor = event.isVendorEvent === true;
+  if (status.key === 'open') {
+    return isVendor
+      ? { label: 'Apply or Attend', tone: 'open', cta: 'View Event' }
+      : { label: 'Signups Open', tone: 'open', cta: 'Sign Up' };
+  }
   if (status.key === 'upcoming') return { label: 'Opens Soon', tone: 'scheduled', cta: 'View Details' };
-  if (status.key === 'full') return { label: 'Fully Booked', tone: 'full', cta: 'View Details' };
-  if (status.key === 'closed') return { label: 'Signups Closed', tone: 'closed', cta: 'View Details' };
+  if (status.key === 'full') {
+    return isVendor
+      ? { label: 'Applications Closed', tone: 'full', cta: 'View Event' }
+      : { label: 'Fully Booked', tone: 'full', cta: 'View Details' };
+  }
+  if (status.key === 'closed') {
+    return isVendor
+      ? { label: 'Applications Closed', tone: 'closed', cta: 'View Event' }
+      : { label: 'Signups Closed', tone: 'closed', cta: 'View Details' };
+  }
   if (status.key === 'no-signups') return { label: 'Info Only', tone: 'info', cta: 'View Event' };
   return { label: 'Event', tone: 'neutral', cta: 'View Event' };
 }

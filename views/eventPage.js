@@ -157,8 +157,12 @@ function renderSections(sections, options = {}) {
     if (type === 'button') {
       if (!s.url) return '';
       const styleClass = s.style === 'secondary' ? 'ev-sec-btn-secondary' : 'ev-sec-btn-primary';
+      // Same-tab navigation for in-page anchors (#apply etc.) — opening a
+      // new tab for a hash link is jarring.
+      const isAnchor = String(s.url).startsWith('#');
+      const attrs = isAnchor ? '' : 'target="_blank" rel="noopener noreferrer"';
       return `<section class="ev-sec ev-sec-button${bgStyleClass(s)}">
-        <a href="${escHTML(s.url)}" class="ev-sec-btn ${styleClass}" target="_blank" rel="noopener noreferrer">${escHTML(s.label || 'Learn More')}</a>
+        <a href="${escHTML(s.url)}" class="ev-sec-btn ${styleClass}" ${attrs}>${escHTML(s.label || 'Learn More')}</a>
       </section>`;
     }
 
@@ -295,10 +299,10 @@ function renderCustomFields(event, prevValues = {}) {
         </select>`;
     }
     if (q.type === 'images-multi') {
-      // Compact multi-file uploader. One hidden field carries a JSON array of
-      // data URLs; the client-side script appends to it, renders a thumbnail
-      // grid, and enforces the max count. Server-side parsing recognizes the
-      // JSON array and stores it on customAnswers as an array.
+      // Compact multi-file uploader. The form only shows a small trigger
+      // button + summary; the actual drop zone and thumbnail grid live in a
+      // shared modal (rendered once near the end of <body>). The hidden
+      // field carries a JSON-stringified array of data URLs.
       const max = Number.isFinite(q.max) && q.max > 0 ? q.max : 5;
       let prevArr = [];
       try {
@@ -306,16 +310,16 @@ function renderCustomFields(event, prevValues = {}) {
         if (Array.isArray(parsed)) prevArr = parsed;
       } catch (e) { prevArr = []; }
       const hiddenValue = prevArr.length ? JSON.stringify(prevArr) : '';
+      const hintText = q.hint || `Optional, but adding work samples helps us evaluate your application (up to ${max}).`;
       return `<label>${escHTML(q.label)}${reqMark}</label>
-        <div class="ev-cq-images-wrap" data-max="${max}" data-target="cq-${escHTML(q.id)}">
-          <label class="ev-cq-images-drop" for="cq-${escHTML(q.id)}-file">
-            <span class="ev-cq-images-drop-label">+ Add images</span>
+        <div class="ev-cq-images-wrap" data-max="${max}" data-target="cq-${escHTML(q.id)}" data-modal-title="${escHTML(q.label)}">
+          <button type="button" class="ev-cq-images-open" data-target="cq-${escHTML(q.id)}">
+            <span class="ev-cq-images-open-label" id="cq-${escHTML(q.id)}-open-label">+ Add images</span>
             <span class="ev-cq-images-count" id="cq-${escHTML(q.id)}-count">0 / ${max}</span>
-            <input type="file" id="cq-${escHTML(q.id)}-file" class="ev-cq-images-file" data-target="cq-${escHTML(q.id)}" accept="image/jpeg,image/png,image/webp,image/gif" multiple />
-          </label>
+          </button>
+          <div class="ev-cq-images-summary" id="cq-${escHTML(q.id)}-summary"></div>
           <input type="hidden" id="cq-${escHTML(q.id)}" name="cq_${escHTML(q.id)}" value="${escHTML(hiddenValue)}" />
-          <div class="ev-cq-images-grid" id="cq-${escHTML(q.id)}-grid"></div>
-          <div class="ev-cq-images-hint">Up to ${max} images, ~500&#8239;KB each. JPG/PNG/WebP.</div>
+          <div class="ev-cq-images-hint">${escHTML(hintText)}</div>
         </div>`;
     }
     if (q.type === 'image') {
@@ -413,14 +417,14 @@ function generateEventPage(location, event, signupCount, options = {}) {
   ` : '';
 
   const sideCard = canSignup ? `
-    <aside class="ev-side-card">
+    <aside class="ev-side-card" id="apply">
       <div class="ev-side-kicker">${escHTML(sideKicker)}</div>
       <h2 class="ev-side-title">${escHTML(sideTitle)}</h2>
       <p class="ev-side-copy">${escHTML(sideCopy)}</p>
       ${signupForm}
     </aside>
   ` : status.key === 'no-signups' ? `
-    <aside class="ev-side-card">
+    <aside class="ev-side-card" id="apply">
       <div class="ev-side-kicker">Event Details</div>
       <h2 class="ev-side-title">No signup required</h2>
       <p class="ev-side-copy">This page is informational only. Check the event details and come by at the listed time.</p>
@@ -430,7 +434,7 @@ function generateEventPage(location, event, signupCount, options = {}) {
       </div>
     </aside>
   ` : `
-    <aside class="ev-side-card">
+    <aside class="ev-side-card" id="apply">
       ${renderStatusBanner(status, event)}
       <div class="ev-side-actions">
         <a href="${escHTML(eventsPath)}" class="ev-side-link">Browse all events</a>
@@ -795,30 +799,27 @@ function generateEventPage(location, event, signupCount, options = {}) {
           z-index: 2;
         }
 
-        /* Classical bust peeking out to the LEFT of the details block.
-           Rendered as ::before anchored to the card's left edge with a
-           negative offset; z-index: -1 pushes it behind the card background
-           so only the overhanging portion is visible, appearing to sit in
-           the margin alongside the card. Hidden on narrow screens where
-           there's no margin room. */
-        body.ev-art .ev-details {
-          position: relative;
+        /* Classical bust lives in the hero, balancing the ornate frame on
+           the opposite side. Placed to the bottom-left of the hero placard
+           with a slight outward offset so it reads as decor pinned to the
+           hero, not as content. Mobile shrinks and pulls it in. */
+        body.ev-art .ev-hero {
           overflow: visible;
         }
-        body.ev-art .ev-details::before {
-          content: '';
+        body.ev-art .ev-hero > .ev-hero-statue {
           position: absolute;
-          bottom: -20px;
-          left: -108px;
+          bottom: -40px;
+          left: -34px;
           width: 150px;
           height: 220px;
           background: url('/assets/artpopup/statue.png') center/contain no-repeat;
-          filter: drop-shadow(0 14px 22px rgba(0,0,0,0.35));
+          filter: drop-shadow(0 14px 22px rgba(0,0,0,0.4));
+          transform: rotate(-6deg);
           pointer-events: none;
-          z-index: -1;
+          z-index: 1;
         }
-        @media (max-width: 960px) {
-          body.ev-art .ev-details::before { display: none; }
+        @media (max-width: 640px) {
+          body.ev-art .ev-hero > .ev-hero-statue { width: 86px; height: 130px; left: -12px; bottom: -22px; }
         }
         body.ev-art .ev-hero-eyebrow {
           color: #d14c2e;
@@ -1837,18 +1838,20 @@ function generateEventPage(location, event, signupCount, options = {}) {
           margin-bottom: 16px;
           font-size: 0.9rem;
         }
-        /* Multi-image upload custom question — compact: single drop button +
-           thumbnail grid, instead of 5 separate file inputs. */
+        /* Multi-image upload — form shows only a compact trigger button +
+           a small summary of already-added thumbnails. The heavy UI (drop
+           zone + grid) lives inside .ev-modal. */
         .ev-cq-images-wrap {
-          background: var(--panel-strong);
-          border: 1px solid var(--line);
-          border-radius: 10px;
-          padding: 12px;
+          background: transparent;
+          border: 0;
+          padding: 0;
         }
-        .ev-cq-images-drop {
+        .ev-cq-images-open {
           display: flex;
           justify-content: space-between;
           align-items: center;
+          gap: 10px;
+          width: 100%;
           padding: 12px 14px;
           background: transparent;
           border: 2px dashed var(--line-strong);
@@ -1856,23 +1859,54 @@ function generateEventPage(location, event, signupCount, options = {}) {
           color: var(--steel);
           cursor: pointer;
           font-size: 0.88rem;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+          transition: background 0.15s, border-color 0.15s;
+        }
+        .ev-cq-images-open:hover { background: rgba(255,255,255,0.04); border-color: var(--gold); }
+        .ev-cq-images-open-label { font-weight: 700; letter-spacing: 0.03em; }
+        .ev-cq-images-count { color: var(--smoke); font-size: 0.78rem; font-weight: 700; white-space: nowrap; }
+        .ev-cq-images-summary {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(52px, 1fr));
+          gap: 4px;
+          margin-top: 8px;
+        }
+        .ev-cq-images-summary:empty { display: none; }
+        .ev-cq-images-summary .ev-cq-images-thumb { aspect-ratio: 1; }
+        .ev-cq-images-hint { color: var(--smoke); font-size: 0.76rem; margin-top: 6px; }
+
+        /* Drop zone inside the modal. Same visual language as the inline
+           trigger but slightly larger/opener since space is not tight. */
+        .ev-cq-images-drop {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 18px 16px;
+          background: transparent;
+          border: 2px dashed var(--line-strong);
+          border-radius: 10px;
+          color: var(--steel);
+          cursor: pointer;
+          font-size: 0.95rem;
           transition: background 0.15s, border-color 0.15s;
         }
         .ev-cq-images-drop:hover { background: rgba(255,255,255,0.04); border-color: var(--gold); }
         .ev-cq-images-drop input[type="file"] { display: none; }
         .ev-cq-images-drop-label { font-weight: 700; letter-spacing: 0.03em; }
-        .ev-cq-images-count { color: var(--smoke); font-size: 0.78rem; font-weight: 700; }
+
+        /* Shared thumbnail styling (used both in the form-level summary and
+           inside the modal grid). */
         .ev-cq-images-grid {
           display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
-          gap: 6px;
-          margin-top: 10px;
+          grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+          gap: 8px;
+          margin-top: 12px;
         }
         .ev-cq-images-grid:empty { margin-top: 0; }
         .ev-cq-images-thumb {
           position: relative;
           aspect-ratio: 1;
-          border-radius: 6px;
+          border-radius: 8px;
           overflow: hidden;
           border: 1px solid var(--line);
           background: rgba(0,0,0,0.3);
@@ -1882,7 +1916,7 @@ function generateEventPage(location, event, signupCount, options = {}) {
         }
         .ev-cq-images-remove {
           position: absolute;
-          top: 3px; right: 3px;
+          top: 4px; right: 4px;
           width: 22px; height: 22px;
           background: rgba(0,0,0,0.75);
           color: #fff;
@@ -1897,16 +1931,116 @@ function generateEventPage(location, event, signupCount, options = {}) {
           padding: 0;
         }
         .ev-cq-images-remove:hover { background: #d14c2e; }
-        .ev-cq-images-hint {
-          color: var(--smoke);
-          font-size: 0.76rem;
-          margin-top: 8px;
-        }
-        /* Vendor + art theme input field colors for the drop button */
+
+        /* Theme tweaks for the inline trigger and drop zones */
+        body.ev-vendor .ev-cq-images-open,
         body.ev-vendor .ev-cq-images-drop { background: #fff9ea; color: #2a3326; border-color: rgba(111,144,97,0.45); }
+        body.ev-vendor .ev-cq-images-open:hover,
         body.ev-vendor .ev-cq-images-drop:hover { background: #ffffff; border-color: #6f9061; }
+        body.ev-art .ev-cq-images-open,
         body.ev-art .ev-cq-images-drop { background: #fffdf5; color: #1a1816; border-color: #1a1816; }
+        body.ev-art .ev-cq-images-open:hover,
         body.ev-art .ev-cq-images-drop:hover { background: #ffffff; border-color: #d14c2e; }
+
+        /* Modal overlay */
+        .ev-modal {
+          position: fixed; inset: 0;
+          z-index: 1000;
+          display: flex; align-items: center; justify-content: center;
+          padding: 20px;
+        }
+        .ev-modal[hidden] { display: none; }
+        .ev-modal-backdrop {
+          position: absolute; inset: 0;
+          background: rgba(0,0,0,0.6);
+          backdrop-filter: blur(3px);
+        }
+        .ev-modal-panel {
+          position: relative;
+          background: var(--panel);
+          border: 1px solid var(--line);
+          border-radius: 16px;
+          max-width: 560px;
+          width: 100%;
+          max-height: calc(100vh - 40px);
+          display: flex;
+          flex-direction: column;
+          box-shadow: 0 24px 60px rgba(0,0,0,0.45);
+          color: var(--text);
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+        body.ev-art .ev-modal-panel {
+          background: #fffaf0;
+          border: 3px solid #1a1816;
+          box-shadow: 12px 12px 0 #1a1816, 0 24px 60px rgba(0,0,0,0.5);
+        }
+        body.ev-vendor .ev-modal-panel {
+          background: #ffffff;
+          border: 1px solid rgba(111,144,97,0.4);
+          box-shadow: 0 24px 60px rgba(144,110,80,0.35);
+        }
+        .ev-modal-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 16px 20px;
+          border-bottom: 1px solid var(--line);
+        }
+        body.ev-art .ev-modal-head { border-bottom-color: rgba(26,24,22,0.2); }
+        .ev-modal-title {
+          font-family: 'Playfair Display', Georgia, serif;
+          font-weight: 800;
+          font-size: 1.15rem;
+          margin: 0;
+          color: var(--text);
+        }
+        .ev-modal-close {
+          background: transparent;
+          border: 0;
+          color: var(--muted);
+          font-size: 1.8rem;
+          line-height: 1;
+          cursor: pointer;
+          padding: 0 4px;
+        }
+        .ev-modal-close:hover { color: var(--text); }
+        .ev-modal-body {
+          padding: 16px 20px;
+          overflow-y: auto;
+          flex: 1 1 auto;
+        }
+        .ev-modal-foot {
+          padding: 14px 20px;
+          border-top: 1px solid var(--line);
+          display: flex;
+          justify-content: flex-end;
+        }
+        body.ev-art .ev-modal-foot { border-top-color: rgba(26,24,22,0.2); }
+        .ev-modal-done {
+          padding: 10px 22px;
+          background: var(--gold);
+          color: #fff;
+          border: 0;
+          border-radius: 8px;
+          font-weight: 700;
+          cursor: pointer;
+          font-family: 'Inter', sans-serif;
+          font-size: 0.92rem;
+          letter-spacing: 0.04em;
+        }
+        body.ev-art .ev-modal-done {
+          background: #1a1816;
+          color: #e7b83a;
+          border: 2px solid #1a1816;
+          box-shadow: 4px 4px 0 #d14c2e;
+        }
+        body.ev-art .ev-modal-done:hover { background: #d14c2e; color: #fffaf0; }
+        body.ev-vendor .ev-modal-done { background: linear-gradient(135deg, #6f9061, #a3c48d); color: #1f2a1c; }
+        body:not(.ev-art):not(.ev-vendor) .ev-modal-done { background: linear-gradient(135deg, var(--gold), var(--amber)); color: #0c0c0c; }
+        @media (max-width: 560px) {
+          .ev-modal { padding: 0; align-items: flex-end; }
+          .ev-modal-panel { border-radius: 16px 16px 0 0; max-height: 90vh; }
+        }
 
         /* Legacy single-image custom question */
         .ev-cq-image-wrap {
@@ -1965,6 +2099,7 @@ function generateEventPage(location, event, signupCount, options = {}) {
         </div>
 
         <div class="ev-hero">
+          ${isArt ? '<div class="ev-hero-statue" aria-hidden="true"></div>' : ''}
           ${renderBrandMark()}
           <div class="ev-hero-eyebrow">${escHTML(heroEyebrow)}</div>
           <h1 class="ev-hero-title">${escHTML(event.title)}</h1>
@@ -1972,6 +2107,28 @@ function generateEventPage(location, event, signupCount, options = {}) {
           <div class="ev-hero-location">${escHTML(location.name)}</div>
         </div>
 
+        ${(Array.isArray(event.customQuestions) && event.customQuestions.some(q => q && q.type === 'images-multi')) ? `
+        <div class="ev-modal" id="ev-images-modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="ev-images-modal-title">
+          <div class="ev-modal-backdrop" data-close></div>
+          <div class="ev-modal-panel">
+            <div class="ev-modal-head">
+              <h3 class="ev-modal-title" id="ev-images-modal-title">Your images</h3>
+              <button type="button" class="ev-modal-close" data-close aria-label="Close">×</button>
+            </div>
+            <div class="ev-modal-body">
+              <label class="ev-cq-images-drop" for="ev-images-modal-file">
+                <span class="ev-cq-images-drop-label">+ Choose images</span>
+                <span class="ev-cq-images-count" id="ev-images-modal-count">0 / 5</span>
+                <input type="file" id="ev-images-modal-file" class="ev-cq-images-file" accept="image/jpeg,image/png,image/webp,image/gif" multiple />
+              </label>
+              <div class="ev-cq-images-grid" id="ev-images-modal-grid"></div>
+              <div class="ev-cq-images-hint">Up to <span id="ev-images-modal-max">5</span> images, ~500&#8239;KB each. JPG/PNG/WebP.</div>
+            </div>
+            <div class="ev-modal-foot">
+              <button type="button" class="ev-modal-done" data-close>Done</button>
+            </div>
+          </div>
+        </div>` : ''}
         <div class="ev-main-grid">
           <div class="ev-main-col">
             ${event.image ? `<img src="${escHTML(event.image)}" alt="${escHTML(event.title)}" class="ev-banner-img" />` : ''}
@@ -2004,20 +2161,61 @@ function generateEventPage(location, event, signupCount, options = {}) {
         // Track which image inputs are still loading so submit can wait.
         var pendingImageReads = 0;
 
-        // Multi-image upload widget: accumulate selected files as data URLs
-        // in a JSON array stored in a single hidden input. Supports removing
-        // individual thumbnails and caps at the wrapper's data-max count.
-        function renderImagesGrid(targetId) {
-          var hidden = document.getElementById(targetId);
-          var grid = document.getElementById(targetId + '-grid');
-          var countEl = document.getElementById(targetId + '-count');
-          var wrap = hidden && hidden.closest('.ev-cq-images-wrap');
-          var max = wrap ? (parseInt(wrap.getAttribute('data-max'), 10) || 5) : 5;
-          var arr = [];
-          try { arr = hidden && hidden.value ? JSON.parse(hidden.value) : []; } catch (e) { arr = []; }
-          if (!Array.isArray(arr)) arr = [];
-          if (grid) {
-            grid.innerHTML = '';
+        // Modal-based multi-image uploader. The form shows just a trigger
+        // button + compact thumbnail summary; the drop zone + full grid live
+        // in a single shared modal bound to whichever question opened it.
+        (function() {
+          var modal = document.getElementById('ev-images-modal');
+          if (!modal) return;
+          var modalFile  = document.getElementById('ev-images-modal-file');
+          var modalGrid  = document.getElementById('ev-images-modal-grid');
+          var modalCount = document.getElementById('ev-images-modal-count');
+          var modalMax   = document.getElementById('ev-images-modal-max');
+          var modalTitle = document.getElementById('ev-images-modal-title');
+          var activeTarget = null;
+
+          function getArr(targetId) {
+            var hidden = document.getElementById(targetId);
+            if (!hidden) return [];
+            try {
+              var a = hidden.value ? JSON.parse(hidden.value) : [];
+              return Array.isArray(a) ? a : [];
+            } catch (e) { return []; }
+          }
+          function setArr(targetId, arr) {
+            var hidden = document.getElementById(targetId);
+            if (!hidden) return;
+            hidden.value = arr.length ? JSON.stringify(arr) : '';
+          }
+          function getMax(targetId) {
+            var wrap = document.querySelector('.ev-cq-images-wrap[data-target="' + targetId + '"]');
+            return wrap ? (parseInt(wrap.getAttribute('data-max'), 10) || 5) : 5;
+          }
+          function renderFormSummary(targetId) {
+            var arr = getArr(targetId);
+            var max = getMax(targetId);
+            var countEl = document.getElementById(targetId + '-count');
+            var labelEl = document.getElementById(targetId + '-open-label');
+            var summary = document.getElementById(targetId + '-summary');
+            if (countEl) countEl.textContent = arr.length + ' / ' + max;
+            if (labelEl) labelEl.textContent = arr.length > 0 ? 'Edit images' : '+ Add images';
+            if (summary) {
+              summary.innerHTML = '';
+              arr.forEach(function(src) {
+                var thumb = document.createElement('div');
+                thumb.className = 'ev-cq-images-thumb';
+                var img = document.createElement('img');
+                img.src = src;
+                thumb.appendChild(img);
+                summary.appendChild(thumb);
+              });
+            }
+          }
+          function renderModalGrid() {
+            if (!activeTarget || !modalGrid) return;
+            var arr = getArr(activeTarget);
+            var max = getMax(activeTarget);
+            modalGrid.innerHTML = '';
             arr.forEach(function(src, idx) {
               var thumb = document.createElement('div');
               thumb.className = 'ev-cq-images-thumb';
@@ -2027,85 +2225,100 @@ function generateEventPage(location, event, signupCount, options = {}) {
               var btn = document.createElement('button');
               btn.type = 'button';
               btn.className = 'ev-cq-images-remove';
-              btn.setAttribute('data-target', targetId);
               btn.setAttribute('data-idx', String(idx));
               btn.setAttribute('aria-label', 'Remove image');
               btn.textContent = '×';
               thumb.appendChild(btn);
-              grid.appendChild(thumb);
+              modalGrid.appendChild(thumb);
+            });
+            if (modalCount) modalCount.textContent = arr.length + ' / ' + max;
+            if (modalMax) modalMax.textContent = max;
+          }
+          function openModal(targetId) {
+            activeTarget = targetId;
+            var wrap = document.querySelector('.ev-cq-images-wrap[data-target="' + targetId + '"]');
+            if (modalTitle) modalTitle.textContent = wrap ? (wrap.getAttribute('data-modal-title') || 'Your images') : 'Your images';
+            modal.hidden = false;
+            modal.setAttribute('aria-hidden', 'false');
+            document.documentElement.style.overflow = 'hidden';
+            renderModalGrid();
+          }
+          function closeModal() {
+            if (activeTarget) renderFormSummary(activeTarget);
+            activeTarget = null;
+            modal.hidden = true;
+            modal.setAttribute('aria-hidden', 'true');
+            document.documentElement.style.overflow = '';
+            if (modalFile) modalFile.value = '';
+          }
+
+          // Triggers: the per-question "+ Add images" button in the form.
+          document.querySelectorAll('.ev-cq-images-open').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+              openModal(btn.getAttribute('data-target'));
+            });
+          });
+          // Close: backdrop click, X, Done, or Esc key.
+          modal.addEventListener('click', function(e) {
+            if (e.target && e.target.hasAttribute('data-close')) closeModal();
+          });
+          document.addEventListener('keydown', function(e) {
+            if (!modal.hidden && e.key === 'Escape') closeModal();
+          });
+          // File picker inside the modal.
+          if (modalFile) {
+            modalFile.addEventListener('change', function() {
+              if (!activeTarget) return;
+              var max = getMax(activeTarget);
+              var current = getArr(activeTarget);
+              var files = Array.from(modalFile.files || []);
+              var hitLimit = false;
+              for (var i = 0; i < files.length; i++) {
+                if (current.length + (i - (hitLimit ? 1 : 0)) >= max) { hitLimit = true; break; }
+                var file = files[i];
+                if (file.size > 750 * 1024) {
+                  alert('"' + file.name + '" is too large. Max ~500 KB per image.');
+                  continue;
+                }
+                pendingImageReads++;
+                (function(f) {
+                  var reader = new FileReader();
+                  reader.onload = function() {
+                    var a = getArr(activeTarget);
+                    if (a.length < getMax(activeTarget)) {
+                      a.push(reader.result);
+                      setArr(activeTarget, a);
+                      renderModalGrid();
+                    }
+                    pendingImageReads--;
+                  };
+                  reader.onerror = function() { pendingImageReads--; };
+                  reader.readAsDataURL(f);
+                })(file);
+              }
+              if (hitLimit) alert('You can upload up to ' + max + ' images.');
+              modalFile.value = '';
             });
           }
-          if (countEl) countEl.textContent = arr.length + ' / ' + max;
-        }
-        // Initialize any pre-populated galleries (after form validation errors
-        // we re-serve the page with previous values carried through).
-        document.querySelectorAll('.ev-cq-images-wrap').forEach(function(wrap) {
-          var target = wrap.getAttribute('data-target');
-          if (target) renderImagesGrid(target);
-        });
-        document.addEventListener('change', function(e) {
-          if (!e.target.classList || !e.target.classList.contains('ev-cq-images-file')) return;
-          var input = e.target;
-          var targetId = input.getAttribute('data-target');
-          var hidden = document.getElementById(targetId);
-          var wrap = input.closest('.ev-cq-images-wrap');
-          if (!hidden || !wrap) return;
-          var max = parseInt(wrap.getAttribute('data-max'), 10) || 5;
-          var current = [];
-          try { current = hidden.value ? JSON.parse(hidden.value) : []; } catch (err) { current = []; }
-          if (!Array.isArray(current)) current = [];
-          var files = Array.from(input.files || []);
-          var addedAny = false;
-          for (var i = 0; i < files.length; i++) {
-            if (current.length >= max) {
-              alert('You can upload up to ' + max + ' images.');
-              break;
-            }
-            var file = files[i];
-            if (file.size > 750 * 1024) {
-              alert('"' + file.name + '" is too large. Max ~500 KB per image.');
-              continue;
-            }
-            pendingImageReads++;
-            addedAny = true;
-            (function(f) {
-              var reader = new FileReader();
-              reader.onload = function() {
-                try {
-                  var a = hidden.value ? JSON.parse(hidden.value) : [];
-                  if (!Array.isArray(a)) a = [];
-                  if (a.length < max) {
-                    a.push(reader.result);
-                    hidden.value = JSON.stringify(a);
-                    renderImagesGrid(targetId);
-                  }
-                } catch (err) {}
-                pendingImageReads--;
-              };
-              reader.onerror = function() {
-                pendingImageReads--;
-                alert('Could not read "' + f.name + '". Try a different file.');
-              };
-              reader.readAsDataURL(f);
-            })(file);
+          // Remove thumb inside modal.
+          if (modalGrid) {
+            modalGrid.addEventListener('click', function(e) {
+              if (!e.target.classList || !e.target.classList.contains('ev-cq-images-remove')) return;
+              var idx = parseInt(e.target.getAttribute('data-idx'), 10);
+              if (isNaN(idx) || !activeTarget) return;
+              var arr = getArr(activeTarget);
+              arr.splice(idx, 1);
+              setArr(activeTarget, arr);
+              renderModalGrid();
+            });
           }
-          input.value = '';
-          if (!addedAny) return;
-        });
-        document.addEventListener('click', function(e) {
-          if (!e.target.classList || !e.target.classList.contains('ev-cq-images-remove')) return;
-          var btn = e.target;
-          var targetId = btn.getAttribute('data-target');
-          var idx = parseInt(btn.getAttribute('data-idx'), 10);
-          var hidden = document.getElementById(targetId);
-          if (!hidden || isNaN(idx)) return;
-          var current = [];
-          try { current = hidden.value ? JSON.parse(hidden.value) : []; } catch (err) { current = []; }
-          if (!Array.isArray(current)) current = [];
-          current.splice(idx, 1);
-          hidden.value = current.length ? JSON.stringify(current) : '';
-          renderImagesGrid(targetId);
-        });
+          // Hydrate every form-level summary on load (so prev values render
+          // after a validation redirect).
+          document.querySelectorAll('.ev-cq-images-wrap').forEach(function(wrap) {
+            var t = wrap.getAttribute('data-target');
+            if (t) renderFormSummary(t);
+          });
+        })();
 
         // Image-upload custom questions: read file as base64 and store in
         // the corresponding hidden input so it submits with the form.

@@ -26,8 +26,31 @@ const CONFIRMATION_MESSAGE = [
   "",
   "Jamie reads every application and sends invites to accepted artists as slots open up. If you're in, you'll get an email from jamie@dramanddraught.com with next steps: the $10 lock-in fee to reserve your spot, 5 photos of your work so we can boost you on social, and day-of setup details.",
   "",
-  "Questions: jamie@dramanddraught.com or (919) 971-3889.",
+  "Questions: jamie@dramanddraught.com.",
 ].join('\n');
+
+const COCKTAILS = [
+  {
+    name: 'BRUSHSTROKE BUCCANEER',
+    ingredients: 'Captain Morgan, pineapple, orange, lime, strawberry-lemon oleo, coconut cream, tiki bitters',
+    vibe: 'bright, creamy, tropical',
+  },
+  {
+    name: 'ESPRESSO EXPRESSIONISM',
+    ingredients: 'Astral Reposado, Mr. Black, coffee, vanilla demerara',
+    vibe: 'rich, roasted, smooth',
+  },
+  {
+    name: 'RANGPUR IN AMBER',
+    ingredients: 'Tanqueray Rangpur, lemon, honey, Russian honey bitters, soda',
+    vibe: 'crisp, citrusy, refreshing',
+  },
+  {
+    name: 'STUDIO SPRITZ',
+    ingredients: 'Ketel One, grenadine, peach bitters, lemon, prosecco, soda',
+    vibe: 'light, fruity, bubbly',
+  },
+];
 
 function buildSections() {
   return [
@@ -42,6 +65,14 @@ function buildSections() {
         { label: 'Artist setup', value: 'Starts at 12 PM · everyone in place by 1 PM' },
         { label: 'Setting', value: 'Indoor + covered outdoor patio, first come first serve' },
       ],
+    },
+    {
+      id: 'ap-menu',
+      type: 'cocktailmenu',
+      bgStyle: 'default',
+      title: 'Signature Cocktails',
+      subtitle: 'All cocktails $12',
+      items: COCKTAILS,
     },
     {
       id: 'ap-parking',

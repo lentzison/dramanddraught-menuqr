@@ -24,7 +24,7 @@ const DESCRIPTION = [
 const CONFIRMATION_MESSAGE = [
   "Thanks for applying.",
   "",
-  "We'll send invites to accepted artists as slots open up. If you're in, you'll get an email from jamie@dramanddraught.com with next steps: the $10 lock-in fee to reserve your spot, 5 photos of your work so we can boost you on social, and day-of setup details.",
+  "We'll send invites to accepted artists as slots open up. If you're in, you'll hear from jamie@dramanddraught.com with more details.",
   "",
   "Questions: jamie@dramanddraught.com.",
 ].join('\n');
@@ -75,21 +75,6 @@ function buildSections() {
       subtitle: 'All cocktails $12',
       items: COCKTAILS,
     },
-    {
-      id: 'ap-artist-callout',
-      type: 'text',
-      bgStyle: 'gold',
-      align: 'center',
-      stackedImages: [
-        '/assets/artpopup/artist.png',
-        '/assets/artpopup/wanted.png',
-      ],
-      body: [
-        "We're still taking applications. Painting, illustration, photography, printmaking, ceramics, jewelry, sculpture, collage, digital, whatever you make.",
-        '',
-        "Fill out the form to apply.",
-      ].join('\n'),
-    },
 
     // ── Post-submit acknowledgment (only shown on the terms page) ────────
     {
@@ -126,12 +111,9 @@ function buildSections() {
       ackOnly: true,
       heading: 'After you\u2019re accepted',
       body: [
-        "Once Jamie sends your invite, you'll email jamie@dramanddraught.com with:",
+        "We'll be in touch with more details once you've been accepted.",
         '',
-        "1) A $10 lock-in fee to reserve your spot.",
-        "2) Five photos of your work so we can hype you on our social accounts.",
-        '',
-        "Full day-of details will come in that invite email.",
+        "We'll use the images you uploaded to hype you on our social accounts ahead of the event.",
       ].join('\n'),
     },
   ];
@@ -145,6 +127,13 @@ const CUSTOM_QUESTIONS = [
   { id: 'q_price_range', label: 'Price Range of Your Work', type: 'text', required: true },
   { id: 'q_instagram', label: 'Instagram Handle', type: 'text', required: false },
   { id: 'q_table', label: 'Would you like to use one of our tables?', type: 'yesno', required: true },
+  // Up to 5 work samples. First is required so every application includes at
+  // least one piece; the rest are optional.
+  { id: 'q_work_1', label: 'Image 1 of your work', type: 'image', required: true },
+  { id: 'q_work_2', label: 'Image 2 (optional)', type: 'image', required: false },
+  { id: 'q_work_3', label: 'Image 3 (optional)', type: 'image', required: false },
+  { id: 'q_work_4', label: 'Image 4 (optional)', type: 'image', required: false },
+  { id: 'q_work_5', label: 'Image 5 (optional)', type: 'image', required: false },
 ];
 
 async function main() {

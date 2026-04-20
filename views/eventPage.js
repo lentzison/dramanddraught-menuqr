@@ -750,6 +750,55 @@ function generateEventPage(location, event, signupCount, options = {}) {
         @media (max-width: 640px) {
           body.ev-art .ev-hero::after { width: 88px; height: 130px; right: -8px; top: -16px; }
         }
+
+        /* ARTISTS + WANTED drip-text stacked inside the hero, replacing the
+           plain "Artists Wanted" eyebrow text. Each image tilts a bit and
+           overlaps the next to read as a single flyer masthead. */
+        body.ev-art .ev-hero-art-stack {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          margin: -4px auto 10px;
+          position: relative;
+          z-index: 2;
+        }
+        body.ev-art .ev-hero-art-stack img {
+          display: block;
+          max-width: min(260px, 66%);
+          height: auto;
+          filter: drop-shadow(0 8px 14px rgba(0,0,0,0.3));
+        }
+        body.ev-art .ev-hero-art-stack img:first-child { transform: rotate(-3deg); }
+        body.ev-art .ev-hero-art-stack img:last-child  { transform: rotate(3deg); margin-top: -14px; }
+        @media (max-width: 640px) {
+          body.ev-art .ev-hero-art-stack img { max-width: 78%; }
+        }
+
+        /* Classical bust peeking out to the LEFT of the details block.
+           Rendered as ::before anchored to the card's left edge with a
+           negative offset; z-index: -1 pushes it behind the card background
+           so only the overhanging portion is visible, appearing to sit in
+           the margin alongside the card. Hidden on narrow screens where
+           there's no margin room. */
+        body.ev-art .ev-details {
+          position: relative;
+          overflow: visible;
+        }
+        body.ev-art .ev-details::before {
+          content: '';
+          position: absolute;
+          bottom: -20px;
+          left: -108px;
+          width: 150px;
+          height: 220px;
+          background: url('/assets/artpopup/statue.png') center/contain no-repeat;
+          filter: drop-shadow(0 14px 22px rgba(0,0,0,0.35));
+          pointer-events: none;
+          z-index: -1;
+        }
+        @media (max-width: 960px) {
+          body.ev-art .ev-details::before { display: none; }
+        }
         body.ev-art .ev-hero-eyebrow {
           color: #d14c2e;
           font-family: 'Permanent Marker', 'Playfair Display', serif;
@@ -805,40 +854,18 @@ function generateEventPage(location, event, signupCount, options = {}) {
           position: relative;
           margin-bottom: 28px;
         }
-        body.ev-art .ev-details {
-          margin-bottom: 20px;
-          overflow: visible;
-        }
-        /* Statue peeking out behind the Details card on desktop (hidden on
-           mobile since it would crowd the card). Classical bust on a plinth
-           anchored to the left edge. */
-        body.ev-art .ev-details::after {
-          content: '';
-          position: absolute;
-          bottom: -24px;
-          left: -86px;
-          width: 110px;
-          height: 165px;
-          background: url('/assets/artpopup/statue.png') center/contain no-repeat;
-          filter: drop-shadow(0 12px 18px rgba(0,0,0,0.35));
-          pointer-events: none;
-          z-index: -1;
-        }
-        @media (max-width: 880px) {
-          body.ev-art .ev-details::after { display: none; }
-        }
+        body.ev-art .ev-details { margin-bottom: 20px; }
 
         /* Artist-call-to-action section: the "gold" variant.
-           The stacked ARTISTS + WANTED drip graphics sit inside as the
-           headline, replacing the section heading's underline. The drip
-           illustrations live in a content div rendered by the seed. */
+           Stacked ARTISTS / statue / WANTED graphics render inside as the
+           headline. Section padding is trimmed so the callout feels compact. */
         body.ev-art .ev-sec-bg-gold {
           background:
             radial-gradient(circle at 20% 0%, rgba(209,76,46,0.18), transparent 60%),
             linear-gradient(180deg, #fff4dc, #ffe3a8) !important;
           border-color: #1a1816 !important;
           box-shadow: 8px 8px 0 #1a1816, 0 16px 30px rgba(0,0,0,0.2) !important;
-          padding-top: 34px !important;
+          padding: 22px 22px 20px !important;
         }
 
         /* Paint-supplies still-life decorating the cocktail menu card:
@@ -1270,22 +1297,42 @@ function generateEventPage(location, event, signupCount, options = {}) {
         .ev-sec {
           margin-bottom: 26px;
         }
-        /* Stacked images (e.g. ARTISTS + WANTED drip-text for the art pop-up).
-           Two graphics overlap slightly and tilt like a taped-up flyer. */
+        /* Stacked images — e.g. ARTISTS · STATUE · WANTED for the art pop-up.
+           Three graphics tilt and overlap like a taped-up handbill. The
+           middle slot is sized smaller so the top/bottom drip-text reads as
+           the heading and the middle reads as a small emblem. */
         .ev-sec-stack {
           display: flex;
           flex-direction: column;
           align-items: center;
-          margin: -6px auto 16px;
+          margin: -4px auto 10px;
         }
         .ev-sec-stack img {
-          max-width: min(320px, 80%);
+          max-width: min(220px, 64%);
           height: auto;
           display: block;
-          filter: drop-shadow(0 10px 16px rgba(0,0,0,0.3));
+          filter: drop-shadow(0 8px 14px rgba(0,0,0,0.3));
         }
         .ev-sec-stack img:nth-child(1) { transform: rotate(-3deg); }
-        .ev-sec-stack img:nth-child(2) { transform: rotate(2deg); margin-top: -18px; }
+        /* 2-image stack fallback: second image is the closer (slightly tilted
+           right) drip text overlapping the first. */
+        .ev-sec-stack img:nth-child(2):last-child {
+          transform: rotate(3deg);
+          margin-top: -14px;
+        }
+        /* 3-image stack: middle slot is an emblem, not a banner, so it's
+           much smaller and sits between the two drip-text graphics. */
+        .ev-sec-stack img:nth-child(2):not(:last-child) {
+          max-width: 88px;
+          margin: -6px 0 -8px;
+          transform: rotate(-4deg);
+          z-index: 1;
+          position: relative;
+        }
+        .ev-sec-stack img:nth-child(3) {
+          transform: rotate(3deg);
+          margin-top: -6px;
+        }
         .ev-sec-text {
           background: linear-gradient(180deg, rgba(24,25,28,0.95), rgba(15,16,18,0.98));
           border: 1px solid var(--line);
@@ -1827,7 +1874,10 @@ function generateEventPage(location, event, signupCount, options = {}) {
 
         <div class="ev-hero">
           ${renderBrandMark()}
-          <div class="ev-hero-eyebrow">${escHTML(heroEyebrow)}</div>
+          ${isArt ? `<div class="ev-hero-art-stack" aria-label="${escHTML(heroEyebrow)}">
+            <img src="/assets/artpopup/artist.png" alt="Artists" />
+            <img src="/assets/artpopup/wanted.png" alt="Wanted" />
+          </div>` : `<div class="ev-hero-eyebrow">${escHTML(heroEyebrow)}</div>`}
           <h1 class="ev-hero-title">${escHTML(event.title)}</h1>
           <div class="ev-hero-divider"></div>
           <div class="ev-hero-location">${escHTML(location.name)}</div>

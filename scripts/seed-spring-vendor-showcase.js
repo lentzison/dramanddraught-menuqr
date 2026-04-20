@@ -72,33 +72,22 @@ function buildSections() {
         { label: 'Cost to vendor', value: 'No table fee — just bring your best' },
       ],
     },
+    // Consolidated cocktail menu — one compact two-column grid of all 8 drinks.
     {
-      id: 'svs-menu-header',
-      type: 'text',
+      id: 'svs-menu',
+      type: 'cocktailmenu',
       bgStyle: 'default',
-      align: 'center',
-      heading: 'The Spring & Summer Menu',
-      body: "Every cocktail below is $2 off for the full event. Eight drinks, crafted by our bartenders across every Dram & Draught.",
+      title: 'The Spring & Summer Menu',
+      subtitle: 'Every cocktail below is $2 off for the full event',
+      items: COCKTAILS.map(c => ({
+        name: c.name,
+        abv: c.abv,
+        ingredients: c.ingredients,
+        vibe: c.vibe,
+        creator: c.creator,
+      })),
     },
   ];
-
-  // One details section per cocktail — reuses the existing "details" section
-  // renderer so styling matches the rest of the site with no new CSS.
-  for (const [idx, c] of COCKTAILS.entries()) {
-    const items = [
-      c.abv ? { label: 'ABV', value: c.abv } : null,
-      { label: 'Pour', value: c.ingredients },
-      { label: 'Notes', value: c.vibe },
-      { label: 'Crafted by', value: c.creator },
-    ].filter(Boolean);
-    sections.push({
-      id: `svs-drink-${idx + 1}`,
-      type: 'details',
-      bgStyle: idx % 2 === 0 ? 'default' : 'dark',
-      title: c.name,
-      items,
-    });
-  }
 
   sections.push({
     id: 'svs-faq',

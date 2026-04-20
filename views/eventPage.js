@@ -210,6 +210,27 @@ function renderSections(sections) {
       </section>`;
     }
 
+    if (type === 'cocktailmenu') {
+      const items = Array.isArray(s.items) ? s.items.filter(it => it && it.name) : [];
+      if (items.length === 0 && !s.title) return '';
+      const cards = items.map(it => `
+        <div class="cm-card">
+          <div class="cm-card-head">
+            <div class="cm-card-name">${escHTML(it.name || '')}</div>
+            ${it.abv ? `<div class="cm-card-abv">${escHTML(it.abv)}</div>` : ''}
+          </div>
+          ${it.ingredients ? `<div class="cm-card-pour">${escHTML(it.ingredients)}</div>` : ''}
+          ${it.vibe ? `<div class="cm-card-vibe">${escHTML(it.vibe)}</div>` : ''}
+          ${it.creator ? `<div class="cm-card-creator">${escHTML(it.creator)}</div>` : ''}
+        </div>
+      `).join('');
+      return `<section class="ev-sec ev-sec-cocktails${bgStyleClass(s)}">
+        ${s.title ? `<div class="ev-sec-details-title">${escHTML(s.title)}</div>` : ''}
+        ${s.subtitle ? `<div class="cm-subtitle">${escHTML(s.subtitle)}</div>` : ''}
+        <div class="cm-grid">${cards}</div>
+      </section>`;
+    }
+
     if (type === 'faq') {
       const items = Array.isArray(s.items) ? s.items.filter(it => it && (it.question || it.answer)) : [];
       if (items.length === 0 && !s.title) return '';
@@ -376,34 +397,247 @@ function generateEventPage(location, event, signupCount, options = {}) {
           font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
         }
         /* ─── Spring palette override (vendor events) ───
-           Redefine --gold/--amber/--accent-light so existing gold accents pick up
-           fresh green + peach tones. Background also swaps to a softer floral wash. */
+           Full garden-party theme: the dark vintage base flips to cream + sage +
+           peach, existing gold accents become sage green, and we scatter a set
+           of inline SVG florals across the background. Everything still routes
+           through the existing CSS vars so the rest of the page inherits it
+           without touching structural CSS.
+           Florals (all inline SVGs as data URIs):
+             --f-blossom : 5-petal peach blossom
+             --f-daisy   : white daisy with yellow center
+             --f-leaf    : sage leaf sprig
+             --f-petal   : single pink petal (used for falling animation) */
         body.ev-vendor {
-          --gold: #8aa87a;           /* soft spring green — replaces gold accents */
-          --amber: #e8a792;          /* warm peach — replaces amber */
-          --accent-light: #f3e6c9;   /* cream — light accent text */
-          --steel: #e3ddd2;          /* lighter warm off-white for body copy */
+          --gold: #6f9061;            /* deeper sage green for primary accents */
+          --amber: #d97a5e;            /* saturated peach for hover/CTA */
+          --accent-light: #3a4a32;     /* deep forest green for text on light bg */
+          --text: #2a3326;             /* near-black forest for headings */
+          --steel: #3f4a38;            /* body copy */
+          --muted: #6b7a64;            /* softened muted */
+          --smoke: #8a9b83;            /* lightest label text */
+          --bg-a: #fbf4e4;             /* warm cream */
+          --bg-b: #f1e0c7;             /* peach cream */
+          --panel: #ffffff;
+          --panel-strong: #fbf4e4;
+          --line: rgba(111,144,97,0.22);
+          --line-strong: rgba(111,144,97,0.38);
+          --shadow: rgba(144,110,80,0.18);
+
+          --f-blossom: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'><g transform='translate(60 60)'><g fill='%23f9b5a1'><ellipse rx='18' ry='32' cy='-28'/><ellipse rx='18' ry='32' cy='-28' transform='rotate(72)'/><ellipse rx='18' ry='32' cy='-28' transform='rotate(144)'/><ellipse rx='18' ry='32' cy='-28' transform='rotate(216)'/><ellipse rx='18' ry='32' cy='-28' transform='rotate(288)'/></g><circle r='10' fill='%23f7d154'/></g></svg>");
+          --f-daisy: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'><g transform='translate(60 60)'><g fill='%23fffdf4'><ellipse rx='12' ry='30' cy='-26'/><ellipse rx='12' ry='30' cy='-26' transform='rotate(45)'/><ellipse rx='12' ry='30' cy='-26' transform='rotate(90)'/><ellipse rx='12' ry='30' cy='-26' transform='rotate(135)'/><ellipse rx='12' ry='30' cy='-26' transform='rotate(180)'/><ellipse rx='12' ry='30' cy='-26' transform='rotate(225)'/><ellipse rx='12' ry='30' cy='-26' transform='rotate(270)'/><ellipse rx='12' ry='30' cy='-26' transform='rotate(315)'/></g><circle r='11' fill='%23f2c94c'/></g></svg>");
+          --f-leaf: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 160 100'><path d='M10 60 Q 50 0 150 50 Q 100 90 10 60 Z' fill='%23a3c48d' opacity='0.95'/><path d='M14 60 Q 80 42 146 54' stroke='%236f9061' stroke-width='1.5' fill='none'/></svg>");
+          --f-petal: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'><ellipse cx='20' cy='20' rx='14' ry='8' fill='%23f9c1ad' transform='rotate(30 20 20)'/></svg>");
+
           background:
-            radial-gradient(900px 380px at 14% -8%, rgba(232,167,146,0.10), transparent 60%),
-            radial-gradient(1080px 540px at 100% 0%, rgba(138,168,122,0.12), transparent 58%),
-            radial-gradient(760px 380px at 50% 110%, rgba(243,230,201,0.08), transparent 62%),
-            linear-gradient(180deg, var(--bg-a) 0%, #11130f 42%, var(--bg-b) 100%);
+            var(--f-blossom) -40px -30px / 180px 180px no-repeat,
+            var(--f-leaf) right -30px top 180px / 220px 140px no-repeat,
+            var(--f-daisy) -20px 60% / 130px 130px no-repeat,
+            var(--f-blossom) right -30px bottom 80px / 150px 150px no-repeat,
+            var(--f-leaf) 20px bottom -10px / 240px 150px no-repeat,
+            radial-gradient(900px 380px at 14% -8%, rgba(249,193,173,0.55), transparent 60%),
+            radial-gradient(1080px 540px at 100% 0%, rgba(163,196,141,0.42), transparent 58%),
+            radial-gradient(760px 380px at 50% 110%, rgba(247,209,84,0.28), transparent 62%),
+            linear-gradient(180deg, var(--bg-a) 0%, #f8ead1 50%, var(--bg-b) 100%);
+          background-attachment: fixed, fixed, fixed, fixed, fixed, fixed, fixed, fixed, fixed;
         }
-        body.ev-vendor .ev-hero::before {
-          background: linear-gradient(90deg, transparent, #e8a792, #8aa87a, transparent);
-          opacity: 0.8;
+        /* A layer of falling petals over the whole page. Pointer-events: none
+           so clicks pass through. Each petal is a positioned pseudo element
+           inside a fixed wrapper, animated with 'petalfall'. */
+        .spring-petals {
+          position: fixed;
+          inset: 0;
+          pointer-events: none;
+          overflow: hidden;
+          z-index: 1;
         }
+        .spring-petals span {
+          position: absolute;
+          top: -60px;
+          width: 24px;
+          height: 24px;
+          background: var(--f-petal) center/contain no-repeat;
+          opacity: 0.85;
+          animation: petalfall linear infinite;
+          will-change: transform, opacity;
+        }
+        @keyframes petalfall {
+          0%   { transform: translate3d(0, -40px, 0) rotate(0deg);   opacity: 0; }
+          10%  { opacity: 0.9; }
+          50%  { transform: translate3d(40px, 50vh, 0) rotate(180deg); }
+          100% { transform: translate3d(-20px, 110vh, 0) rotate(360deg); opacity: 0; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .spring-petals { display: none; }
+        }
+        .ev-wrap { position: relative; z-index: 2; }
+
+        /* Keep the hero card readable against the light background by
+           flipping it to a sunlit cream with a peachy top wash. */
         body.ev-vendor .ev-hero {
           background:
-            linear-gradient(180deg, rgba(20,25,22,0.96), rgba(7,8,7,0.99)),
-            radial-gradient(circle at 50% 0%, rgba(138,168,122,0.22), transparent 55%),
-            radial-gradient(circle at 85% 120%, rgba(232,167,146,0.18), transparent 60%);
+            radial-gradient(circle at 18% 0%, rgba(249,193,173,0.55), transparent 55%),
+            radial-gradient(circle at 85% 100%, rgba(163,196,141,0.45), transparent 55%),
+            linear-gradient(180deg, #ffffff 0%, #fff7e8 100%);
+          border: 1px solid rgba(111,144,97,0.35);
+          box-shadow: 0 24px 60px rgba(144,110,80,0.22), inset 0 0 0 1px rgba(255,255,255,0.6);
+        }
+        body.ev-vendor .ev-hero::before {
+          background: linear-gradient(90deg, transparent, #d97a5e, #f2c94c, #6f9061, transparent);
+          opacity: 0.9;
+          height: 2px;
+          max-width: 420px;
+        }
+        /* Blossoms floating around the hero title */
+        body.ev-vendor .ev-hero::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          background:
+            var(--f-blossom) left 14px top 14px / 72px 72px no-repeat,
+            var(--f-blossom) right 14px top 14px / 64px 64px no-repeat,
+            var(--f-leaf) left 10% bottom -8px / 160px 100px no-repeat;
+          opacity: 0.9;
         }
         body.ev-vendor .ev-hero-eyebrow,
-        body.ev-vendor .ev-side-kicker { color: #e8a792; }
+        body.ev-vendor .ev-side-kicker {
+          color: #d97a5e;
+          text-shadow: 0 1px 0 rgba(255,255,255,0.6);
+        }
+        body.ev-vendor .ev-hero-title {
+          color: #2a3326;
+          text-shadow: 0 2px 0 rgba(255,255,255,0.4);
+        }
+        body.ev-vendor .ev-hero-location { color: #6f9061; }
         body.ev-vendor .ev-hero-divider {
-          background: linear-gradient(90deg, transparent, #8aa87a, #e8a792, transparent);
-          opacity: 0.8;
+          background: linear-gradient(90deg, transparent, #6f9061 30%, #d97a5e 70%, transparent);
+          opacity: 1;
+          height: 2px;
+        }
+        body.ev-vendor .ev-back,
+        body.ev-vendor .ev-all-events { color: #6b7a64; }
+        body.ev-vendor .ev-back:hover,
+        body.ev-vendor .ev-all-events:hover { color: #d97a5e; }
+
+        /* Details/text cards: cream panels with green/peach trim.
+           Rotate a sprig of leaves into the corner of every text section. */
+        body.ev-vendor .ev-details,
+        body.ev-vendor .ev-side-card,
+        body.ev-vendor .ev-sec-text,
+        body.ev-vendor .ev-sec-details,
+        body.ev-vendor .ev-sec-schedule,
+        body.ev-vendor .ev-sec-faq {
+          background: linear-gradient(180deg, #ffffff, #fff7e8);
+          border: 1px solid rgba(111,144,97,0.28);
+          box-shadow: 0 10px 28px rgba(144,110,80,0.14);
+          position: relative;
+          overflow: hidden;
+        }
+        body.ev-vendor .ev-sec-details::before,
+        body.ev-vendor .ev-sec-text::before {
+          content: '';
+          position: absolute;
+          top: -18px;
+          right: -26px;
+          width: 140px;
+          height: 90px;
+          background: var(--f-leaf) center/contain no-repeat;
+          opacity: 0.55;
+          pointer-events: none;
+          transform: rotate(18deg);
+        }
+        body.ev-vendor .ev-sec-faq::before {
+          content: '';
+          position: absolute;
+          top: -14px;
+          left: -14px;
+          width: 70px;
+          height: 70px;
+          background: var(--f-daisy) center/contain no-repeat;
+          opacity: 0.55;
+          pointer-events: none;
+        }
+        /* Gold-style "featured" cards become a warm peach wash */
+        body.ev-vendor .ev-sec-bg-gold {
+          background:
+            radial-gradient(circle at 20% 0%, rgba(249,193,173,0.55), transparent 60%),
+            linear-gradient(180deg, #fff2df, #ffe2c8) !important;
+          border-color: rgba(217,122,94,0.35) !important;
+          box-shadow: 0 14px 32px rgba(217,122,94,0.15), inset 0 0 0 1px rgba(255,255,255,0.5) !important;
+        }
+        body.ev-vendor .ev-sec-bg-dark {
+          background: linear-gradient(180deg, #f5eedc, #ecd9b6) !important;
+          border-color: rgba(111,144,97,0.3) !important;
+        }
+        body.ev-vendor .ev-sec-heading::after,
+        body.ev-vendor .ev-sec-details-title::after,
+        body.ev-vendor .ev-sec-text .ev-sec-heading::after {
+          background: linear-gradient(90deg, #6f9061, #d97a5e);
+          opacity: 1;
+          width: 60px;
+          height: 2px;
+        }
+        body.ev-vendor .ev-datetime-label,
+        body.ev-vendor .ev-sec-details-label,
+        body.ev-vendor .ev-form label { color: #6b7a64; }
+        body.ev-vendor .ev-datetime-value,
+        body.ev-vendor .ev-sec-details-value { color: #2a3326; }
+        body.ev-vendor .ev-description { color: #3f4a38; }
+        body.ev-vendor .ev-detail-chip {
+          background: linear-gradient(135deg, #e8f0df, #fce5d8);
+          border-color: rgba(111,144,97,0.35);
+          color: #3a4a32;
+        }
+        body.ev-vendor .ev-side-title { color: #2a3326; }
+        body.ev-vendor .ev-side-copy { color: #3f4a38; }
+        body.ev-vendor .ev-form input,
+        body.ev-vendor .ev-form textarea,
+        body.ev-vendor .ev-form select {
+          background: #fff9ea;
+          border-color: rgba(111,144,97,0.35);
+          color: #2a3326;
+        }
+        body.ev-vendor .ev-form input:focus,
+        body.ev-vendor .ev-form textarea:focus,
+        body.ev-vendor .ev-form select:focus {
+          background: #ffffff;
+          border-color: #6f9061;
+          box-shadow: 0 0 0 3px rgba(111,144,97,0.18);
+        }
+        body.ev-vendor .ev-submit-btn {
+          background: linear-gradient(135deg, #6f9061 0%, #a3c48d 45%, #f2c094 100%);
+          color: #1f2a1c;
+          box-shadow: 0 14px 32px rgba(111,144,97,0.35);
+          text-shadow: 0 1px 0 rgba(255,255,255,0.35);
+        }
+        body.ev-vendor .ev-submit-btn:hover {
+          filter: brightness(1.05) saturate(1.1);
+          box-shadow: 0 18px 40px rgba(217,122,94,0.35);
+        }
+        body.ev-vendor .ev-side-link {
+          background: linear-gradient(135deg, rgba(111,144,97,0.25), rgba(217,122,94,0.2));
+          border-color: rgba(111,144,97,0.45);
+          color: #2a3326;
+        }
+        body.ev-vendor .ev-side-link:hover { border-color: #d97a5e; }
+        body.ev-vendor .ev-side-link-muted {
+          background: transparent;
+          border-color: rgba(111,144,97,0.3);
+          color: #6b7a64;
+        }
+        /* Make the banner image feel like a polaroid with a peach mat */
+        body.ev-vendor .ev-banner-img {
+          border: 4px solid #ffffff;
+          outline: 1px solid rgba(111,144,97,0.35);
+          box-shadow: 0 16px 34px rgba(144,110,80,0.18);
+        }
+        /* Schedule time numbers in peach */
+        body.ev-vendor .ev-sec-schedule-time { color: #d97a5e; }
+        /* FAQ toggle marker in sage */
+        body.ev-vendor .ev-sec-faq-question::after { color: #6f9061; }
+        body.ev-vendor .ev-sec-faq-question:hover { color: #d97a5e; }
+        body.ev-vendor .ev-sec-divider {
+          background: linear-gradient(90deg, transparent, rgba(111,144,97,0.6), rgba(217,122,94,0.6), transparent);
           height: 2px;
         }
         .ev-wrap {
@@ -946,6 +1180,95 @@ function generateEventPage(location, event, signupCount, options = {}) {
           line-height: 1.5;
         }
 
+        /* ─── Cocktail menu grid (compact) ─── */
+        .ev-sec-cocktails {
+          background: linear-gradient(180deg, rgba(24,25,28,0.95), rgba(15,16,18,0.98));
+          border: 1px solid var(--line);
+          border-radius: 18px;
+          padding: 26px 26px 22px;
+          box-shadow: 0 12px 32px rgba(0,0,0,0.35);
+        }
+        .cm-subtitle {
+          color: var(--muted);
+          font-size: 0.88rem;
+          text-align: center;
+          margin-top: -6px;
+          margin-bottom: 18px;
+          font-style: italic;
+        }
+        .cm-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 12px;
+        }
+        .cm-card {
+          background: rgba(255,255,255,0.02);
+          border: 1px solid var(--line);
+          border-radius: 12px;
+          padding: 14px 16px;
+        }
+        .cm-card-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: baseline;
+          gap: 10px;
+          margin-bottom: 6px;
+        }
+        .cm-card-name {
+          font-family: 'Playfair Display', Georgia, serif;
+          font-weight: 800;
+          font-size: 1.02rem;
+          color: var(--text);
+          letter-spacing: 0.02em;
+        }
+        .cm-card-abv {
+          font-size: 0.68rem;
+          font-weight: 700;
+          color: var(--gold);
+          border: 1px solid var(--line-strong);
+          padding: 2px 7px;
+          border-radius: 999px;
+          letter-spacing: 0.04em;
+          white-space: nowrap;
+        }
+        .cm-card-pour {
+          color: var(--steel);
+          font-size: 0.82rem;
+          line-height: 1.4;
+          margin-bottom: 4px;
+        }
+        .cm-card-vibe {
+          color: var(--muted);
+          font-size: 0.76rem;
+          font-style: italic;
+          margin-bottom: 4px;
+        }
+        .cm-card-creator {
+          color: var(--smoke);
+          font-size: 0.7rem;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          font-weight: 700;
+        }
+        @media (max-width: 600px) {
+          .cm-grid { grid-template-columns: 1fr; }
+        }
+        /* Vendor (spring) theme tweaks for the cocktail grid */
+        body.ev-vendor .ev-sec-cocktails {
+          background: linear-gradient(180deg, #ffffff, #fff5e4);
+          border-color: rgba(111,144,97,0.3);
+        }
+        body.ev-vendor .cm-card {
+          background: linear-gradient(180deg, #ffffff, #fdf3dc);
+          border-color: rgba(111,144,97,0.35);
+          box-shadow: 0 4px 12px rgba(144,110,80,0.08);
+        }
+        body.ev-vendor .cm-card-abv {
+          color: #d97a5e;
+          border-color: rgba(217,122,94,0.5);
+          background: rgba(249,193,173,0.2);
+        }
+
         /* ─── FAQ section ─── */
         .ev-sec-faq {
           background: var(--panel);
@@ -1110,6 +1433,15 @@ function generateEventPage(location, event, signupCount, options = {}) {
       </style>
     </head>
     <body${isVendor ? ' class="ev-vendor"' : ''}>
+      ${isVendor ? `<div class="spring-petals" aria-hidden="true">
+        ${Array.from({ length: 14 }).map((_, i) => {
+          const left = (i * 7.3) % 100;
+          const dur = 9 + (i % 6) * 1.8;
+          const delay = (i * 1.1) % 10;
+          const size = 14 + (i % 5) * 4;
+          return `<span style="left:${left.toFixed(1)}%; animation-duration:${dur.toFixed(1)}s; animation-delay:${delay.toFixed(1)}s; width:${size}px; height:${size}px;"></span>`;
+        }).join('')}
+      </div>` : ''}
       <div class="ev-wrap">
         <div class="ev-page-nav">
           <a href="/${escHTML(location.slug)}" class="ev-back">← ${escHTML(location.name)}</a>

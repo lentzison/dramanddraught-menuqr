@@ -18,9 +18,9 @@ const END = new Date(Date.UTC(2026, 4, 16, 22, 0, 0));
 
 const TITLE = 'Dram & Draught Spring Neighborhood Market';
 const DESCRIPTION = [
-  "We're throwing an outdoor spring market at Dram & Draught Greensboro and we'd love to have you in it. Jewelry, ceramics, prints, paintings, vintage, candles, small-batch food, plants, leatherwork. If you make it, bring it.",
+  "Come sip and shop at our outdoor spring market. Local makers, artists, and craftspeople set up for the afternoon with jewelry, ceramics, prints, paintings, candles, small-batch food, plants, vintage, and more.",
   '',
-  "Set up outside, meet our Saturday crowd, and keep 100% of what you sell. Every spring & summer cocktail on our menu is $2 off the whole afternoon.",
+  "Pull up, wander around, grab a drink, and take home something good. Every spring & summer cocktail is $2 off all day. No cover, no RSVP. Bring friends.",
 ].join('\n');
 
 const CONFIRMATION_MESSAGE = [
@@ -61,11 +61,23 @@ function buildSections() {
       ],
     },
     {
+      id: 'svs-vendor-pitch',
+      type: 'text',
+      bgStyle: 'gold',
+      align: 'left',
+      heading: 'Want to vend?',
+      body: [
+        "We're still taking applications. No table fee, keep 100% of what you sell.",
+        '',
+        "Bring jewelry, ceramics, prints, paintings, vintage, candles, food, plants, leatherwork, or anything else you make. Fill out the form to apply.",
+      ].join('\n'),
+    },
+    {
       id: 'svs-setup',
       type: 'text',
       bgStyle: 'default',
       align: 'left',
-      heading: 'What to bring',
+      heading: 'What vendors should bring',
       body: [
         "The market is fully outdoors, so plan your setup for the weather. Bring your own table and your own tent or pop-up. If you need us to provide a table, say so in the form and we'll sort it out.",
         '',
@@ -82,10 +94,8 @@ function buildSections() {
       subtitle: 'All $2 off during the market',
       items: COCKTAILS.map(c => ({
         name: c.name,
-        abv: c.abv,
         ingredients: c.ingredients,
         vibe: c.vibe,
-        creator: c.creator,
       })),
     },
   ];

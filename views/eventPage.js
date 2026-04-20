@@ -213,19 +213,22 @@ function renderSections(sections) {
     if (type === 'cocktailmenu') {
       const items = Array.isArray(s.items) ? s.items.filter(it => it && it.name) : [];
       if (items.length === 0 && !s.title) return '';
-      const rows = items.map(it => `
+      const rows = items.map(it => {
+        const hasMeta = !!(it.abv || it.creator);
+        return `
         <div class="cm-row">
           <div class="cm-row-head">
             <div class="cm-row-name">${escHTML(it.name || '')}</div>
-            <div class="cm-row-meta">
+            ${hasMeta ? `<div class="cm-row-meta">
               ${it.abv ? `<span class="cm-row-abv">${escHTML(it.abv)}</span>` : ''}
               ${it.creator ? `<span class="cm-row-creator">${escHTML(it.creator)}</span>` : ''}
-            </div>
+            </div>` : ''}
           </div>
           ${it.ingredients ? `<div class="cm-row-pour">${escHTML(it.ingredients)}</div>` : ''}
           ${it.vibe ? `<div class="cm-row-vibe">${escHTML(it.vibe)}</div>` : ''}
         </div>
-      `).join('');
+      `;
+      }).join('');
       return `<section class="ev-sec ev-sec-cocktails${bgStyleClass(s)}">
         ${s.title ? `<div class="ev-sec-details-title">${escHTML(s.title)}</div>` : ''}
         ${s.subtitle ? `<div class="cm-subtitle">${escHTML(s.subtitle)}</div>` : ''}

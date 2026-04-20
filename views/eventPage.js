@@ -101,16 +101,38 @@ function bgStyleClass(s) {
   return ''; // default — no extra class
 }
 
+// Render the thin "top banner" sections (type: 'topbanner') separately from
+// the main column. Used for a compact vendor-looking-for-you strip at the
+// top of the page. Returns empty string if no top banners exist.
+function renderTopBanners(sections) {
+  if (!Array.isArray(sections) || sections.length === 0) return '';
+  const banners = sections.filter(s => s && s.type === 'topbanner' && s.ackOnly !== true);
+  if (banners.length === 0) return '';
+  return banners.map(s => `
+    <div class="ev-topbanner">
+      <div class="ev-topbanner-inner">
+        ${s.body ? `<span class="ev-topbanner-text">${escHTML(s.body)}</span>` : ''}
+        ${s.buttonHref ? `<a href="${escHTML(s.buttonHref)}" class="ev-topbanner-btn">${escHTML(s.buttonLabel || 'Apply')}</a>` : ''}
+      </div>
+    </div>
+  `).join('');
+}
+
 // Render an array of page sections.
 // Types: text, image, details, button, video, divider, hero, twocol, schedule, faq, cocktailmenu
 //
 // Sections with `ackOnly: true` are only included when `options.ackOnly === true`
 // (they're reserved for the post-submit terms/acknowledgment page). The default
-// public render skips them.
+// public render skips them. `topbanner` sections are always skipped here —
+// they render at the top of the page via renderTopBanners().
 function renderSections(sections, options = {}) {
   if (!Array.isArray(sections) || sections.length === 0) return '';
   const ackOnly = options.ackOnly === true;
-  const filtered = sections.filter(s => s && (ackOnly ? s.ackOnly === true : s.ackOnly !== true));
+  const filtered = sections.filter(s => {
+    if (!s) return false;
+    if (s.type === 'topbanner') return false;
+    return ackOnly ? s.ackOnly === true : s.ackOnly !== true;
+  });
   if (filtered.length === 0) return '';
   return filtered.map(s => {
     const type = s && s.type;
@@ -1089,6 +1111,71 @@ function generateEventPage(location, event, signupCount, options = {}) {
         }
         .ev-back:hover,
         .ev-all-events:hover { color: var(--gold); }
+        /* Thin top banner (e.g. "We are looking for vendors, apply here")
+           sits between the page nav and the hero. Rendered per the
+           topbanner section type. */
+        .ev-topbanner {
+          margin: 0 0 14px;
+          border-radius: 12px;
+          background: linear-gradient(135deg, rgba(210,170,103,0.18), rgba(210,170,103,0.08));
+          border: 1px solid rgba(210,170,103,0.45);
+          padding: 10px 16px;
+          box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+        }
+        .ev-topbanner-inner {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          flex-wrap: wrap;
+          gap: 12px;
+        }
+        .ev-topbanner-text {
+          color: var(--accent-light);
+          font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+          font-size: 0.86rem;
+          font-weight: 700;
+          letter-spacing: 0.04em;
+        }
+        .ev-topbanner-btn {
+          display: inline-block;
+          padding: 6px 14px;
+          border-radius: 999px;
+          background: var(--gold);
+          color: #0c0c0c;
+          text-decoration: none;
+          font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+          font-size: 0.78rem;
+          font-weight: 800;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          transition: filter 0.15s, transform 0.05s;
+        }
+        .ev-topbanner-btn:hover { filter: brightness(1.1); text-decoration: none; }
+        body.ev-vendor .ev-topbanner {
+          background: linear-gradient(135deg, rgba(111,144,97,0.18), rgba(232,167,146,0.14));
+          border-color: rgba(111,144,97,0.4);
+          box-shadow: 0 6px 18px rgba(144,110,80,0.12);
+        }
+        body.ev-vendor .ev-topbanner-text { color: #2a3326; }
+        body.ev-vendor .ev-topbanner-btn { background: linear-gradient(135deg, #6f9061, #a3c48d); color: #1f2a1c; }
+        body.ev-art .ev-topbanner {
+          background: #1a1816;
+          border: 2px solid #1a1816;
+          box-shadow: 4px 4px 0 #d14c2e;
+        }
+        body.ev-art .ev-topbanner-text {
+          color: #e7b83a;
+          font-family: 'Permanent Marker', Inter, sans-serif;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+        }
+        body.ev-art .ev-topbanner-btn {
+          background: #d14c2e;
+          color: #fffaf0;
+          font-family: 'Permanent Marker', Inter, sans-serif;
+        }
+        body.ev-art .ev-topbanner-btn:hover { background: #e7b83a; color: #1a1816; }
+
         .ev-hero {
           position: relative;
           background:
@@ -2098,6 +2185,7 @@ function generateEventPage(location, event, signupCount, options = {}) {
           <a href="/${escHTML(location.slug)}" class="ev-back">← ${escHTML(location.name)}</a>
           <a href="${escHTML(eventsPath)}" class="ev-all-events">All Events</a>
         </div>
+        ${renderTopBanners(event.sections)}
 
         <div class="ev-hero">
           ${isArt ? '<div class="ev-hero-statue" aria-hidden="true"></div>' : ''}

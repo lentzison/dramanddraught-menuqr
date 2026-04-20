@@ -56,6 +56,14 @@ const COCKTAILS = [
 
 function buildSections() {
   return [
+    // ── Thin banner at the very top of the page ──────────────────────────
+    {
+      id: 'ap-topbanner',
+      type: 'topbanner',
+      body: "We're looking for vendors",
+      buttonLabel: 'Apply',
+      buttonHref: '#apply',
+    },
     // ── Public promotional content ────────────────────────────────────────
     {
       id: 'ap-details',

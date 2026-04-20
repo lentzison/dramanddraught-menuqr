@@ -75,29 +75,7 @@ async function main() {
       console.log(`Created DayTheme for Winston-Salem Monday (${theme.id})`);
     }
 
-    // 1. Copy the default Industry Night specials.
-    for (const s of defaultTheme.specials) {
-      await prisma.dailySpecial.create({
-        data: {
-          dayThemeId: theme.id,
-          name: s.name,
-          description: s.description,
-          price: s.price,
-          imageUrl: s.imageUrl,
-          category: s.category,
-          displayOrder: s.displayOrder,
-          section: s.section,
-          detailText: s.detailText,
-          badges: s.badges,
-          timeWindow: s.timeWindow,
-          isFeatured: s.isFeatured,
-          isActive: true,
-        },
-      });
-    }
-
-    // 2. Append the six Lubrication Cup cocktails after the existing rows.
-    const lubStart = defaultTheme.specials.reduce((m, s) => Math.max(m, s.displayOrder), -1) + 1;
+    // 1. Lead with the Lubrication Cup cocktails so they appear at the top.
     for (const [idx, c] of LUB_COCKTAILS.entries()) {
       await prisma.dailySpecial.create({
         data: {
@@ -107,8 +85,31 @@ async function main() {
           price: '$10',
           category: 'cocktail',
           section: LUB_SECTION,
-          displayOrder: lubStart + idx,
+          displayOrder: idx,
           isFeatured: idx === 0,
+          isActive: true,
+        },
+      });
+    }
+
+    // 2. Follow with the default Industry Night specials (shift displayOrder
+    //    so they fall below the Cup rows without reordering among themselves).
+    const offset = LUB_COCKTAILS.length;
+    for (const s of defaultTheme.specials) {
+      await prisma.dailySpecial.create({
+        data: {
+          dayThemeId: theme.id,
+          name: s.name,
+          description: s.description,
+          price: s.price,
+          imageUrl: s.imageUrl,
+          category: s.category,
+          displayOrder: offset + s.displayOrder,
+          section: s.section,
+          detailText: s.detailText,
+          badges: s.badges,
+          timeWindow: s.timeWindow,
+          isFeatured: s.isFeatured,
           isActive: true,
         },
       });

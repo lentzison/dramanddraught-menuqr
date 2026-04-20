@@ -751,28 +751,29 @@ function generateEventPage(location, event, signupCount, options = {}) {
           body.ev-art .ev-hero::after { width: 88px; height: 130px; right: -8px; top: -16px; }
         }
 
-        /* ARTISTS + WANTED drip-text stacked inside the hero, replacing the
-           plain "Artists Wanted" eyebrow text. Each image tilts a bit and
-           overlaps the next to read as a single flyer masthead. */
+        /* ARTISTS + WANTED drip-text as a single horizontal masthead in the
+           hero, reading "ARTISTS WANTED" left-to-right like ransom-note
+           headline type. Each image tilts opposite directions so the pair
+           feels pasted-on rather than aligned. On narrow screens they wrap
+           to two lines cleanly. */
         body.ev-art .ev-hero-art-stack {
           display: flex;
-          flex-direction: column;
           align-items: center;
-          margin: -4px auto 10px;
+          justify-content: center;
+          gap: 14px;
+          flex-wrap: wrap;
+          margin: 2px auto 16px;
           position: relative;
           z-index: 2;
         }
         body.ev-art .ev-hero-art-stack img {
           display: block;
-          max-width: min(260px, 66%);
+          width: clamp(130px, 26vw, 200px);
           height: auto;
-          filter: drop-shadow(0 8px 14px rgba(0,0,0,0.3));
+          filter: drop-shadow(0 6px 12px rgba(0,0,0,0.28));
         }
-        body.ev-art .ev-hero-art-stack img:first-child { transform: rotate(-3deg); }
-        body.ev-art .ev-hero-art-stack img:last-child  { transform: rotate(3deg); margin-top: -14px; }
-        @media (max-width: 640px) {
-          body.ev-art .ev-hero-art-stack img { max-width: 78%; }
-        }
+        body.ev-art .ev-hero-art-stack img:first-child { transform: rotate(-4deg) translateY(-2px); }
+        body.ev-art .ev-hero-art-stack img:last-child  { transform: rotate(4deg) translateY(2px); }
 
         /* Classical bust peeking out to the LEFT of the details block.
            Rendered as ::before anchored to the card's left edge with a

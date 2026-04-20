@@ -1194,6 +1194,7 @@ function generateEventPage(location, event, signupCount, options = {}) {
         .ev-side-card {
           position: sticky;
           top: 18px;
+          scroll-margin-top: 20px;
           background: linear-gradient(180deg, rgba(24,25,28,0.96), rgba(12,13,15,0.98));
           border: 1px solid var(--line);
           border-radius: 18px;

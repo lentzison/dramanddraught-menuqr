@@ -24,7 +24,7 @@ const DESCRIPTION = [
 const CONFIRMATION_MESSAGE = [
   "Thanks for applying.",
   "",
-  "Jamie reads every application and sends invites to accepted artists as slots open up. If you're in, you'll get an email from jamie@dramanddraught.com with next steps: the $10 lock-in fee to reserve your spot, 5 photos of your work so we can boost you on social, and day-of setup details.",
+  "We'll send invites to accepted artists as slots open up. If you're in, you'll get an email from jamie@dramanddraught.com with next steps: the $10 lock-in fee to reserve your spot, 5 photos of your work so we can boost you on social, and day-of setup details.",
   "",
   "Questions: jamie@dramanddraught.com.",
 ].join('\n');
@@ -54,6 +54,7 @@ const COCKTAILS = [
 
 function buildSections() {
   return [
+    // ── Public promotional content ────────────────────────────────────────
     {
       id: 'ap-details',
       type: 'details',
@@ -61,9 +62,9 @@ function buildSections() {
       title: 'The Details',
       items: [
         { label: 'When', value: 'Saturday, May 16, 2026 · 2 to 6 PM' },
-        { label: 'Where', value: 'Dram & Draught Raleigh · 1 Glenwood Ave, Suite 101, Raleigh' },
-        { label: 'Artist setup', value: 'Starts at 12 PM · everyone in place by 1 PM' },
-        { label: 'Setting', value: 'Indoor + covered outdoor patio, first come first serve' },
+        { label: 'Where', value: 'Dram & Draught Raleigh · 1 Glenwood Ave, Suite 101' },
+        { label: 'Setting', value: 'Indoor + covered patio, first come first serve' },
+        { label: 'Cover', value: 'No cover, no RSVP' },
       ],
     },
     {
@@ -75,39 +76,62 @@ function buildSections() {
       items: COCKTAILS,
     },
     {
-      id: 'ap-parking',
+      id: 'ap-artist-callout',
+      type: 'text',
+      bgStyle: 'gold',
+      align: 'center',
+      stackedImages: [
+        '/assets/artpopup/artist.png',
+        '/assets/artpopup/wanted.png',
+      ],
+      body: [
+        "We're still taking applications. Painting, illustration, photography, printmaking, ceramics, jewelry, sculpture, collage, digital, whatever you make.",
+        '',
+        "Fill out the form to apply.",
+      ].join('\n'),
+    },
+
+    // ── Post-submit acknowledgment (only shown on the terms page) ────────
+    {
+      id: 'ap-ack-parking',
       type: 'text',
       bgStyle: 'default',
       align: 'left',
+      ackOnly: true,
       heading: 'Parking',
       body: [
         "We don't have our own lot. Your options are street parking or the pay deck across from us next to the Casso. Easiest move: unload in front of Dram, then go park so you don't haul your work a block.",
       ].join('\n'),
     },
     {
-      id: 'ap-vendor-pitch',
-      type: 'text',
-      bgStyle: 'gold',
-      align: 'left',
-      heading: 'Are you an artist?',
-      body: [
-        "We're accepting applications now. If you make it, we want to see it: painting, illustration, photography, printmaking, ceramics, jewelry, sculpture, collage, digital, whatever you're making.",
-        '',
-        "Jamie goes through every application and sends invites to accepted artists as slots open. Fill out the form to apply.",
-      ].join('\n'),
-    },
-    {
-      id: 'ap-setup',
+      id: 'ap-ack-setup',
       type: 'text',
       bgStyle: 'default',
       align: 'left',
-      heading: 'What to know if you\u2019re showing',
+      ackOnly: true,
+      heading: 'Setting up the day of',
       body: [
+        "Load-in starts at 12 PM. Everyone needs to be in place by 1 PM so we can open the doors to guests at 2.",
+        '',
         "The patio is covered, so you don't need a tent. It does get windy out there, so bring weights for your work and table cover if you end up outside. Indoor spots are available too.",
         '',
         "We have large tables you can use, or bring your own if you want more room. Either way bring your own table cover. Staff will help you set up when you arrive.",
+      ].join('\n'),
+    },
+    {
+      id: 'ap-ack-lockin',
+      type: 'text',
+      bgStyle: 'default',
+      align: 'left',
+      ackOnly: true,
+      heading: 'After you\u2019re accepted',
+      body: [
+        "Once Jamie sends your invite, you'll email jamie@dramanddraught.com with:",
         '',
-        "Accepted artists: please email jamie@dramanddraught.com with a $10 lock-in fee (to reserve your spot) and 5 photos of your work (so we can hype you on social). Details will come in your invite email.",
+        "1) A $10 lock-in fee to reserve your spot.",
+        "2) Five photos of your work so we can hype you on our social accounts.",
+        '',
+        "Full day-of details will come in that invite email.",
       ].join('\n'),
     },
   ];
@@ -121,7 +145,6 @@ const CUSTOM_QUESTIONS = [
   { id: 'q_price_range', label: 'Price Range of Your Work', type: 'text', required: true },
   { id: 'q_instagram', label: 'Instagram Handle', type: 'text', required: false },
   { id: 'q_table', label: 'Would you like to use one of our tables?', type: 'yesno', required: true },
-  { id: 'q_agree', label: 'I understand accepted artists pay a $10 lock-in fee to reserve their spot and will send 5 photos of their work for social.', type: 'yesno', required: true },
 ];
 
 async function main() {

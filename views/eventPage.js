@@ -88,7 +88,9 @@ function videoEmbedUrl(url) {
 
 function isValidImageSrc(src) {
   if (!src) return false;
-  return /^data:image\/(jpeg|jpg|png|gif|webp);base64,/i.test(src) || /^https?:\/\//i.test(src);
+  return /^data:image\/(jpeg|jpg|png|gif|webp);base64,/i.test(src)
+    || /^https?:\/\//i.test(src)
+    || /^\/assets\/[a-z0-9\-._\/]+$/i.test(src); // site-relative asset path
 }
 
 function bgStyleClass(s) {
@@ -100,10 +102,17 @@ function bgStyleClass(s) {
 }
 
 // Render an array of page sections.
-// Types: text, image, details, button, video, divider, hero, twocol, schedule, faq
-function renderSections(sections) {
+// Types: text, image, details, button, video, divider, hero, twocol, schedule, faq, cocktailmenu
+//
+// Sections with `ackOnly: true` are only included when `options.ackOnly === true`
+// (they're reserved for the post-submit terms/acknowledgment page). The default
+// public render skips them.
+function renderSections(sections, options = {}) {
   if (!Array.isArray(sections) || sections.length === 0) return '';
-  return sections.map(s => {
+  const ackOnly = options.ackOnly === true;
+  const filtered = sections.filter(s => s && (ackOnly ? s.ackOnly === true : s.ackOnly !== true));
+  if (filtered.length === 0) return '';
+  return filtered.map(s => {
     const type = s && s.type;
 
     if (type === 'text') {
@@ -112,7 +121,13 @@ function renderSections(sections) {
         ? s.body.split(/\n\n+/).map(p => `<p>${escHTML(p).replace(/\n/g, '<br/>')}</p>`).join('')
         : '';
       const align = (s.align === 'center' || s.align === 'right') ? ` ev-sec-align-${s.align}` : '';
-      return `<section class="ev-sec ev-sec-text${bgStyleClass(s)}${align}">${heading}<div class="ev-sec-body">${body}</div></section>`;
+      // Optional stacked images above the heading — used by the art pop-up
+      // "ARTISTS WANTED" callout where the two drip-text graphics stack.
+      const stack = Array.isArray(s.stackedImages) ? s.stackedImages.filter(isValidImageSrc) : [];
+      const stackMarkup = stack.length
+        ? `<div class="ev-sec-stack">${stack.map(src => `<img src="${escHTML(src)}" alt="" loading="lazy" />`).join('')}</div>`
+        : '';
+      return `<section class="ev-sec ev-sec-text${bgStyleClass(s)}${align}">${stackMarkup}${heading}<div class="ev-sec-body">${body}</div></section>`;
     }
 
     if (type === 'image') {
@@ -330,7 +345,7 @@ function generateEventPage(location, event, signupCount, options = {}) {
     ? 'Apply to show your work'
     : isVendor ? 'Apply to be a vendor' : 'Join this event';
   const sideCopy = isArt
-    ? 'Tell us about your work. Jamie reviews every application and sends invites to accepted artists as slots open up.'
+    ? 'Tell us about your work. We send invites to accepted artists as slots open up.'
     : isVendor
       ? 'Tell us about your business below. Our team reviews each application and will reach out once a decision has been made.'
       : 'Signups are open now.';
@@ -667,9 +682,15 @@ function generateEventPage(location, event, signupCount, options = {}) {
         }
 
         /* ─── Art Gallery theme (Neighborhood Art Pop-Up) ───
-           Purple damask wallpaper backing, cream "gallery catalog" panels on
-           top with black frames, bold typography, and cartoon art assets
-           scattered as decorations. */
+           Purple damask wallpaper backing with cream "gallery catalog" panels
+           on top. Cartoon art assets are placed intentionally, not randomly:
+             • frame.png  → small ornate frame hanging in the hero corner
+             • artist.png + wanted.png → stacked "ARTISTS WANTED" poster inside
+               the artist-call-to-action section
+             • paint.png + paintbrush.png → art-supplies still-life on the
+               cocktail menu card
+             • vendorpass.png → hanging lanyard at the top of the signup card
+             • statue.png    → classical bust peeking behind the details card */
         @import url('https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Caveat:wght@700&display=swap');
         body.ev-art {
           --gold: #d14c2e;              /* tomato red accent (replaces gold) */
@@ -692,63 +713,10 @@ function generateEventPage(location, event, signupCount, options = {}) {
           color: var(--text);
           font-family: 'Playfair Display', 'Iowan Old Style', Georgia, serif;
         }
-        /* Cartoon art "splats" that drift behind content. Fixed layer so they
-           parallax-feel on scroll without affecting layout. */
-        .art-splats {
-          position: fixed;
-          inset: 0;
-          pointer-events: none;
-          z-index: 1;
-        }
-        .art-splat {
-          position: absolute;
-          background-size: contain;
-          background-repeat: no-repeat;
-          filter: drop-shadow(0 10px 18px rgba(0,0,0,0.25));
-          opacity: 0.95;
-        }
-        .art-splat-1 {
-          top: 80px; left: -40px;
-          width: 180px; height: 180px;
-          background-image: url('/assets/artpopup/paintbrush.png');
-          transform: rotate(-8deg);
-          animation: artbob 9s ease-in-out infinite;
-        }
-        .art-splat-2 {
-          top: 480px; right: -30px;
-          width: 160px; height: 160px;
-          background-image: url('/assets/artpopup/paint.png');
-          transform: rotate(12deg);
-          animation: artbob 11s ease-in-out infinite reverse;
-        }
-        .art-splat-3 {
-          bottom: 240px; left: -20px;
-          width: 170px; height: 170px;
-          background-image: url('/assets/artpopup/statue.png');
-          transform: rotate(-6deg);
-          animation: artbob 13s ease-in-out infinite;
-        }
-        .art-splat-4 {
-          bottom: 80px; right: 10px;
-          width: 160px; height: 160px;
-          background-image: url('/assets/artpopup/vendorpass.png');
-          transform: rotate(8deg);
-          animation: artbob 12s ease-in-out infinite reverse;
-        }
-        @keyframes artbob {
-          0%,100% { transform: translateY(0) rotate(var(--r,0deg)); }
-          50%     { transform: translateY(-12px) rotate(var(--r,0deg)); }
-        }
-        @media (max-width: 700px) {
-          .art-splat-1, .art-splat-4 { width: 110px; height: 110px; }
-          .art-splat-2, .art-splat-3 { display: none; }
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .art-splat { animation: none; }
-        }
         body.ev-art .ev-wrap { position: relative; z-index: 2; }
 
-        /* Hero: bold black gallery placard on top of the damask */
+        /* Hero: bold gallery placard. Ornate frame hangs in the top-right
+           corner like a painting on the wall behind the placard. */
         body.ev-art .ev-hero {
           background:
             radial-gradient(circle at 50% 110%, rgba(231,184,58,0.35), transparent 55%),
@@ -756,25 +724,31 @@ function generateEventPage(location, event, signupCount, options = {}) {
           border: 3px solid #1a1816;
           border-radius: 18px;
           box-shadow: 12px 12px 0 #1a1816, 0 24px 60px rgba(0,0,0,0.35);
-          padding: 56px 24px 70px;
+          padding: 50px 24px 44px;
+          overflow: visible;
         }
         body.ev-art .ev-hero::before {
           background: linear-gradient(90deg, transparent, #d14c2e 20%, #e7b83a 50%, #3a6d4a 80%, transparent);
           opacity: 1;
           height: 3px;
         }
-        /* Big cartoon "ARTISTS" drip text anchored to the hero bottom */
+        /* The ornate frame, hung at a small angle in the hero corner.
+           Sized to feel like decor, not content — negative margin so it breaks
+           out of the hero box. Mobile shrinks and pulls it in. */
         body.ev-art .ev-hero::after {
           content: '';
           position: absolute;
-          left: 50%;
-          bottom: -28px;
-          transform: translateX(-50%) rotate(-4deg);
-          width: min(320px, 72%);
-          height: 110px;
-          background: url('/assets/artpopup/artist.png') center/contain no-repeat;
-          filter: drop-shadow(0 10px 18px rgba(0,0,0,0.3));
+          top: -28px;
+          right: -18px;
+          width: 140px;
+          height: 210px;
+          background: url('/assets/artpopup/frame.png') center/contain no-repeat;
+          filter: drop-shadow(0 10px 18px rgba(0,0,0,0.35));
+          transform: rotate(6deg);
           pointer-events: none;
+        }
+        @media (max-width: 640px) {
+          body.ev-art .ev-hero::after { width: 88px; height: 130px; right: -8px; top: -16px; }
         }
         body.ev-art .ev-hero-eyebrow {
           color: #d14c2e;
@@ -831,26 +805,95 @@ function generateEventPage(location, event, signupCount, options = {}) {
           position: relative;
           margin-bottom: 28px;
         }
-        body.ev-art .ev-details { margin-bottom: 20px; }
-        /* "WANTED" drip graffiti as a decorative tag on the gold-style card */
+        body.ev-art .ev-details {
+          margin-bottom: 20px;
+          overflow: visible;
+        }
+        /* Statue peeking out behind the Details card on desktop (hidden on
+           mobile since it would crowd the card). Classical bust on a plinth
+           anchored to the left edge. */
+        body.ev-art .ev-details::after {
+          content: '';
+          position: absolute;
+          bottom: -24px;
+          left: -86px;
+          width: 110px;
+          height: 165px;
+          background: url('/assets/artpopup/statue.png') center/contain no-repeat;
+          filter: drop-shadow(0 12px 18px rgba(0,0,0,0.35));
+          pointer-events: none;
+          z-index: -1;
+        }
+        @media (max-width: 880px) {
+          body.ev-art .ev-details::after { display: none; }
+        }
+
+        /* Artist-call-to-action section: the "gold" variant.
+           The stacked ARTISTS + WANTED drip graphics sit inside as the
+           headline, replacing the section heading's underline. The drip
+           illustrations live in a content div rendered by the seed. */
         body.ev-art .ev-sec-bg-gold {
           background:
             radial-gradient(circle at 20% 0%, rgba(209,76,46,0.18), transparent 60%),
             linear-gradient(180deg, #fff4dc, #ffe3a8) !important;
           border-color: #1a1816 !important;
           box-shadow: 8px 8px 0 #1a1816, 0 16px 30px rgba(0,0,0,0.2) !important;
+          padding-top: 34px !important;
         }
-        body.ev-art .ev-sec-bg-gold::before {
+
+        /* Paint-supplies still-life decorating the cocktail menu card:
+           paintbrush + palette overlapping the paint tube. Positioned in the
+           top-right corner of the card. */
+        body.ev-art .ev-sec-cocktails {
+          overflow: visible;
+          padding-top: 34px;
+        }
+        body.ev-art .ev-sec-cocktails::before {
           content: '';
           position: absolute;
-          top: -32px;
-          right: 14px;
+          top: -34px;
+          right: -22px;
           width: 180px;
-          height: 70px;
-          background: url('/assets/artpopup/wanted.png') center/contain no-repeat;
-          filter: drop-shadow(0 6px 10px rgba(0,0,0,0.25));
+          height: 120px;
+          background:
+            url('/assets/artpopup/paint.png') left 0 top 10px / 72px 108px no-repeat,
+            url('/assets/artpopup/paintbrush.png') right 0 top 0 / 130px 130px no-repeat;
+          filter: drop-shadow(0 10px 14px rgba(0,0,0,0.3));
           transform: rotate(6deg);
           pointer-events: none;
+        }
+        @media (max-width: 640px) {
+          body.ev-art .ev-sec-cocktails::before {
+            width: 120px; height: 80px; right: -10px; top: -20px;
+            background-size: 50px 74px, 88px 88px;
+          }
+        }
+
+        /* Vendor pass hanging from the top of the signup side-card, like a
+           lanyard clipped to the top edge. Gentle sway animation. */
+        body.ev-art .ev-side-card {
+          overflow: visible;
+          padding-top: 68px;
+        }
+        body.ev-art .ev-side-card::before {
+          content: '';
+          position: absolute;
+          top: -56px;
+          right: 18px;
+          width: 110px;
+          height: 165px;
+          background: url('/assets/artpopup/vendorpass.png') center/contain no-repeat;
+          filter: drop-shadow(0 8px 14px rgba(0,0,0,0.4));
+          transform-origin: 50% -5%;
+          animation: passSway 5s ease-in-out infinite;
+          pointer-events: none;
+        }
+        @keyframes passSway {
+          0%, 100% { transform: rotate(-3deg); }
+          50%       { transform: rotate(3deg); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          body.ev-art .ev-side-card::before { animation: none; }
         }
         body.ev-art .ev-sec-bg-dark {
           background: linear-gradient(180deg, #e8d9bd, #d4c098) !important;
@@ -1227,6 +1270,22 @@ function generateEventPage(location, event, signupCount, options = {}) {
         .ev-sec {
           margin-bottom: 26px;
         }
+        /* Stacked images (e.g. ARTISTS + WANTED drip-text for the art pop-up).
+           Two graphics overlap slightly and tilt like a taped-up flyer. */
+        .ev-sec-stack {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          margin: -6px auto 16px;
+        }
+        .ev-sec-stack img {
+          max-width: min(320px, 80%);
+          height: auto;
+          display: block;
+          filter: drop-shadow(0 10px 16px rgba(0,0,0,0.3));
+        }
+        .ev-sec-stack img:nth-child(1) { transform: rotate(-3deg); }
+        .ev-sec-stack img:nth-child(2) { transform: rotate(2deg); margin-top: -18px; }
         .ev-sec-text {
           background: linear-gradient(180deg, rgba(24,25,28,0.95), rgba(15,16,18,0.98));
           border: 1px solid var(--line);
@@ -1760,12 +1819,6 @@ function generateEventPage(location, event, signupCount, options = {}) {
           return `<span style="left:${left.toFixed(1)}%; animation-duration:${dur.toFixed(1)}s; animation-delay:${delay.toFixed(1)}s; width:${size}px; height:${size}px;"></span>`;
         }).join('')}
       </div>` : ''}
-      ${bodyClass === 'ev-art' ? `<div class="art-splats" aria-hidden="true">
-        <span class="art-splat art-splat-1"></span>
-        <span class="art-splat art-splat-2"></span>
-        <span class="art-splat art-splat-3"></span>
-        <span class="art-splat art-splat-4"></span>
-      </div>` : ''}
       <div class="ev-wrap">
         <div class="ev-page-nav">
           <a href="/${escHTML(location.slug)}" class="ev-back">← ${escHTML(location.name)}</a>
@@ -2072,9 +2125,268 @@ function generateEventConfirmationPage(location, event, signup) {
   `;
 }
 
+// Post-submit terms gate. Shown after an artist submits the application form
+// when the event has any `ackOnly: true` sections. The form on this page
+// re-submits all the entered values (carried as hidden inputs) along with
+// `_confirmed=true`, which tells the signup handler to actually create the
+// EventSignup. Without acknowledgment, the submission is never persisted.
+function generateEventTermsPage(location, event, prevValues = {}) {
+  const isVendor = event.isVendorEvent === true;
+  const themeKey = event.themeKey || (isVendor ? 'spring-market' : null);
+  const bodyClass = themeKey === 'art-gallery'
+    ? 'ev-art'
+    : themeKey === 'spring-market'
+      ? 'ev-vendor'
+      : '';
+  const publicPath = `/${location.slug}/events/${event.slug}`;
+  const ackMarkup = renderSections(event.sections, { ackOnly: true });
+
+  // Build hidden inputs carrying every value the user entered on step 1.
+  const hidden = [];
+  const pushHidden = (name, value) => {
+    if (value === null || value === undefined || value === '') return;
+    hidden.push(`<input type="hidden" name="${escHTML(name)}" value="${escHTML(String(value))}" />`);
+  };
+  pushHidden('name', prevValues.name);
+  pushHidden('email', prevValues.email);
+  pushHidden('phone', prevValues.phone);
+  pushHidden('partySize', prevValues.partySize);
+  pushHidden('notes', prevValues.notes);
+  for (const [k, v] of Object.entries(prevValues.customAnswers || {})) {
+    pushHidden(`cq_${k}`, v);
+  }
+  hidden.push('<input type="hidden" name="_confirmed" value="true" />');
+
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <meta name="theme-color" content="#0f1012">
+      <title>Please review — ${escHTML(event.title)}</title>
+      <style>
+        ${vintageThemeCss()}
+        ${brandMarkCss()}
+        body {
+          background:
+            radial-gradient(900px 380px at 14% -8%, rgba(255,255,255,0.06), transparent 60%),
+            radial-gradient(1080px 540px at 100% 0%, rgba(111,118,127,0.10), transparent 58%),
+            linear-gradient(180deg, var(--bg-a) 0%, #0d0e10 38%, var(--bg-b) 100%);
+          color: var(--text);
+          min-height: 100vh;
+          font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+        }
+        /* Match the art-gallery theme vars/background when applicable */
+        body.ev-art {
+          --gold: #d14c2e;
+          --amber: #e7b83a;
+          --text: #1a1816;
+          --steel: #2c2826;
+          --muted: #6b6357;
+          --panel: #fffaf0;
+          --line: rgba(26,24,22,0.35);
+          background:
+            url('/assets/artpopup/background.png') repeat,
+            linear-gradient(180deg, #b577b0, #d9a6d2);
+          color: var(--text);
+        }
+        body.ev-vendor {
+          --gold: #6f9061;
+          --amber: #d97a5e;
+          --text: #2a3326;
+          --steel: #3f4a38;
+          --muted: #6b7a64;
+          --panel: #ffffff;
+          --line: rgba(111,144,97,0.22);
+          background:
+            radial-gradient(900px 380px at 14% -8%, rgba(249,193,173,0.55), transparent 60%),
+            radial-gradient(1080px 540px at 100% 0%, rgba(163,196,141,0.42), transparent 58%),
+            linear-gradient(180deg, #fbf4e4 0%, #f8ead1 50%, #f1e0c7 100%);
+        }
+        .et-wrap { max-width: 780px; margin: 0 auto; padding: 32px 16px 72px; }
+        .et-header {
+          text-align: center;
+          padding: 30px 24px;
+          margin-bottom: 22px;
+          background: linear-gradient(180deg, #fffaf0, #f6ecd7);
+          border: 3px solid #1a1816;
+          border-radius: 16px;
+          box-shadow: 10px 10px 0 #1a1816, 0 22px 48px rgba(0,0,0,0.3);
+        }
+        body.ev-vendor .et-header {
+          background: linear-gradient(180deg, #ffffff, #fff7e8);
+          border-color: rgba(111,144,97,0.35);
+          box-shadow: 0 16px 40px rgba(144,110,80,0.22);
+        }
+        body:not(.ev-art):not(.ev-vendor) .et-header {
+          background: var(--panel);
+          border: 1px solid var(--line);
+          box-shadow: 0 18px 40px var(--shadow);
+        }
+        .et-eyebrow {
+          font-size: 0.72rem;
+          font-weight: 800;
+          letter-spacing: 0.22em;
+          text-transform: uppercase;
+          color: #d14c2e;
+          margin-bottom: 10px;
+          font-family: 'Permanent Marker', 'Inter', sans-serif;
+        }
+        body.ev-vendor .et-eyebrow { color: #d97a5e; font-family: inherit; }
+        .et-title {
+          font-family: 'Playfair Display', Georgia, serif;
+          font-weight: 900;
+          font-size: clamp(1.6rem, 5vw, 2.2rem);
+          color: var(--text);
+          margin: 0 0 6px;
+        }
+        .et-sub { color: var(--muted); font-size: 0.95rem; }
+        .et-ack-form {
+          background: linear-gradient(180deg, #fffaf0, #f6ecd7);
+          border: 3px solid #1a1816;
+          border-radius: 16px;
+          box-shadow: 10px 10px 0 #1a1816, 0 22px 48px rgba(0,0,0,0.3);
+          padding: 26px;
+          margin-top: 26px;
+        }
+        body.ev-vendor .et-ack-form {
+          background: #ffffff;
+          border: 1px solid rgba(111,144,97,0.35);
+          box-shadow: 0 16px 40px rgba(144,110,80,0.22);
+        }
+        body:not(.ev-art):not(.ev-vendor) .et-ack-form {
+          background: var(--panel);
+          border: 1px solid var(--line);
+          box-shadow: 0 18px 40px var(--shadow);
+        }
+        .et-check {
+          display: flex;
+          gap: 12px;
+          align-items: flex-start;
+          padding: 14px 16px;
+          border: 2px dashed rgba(26,24,22,0.35);
+          border-radius: 10px;
+          cursor: pointer;
+          font-size: 0.96rem;
+          line-height: 1.5;
+          color: var(--text);
+          font-family: 'Inter', -apple-system, sans-serif;
+        }
+        body.ev-vendor .et-check { border-color: rgba(111,144,97,0.4); }
+        .et-check input { margin-top: 4px; transform: scale(1.15); cursor: pointer; }
+        .et-submit {
+          display: block;
+          width: 100%;
+          margin-top: 22px;
+          padding: 18px 20px;
+          background: #1a1816;
+          color: #e7b83a;
+          border: 2px solid #1a1816;
+          border-radius: 12px;
+          font-size: 1.05rem;
+          font-weight: 800;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          cursor: pointer;
+          box-shadow: 6px 6px 0 #d14c2e;
+          font-family: 'Permanent Marker', 'Inter', sans-serif;
+          transition: transform 0.1s, box-shadow 0.15s;
+        }
+        .et-submit:hover { background: #d14c2e; color: #fffaf0; transform: translate(-2px, -2px); box-shadow: 8px 8px 0 #1a1816; }
+        .et-submit:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: 6px 6px 0 rgba(0,0,0,0.25); }
+        body.ev-vendor .et-submit {
+          background: linear-gradient(135deg, #6f9061 0%, #a3c48d 45%, #f2c094 100%);
+          color: #1f2a1c;
+          border-color: transparent;
+          box-shadow: 0 14px 32px rgba(111,144,97,0.35);
+          font-family: 'Inter', sans-serif;
+          text-transform: uppercase;
+        }
+        body.ev-vendor .et-submit:hover { filter: brightness(1.05); transform: none; box-shadow: 0 18px 40px rgba(217,122,94,0.35); }
+        .et-back {
+          display: inline-block;
+          margin-top: 18px;
+          color: var(--muted);
+          font-size: 0.88rem;
+          text-decoration: underline;
+          font-family: 'Inter', sans-serif;
+        }
+        /* Reuse the same section card styles as the main event page for the
+           ack sections so they feel native. Minimal inline style block. */
+        .ev-sec { margin-bottom: 22px; }
+        .ev-sec-text {
+          background: linear-gradient(180deg, #fffaf0, #f6ecd7);
+          border: 3px solid #1a1816;
+          border-radius: 14px;
+          padding: 24px 26px;
+          box-shadow: 8px 8px 0 #1a1816, 0 16px 30px rgba(0,0,0,0.2);
+        }
+        body.ev-vendor .ev-sec-text {
+          background: linear-gradient(180deg, #ffffff, #fff7e8);
+          border: 1px solid rgba(111,144,97,0.28);
+          box-shadow: 0 10px 28px rgba(144,110,80,0.14);
+        }
+        .ev-sec-heading {
+          font-family: 'Playfair Display', Georgia, serif;
+          font-weight: 900;
+          font-size: 1.3rem;
+          margin-bottom: 12px;
+          color: var(--text);
+        }
+        .ev-sec-heading::after {
+          content: '';
+          display: block;
+          width: 60px;
+          height: 3px;
+          background: linear-gradient(90deg, #d14c2e, #e7b83a);
+          margin-top: 8px;
+        }
+        body.ev-vendor .ev-sec-heading::after { background: linear-gradient(90deg, #6f9061, #d97a5e); }
+        .ev-sec-body { color: var(--steel); font-size: 0.98rem; line-height: 1.65; font-family: 'Inter', -apple-system, sans-serif; }
+        .ev-sec-body p { margin-bottom: 10px; }
+        .ev-sec-body p:last-child { margin-bottom: 0; }
+      </style>
+    </head>
+    <body${bodyClass ? ` class="${bodyClass}"` : ''}>
+      <div class="et-wrap">
+        <div class="et-header">
+          <div class="et-eyebrow">Almost There</div>
+          <h1 class="et-title">${escHTML(event.title)}</h1>
+          <div class="et-sub">Read the details below, check the box, and submit to finish your application.</div>
+        </div>
+        ${ackMarkup}
+        <form method="POST" action="${escHTML(publicPath)}/signup" class="et-ack-form" id="et-form">
+          ${hidden.join('\n          ')}
+          <label class="et-check">
+            <input type="checkbox" id="et-agree" name="_agreed" value="yes" required />
+            <span>I have read and understand the information above, and I want to submit my application.</span>
+          </label>
+          <button type="submit" class="et-submit" id="et-submit" disabled>Submit my application</button>
+          <a href="${escHTML(publicPath)}" class="et-back">← Back to the event page</a>
+        </form>
+      </div>
+      <script>
+        (function() {
+          var cb = document.getElementById('et-agree');
+          var btn = document.getElementById('et-submit');
+          if (!cb || !btn) return;
+          cb.addEventListener('change', function() { btn.disabled = !cb.checked; });
+          document.getElementById('et-form').addEventListener('submit', function() {
+            btn.disabled = true;
+            btn.textContent = 'Submitting...';
+          });
+        })();
+      </script>
+    </body>
+    </html>
+  `;
+}
+
 module.exports = {
   generateEventPage,
   generateEventConfirmationPage,
+  generateEventTermsPage,
   eventStatus,
   formatEventDate,
   formatEventTime,

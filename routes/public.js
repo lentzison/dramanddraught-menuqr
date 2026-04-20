@@ -38,7 +38,7 @@ const { generateDraftPage } = require('../views/draftPage');
 const { generateFlightsPage } = require('../views/flightsPage');
 const { generateMenuPage } = require('../views/menuPage');
 const { generateSpiritsPage } = require('../views/spiritsPage');
-const { generateEventPage, generateEventConfirmationPage, eventStatus } = require('../views/eventPage');
+const { generateEventPage, generateEventConfirmationPage, generateEventTermsPage, eventStatus } = require('../views/eventPage');
 const { generateEventsIndexPage } = require('../views/eventsIndexPage');
 const { generateNotFoundPage } = require('../views/notFoundPage');
 const { trackPageView, buildTrackingScript } = require('../analytics');
@@ -1517,6 +1517,24 @@ async function handlePublic(req, res, pathname, prisma) {
         generateEventPage(location, event, signupCount, {
           prevValues: { name, email, phone, partySize, notes, ...Object.fromEntries(questions.map(q => [q.id, body[`cq_${q.id}`] || ''])) },
           errorMessage: errors.join(' '),
+        }),
+        sid,
+      ));
+      return true;
+    }
+
+    // Two-step gate: if the event has any `ackOnly` sections (parking/setup/
+    // lock-in rules on the art pop-up), show the terms page first. The terms
+    // page POSTs back to this same endpoint with `_confirmed=true` carrying
+    // all the hidden field values, and we drop through to the create below.
+    const hasAckSections = Array.isArray(event.sections)
+      && event.sections.some(s => s && s.ackOnly === true);
+    const confirmed = body._confirmed === 'true';
+    if (hasAckSections && !confirmed) {
+      const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/events/${event.slug}/terms`, getQueryString(req));
+      sendHTML(res, 200, injectTracking(
+        generateEventTermsPage(location, event, {
+          name, email, phone, partySize, notes, customAnswers,
         }),
         sid,
       ));

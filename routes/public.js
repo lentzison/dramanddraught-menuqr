@@ -1288,27 +1288,41 @@ async function getPublicEventsForLocation(prisma, locationId, options = {}) {
 }
 
 async function handlePublic(req, res, pathname, prisma) {
-  if (pathname === '/assets/dram-draught-logo-white.png') {
+  // Serve any file under /assets/** from the project's assets directory.
+  // Path traversal defense: resolve the candidate path and require it stays
+  // rooted inside the assets dir.
+  if (pathname.startsWith('/assets/')) {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       sendHTML(res, 405, '<h1>Method Not Allowed</h1>');
       return true;
     }
-
+    const assetsRoot = path.join(__dirname, '..', 'assets');
+    const candidate = path.normalize(path.join(assetsRoot, pathname.replace(/^\/assets\//, '')));
+    if (!candidate.startsWith(assetsRoot + path.sep) && candidate !== assetsRoot) {
+      sendHTML(res, 403, '<h1>Forbidden</h1>');
+      return true;
+    }
     try {
-      const image = fs.readFileSync(BRAND_LOGO_PATH);
+      const buf = fs.readFileSync(candidate);
+      const ext = path.extname(candidate).toLowerCase();
+      const mime = ({
+        '.png': 'image/png',
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.webp': 'image/webp',
+        '.gif': 'image/gif',
+        '.svg': 'image/svg+xml',
+        '.ico': 'image/x-icon',
+      })[ext] || 'application/octet-stream';
       res.writeHead(200, {
-        'Content-Type': 'image/png',
-        'Content-Length': image.length,
+        'Content-Type': mime,
+        'Content-Length': buf.length,
         'Cache-Control': 'public, max-age=604800, immutable',
       });
-      if (req.method === 'HEAD') {
-        res.end();
-      } else {
-        res.end(image);
-      }
+      if (req.method === 'HEAD') res.end();
+      else res.end(buf);
       return true;
-    } catch (error) {
-      console.error('Error serving brand logo:', error);
+    } catch (err) {
       sendHTML(res, 404, '<h1>Asset not found</h1>');
       return true;
     }

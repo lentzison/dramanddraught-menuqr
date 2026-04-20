@@ -1,0 +1,150 @@
+// Seeds (or re-seeds) the Raleigh "Neighborhood Art Pop-Up" event.
+// Idempotent: re-running refreshes the page body without touching the
+// artist applications (those live in EventSignup).
+//
+// Run:  node scripts/seed-art-popup.js
+
+const { PrismaClient } = require('@prisma/client');
+
+const LOCATION_SLUG = 'raleigh';
+const EVENT_SLUG = 'neighborhood-art-popup';
+const NOTIFY_EMAIL = 'jamie@dramanddraught.com';
+
+// Eastern May 16, 2026 2:00pm → 6:00pm. May is always EDT (UTC-4).
+const START = new Date(Date.UTC(2026, 4, 16, 18, 0, 0));
+const END = new Date(Date.UTC(2026, 4, 16, 22, 0, 0));
+
+const TITLE = 'Neighborhood Art Pop-Up';
+const DESCRIPTION = [
+  "Browse unique pieces from local artists while you sip one of our signature cocktails. One afternoon, one room (and a patio), all Raleigh makers.",
+  '',
+  "Pull up, wander around, meet the artists, and take something home. No cover, no RSVP. Bring friends.",
+].join('\n');
+
+const CONFIRMATION_MESSAGE = [
+  "Thanks for applying.",
+  "",
+  "Jamie reads every application and sends invites to accepted artists as slots open up. If you're in, you'll get an email from jamie@dramanddraught.com with next steps: the $10 lock-in fee to reserve your spot, 5 photos of your work so we can boost you on social, and day-of setup details.",
+  "",
+  "Questions: jamie@dramanddraught.com or (919) 971-3889.",
+].join('\n');
+
+function buildSections() {
+  return [
+    {
+      id: 'ap-details',
+      type: 'details',
+      bgStyle: 'default',
+      title: 'The Details',
+      items: [
+        { label: 'When', value: 'Saturday, May 16, 2026 · 2 to 6 PM' },
+        { label: 'Where', value: 'Dram & Draught Raleigh · 1 Glenwood Ave, Suite 101, Raleigh' },
+        { label: 'Artist setup', value: 'Starts at 12 PM · everyone in place by 1 PM' },
+        { label: 'Setting', value: 'Indoor + covered outdoor patio, first come first serve' },
+      ],
+    },
+    {
+      id: 'ap-parking',
+      type: 'text',
+      bgStyle: 'default',
+      align: 'left',
+      heading: 'Parking',
+      body: [
+        "We don't have our own lot. Your options are street parking or the pay deck across from us next to the Casso. Easiest move: unload in front of Dram, then go park so you don't haul your work a block.",
+      ].join('\n'),
+    },
+    {
+      id: 'ap-vendor-pitch',
+      type: 'text',
+      bgStyle: 'gold',
+      align: 'left',
+      heading: 'Are you an artist?',
+      body: [
+        "We're accepting applications now. If you make it, we want to see it: painting, illustration, photography, printmaking, ceramics, jewelry, sculpture, collage, digital, whatever you're making.",
+        '',
+        "Jamie goes through every application and sends invites to accepted artists as slots open. Fill out the form to apply.",
+      ].join('\n'),
+    },
+    {
+      id: 'ap-setup',
+      type: 'text',
+      bgStyle: 'default',
+      align: 'left',
+      heading: 'What to know if you\u2019re showing',
+      body: [
+        "The patio is covered, so you don't need a tent. It does get windy out there, so bring weights for your work and table cover if you end up outside. Indoor spots are available too.",
+        '',
+        "We have large tables you can use, or bring your own if you want more room. Either way bring your own table cover. Staff will help you set up when you arrive.",
+        '',
+        "Accepted artists: please email jamie@dramanddraught.com with a $10 lock-in fee (to reserve your spot) and 5 photos of your work (so we can hype you on social). Details will come in your invite email.",
+      ].join('\n'),
+    },
+  ];
+}
+
+// Fields collected on the application form. Stable ids so re-seeding doesn't
+// invalidate existing submissions.
+const CUSTOM_QUESTIONS = [
+  { id: 'q_artist_name', label: 'Artist Name', type: 'text', required: true },
+  { id: 'q_artist_media', label: 'Artist Media (painting, photography, ceramics, jewelry, etc.)', type: 'text', required: true },
+  { id: 'q_price_range', label: 'Price Range of Your Work', type: 'text', required: true },
+  { id: 'q_instagram', label: 'Instagram Handle', type: 'text', required: false },
+  { id: 'q_table', label: 'Would you like to use one of our tables?', type: 'yesno', required: true },
+  { id: 'q_agree', label: 'I understand accepted artists pay a $10 lock-in fee to reserve their spot and will send 5 photos of their work for social.', type: 'yesno', required: true },
+];
+
+async function main() {
+  const prisma = new PrismaClient();
+  try {
+    const location = await prisma.location.findFirst({ where: { slug: LOCATION_SLUG } });
+    if (!location) throw new Error(`Location not found: ${LOCATION_SLUG}`);
+
+    const data = {
+      locationId: location.id,
+      slug: EVENT_SLUG,
+      title: TITLE,
+      description: DESCRIPTION,
+      startDate: START,
+      endDate: END,
+      promoteFrom: null,
+      promoteUntil: START,
+      capacity: null,
+      signupsEnabled: true,
+      collectEmail: true,
+      collectPhone: true,
+      collectPartySize: false,
+      collectNotes: true,
+      customQuestions: CUSTOM_QUESTIONS,
+      sections: buildSections(),
+      confirmationMessage: CONFIRMATION_MESSAGE,
+      notifyEmail: NOTIFY_EMAIL,
+      isActive: true,
+      isCancelled: false,
+      isVendorEvent: true,
+      themeKey: 'art-gallery',
+    };
+
+    const existing = await prisma.event.findFirst({
+      where: { locationId: location.id, slug: EVENT_SLUG },
+      select: { id: true },
+    });
+
+    let event;
+    if (existing) {
+      event = await prisma.event.update({ where: { id: existing.id }, data });
+      console.log(`Updated event: ${event.title} (${event.id})`);
+    } else {
+      event = await prisma.event.create({ data });
+      console.log(`Created event: ${event.title} (${event.id})`);
+    }
+    console.log(`Public URL: /${location.slug}/events/${event.slug}`);
+    console.log(`Admin URL:  /admin/events/${event.id}`);
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

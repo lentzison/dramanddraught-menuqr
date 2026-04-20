@@ -250,9 +250,14 @@ model Event {
   isCancelled      Boolean   @default(false)
 
   // Vendor events route signups through a GM approval queue instead of
-  // confirming instantly. Flips the public page to the spring palette and
-  // re-labels the signup form as a vendor application.
+  // confirming instantly. Re-labels the signup form as a vendor application.
   isVendorEvent    Boolean   @default(false)
+
+  // Optional visual theme override for the public event page.
+  // Known values: "spring-market" (soft green/peach garden party),
+  //               "art-gallery" (purple damask, paint drips, gallery vibe).
+  // null/unknown falls back to the default dark vintage theme.
+  themeKey         String?
 
   location         Location       @relation(fields: [locationId], references: [id], onDelete: Cascade)
   signups          EventSignup[]

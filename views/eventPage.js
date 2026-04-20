@@ -305,15 +305,35 @@ function generateEventPage(location, event, signupCount, options = {}) {
   const eventsPath = `/${location.slug}/events`;
   const spotsLeft = event.capacity ? Math.max(event.capacity - signupCount, 0) : null;
   const isVendor = event.isVendorEvent === true;
+  // themeKey drives the visual look. Historical spring-market events set no
+  // themeKey but rely on the spring palette — preserve that fallback so old
+  // data keeps rendering the same way. Known themes: "spring-market",
+  // "art-gallery". Any other value falls back to the default dark vintage.
+  const themeKey = event.themeKey || (isVendor ? 'spring-market' : null);
+  const bodyClass = themeKey === 'art-gallery'
+    ? 'ev-art'
+    : themeKey === 'spring-market'
+      ? 'ev-vendor'
+      : '';
 
   // Vendor-event copy: re-label the form as an application and hint that
-  // there's a review step before the vendor is confirmed.
-  const heroEyebrow = isVendor ? 'Vendor Applications' : 'Presents';
-  const sideKicker = isVendor ? 'Vendor Application' : 'Reserve Your Spot';
-  const sideTitle = isVendor ? 'Apply to be a vendor' : 'Join this event';
-  const sideCopy = isVendor
-    ? 'Tell us about your business below. Our team reviews each application and will reach out once a decision has been made.'
-    : 'Signups are open now.';
+  // there's a review step before the vendor is confirmed. Art pop-ups call
+  // their form an "artist application" instead of generic "vendor" copy.
+  const isArt = themeKey === 'art-gallery';
+  const heroEyebrow = isArt
+    ? 'Artists Wanted'
+    : isVendor ? 'Vendor Applications' : 'Presents';
+  const sideKicker = isArt
+    ? 'Artist Application'
+    : isVendor ? 'Vendor Application' : 'Reserve Your Spot';
+  const sideTitle = isArt
+    ? 'Apply to show your work'
+    : isVendor ? 'Apply to be a vendor' : 'Join this event';
+  const sideCopy = isArt
+    ? 'Tell us about your work. Jamie reviews every application and sends invites to accepted artists as slots open up.'
+    : isVendor
+      ? 'Tell us about your business below. Our team reviews each application and will reach out once a decision has been made.'
+      : 'Signups are open now.';
   const submitLabel = isVendor ? 'Submit Application' : 'Sign Up';
 
   const descriptionHtml = event.description
@@ -644,6 +664,309 @@ function generateEventPage(location, event, signupCount, options = {}) {
         body.ev-vendor .ev-sec-divider {
           background: linear-gradient(90deg, transparent, rgba(111,144,97,0.6), rgba(217,122,94,0.6), transparent);
           height: 2px;
+        }
+
+        /* ─── Art Gallery theme (Neighborhood Art Pop-Up) ───
+           Purple damask wallpaper backing, cream "gallery catalog" panels on
+           top with black frames, bold typography, and cartoon art assets
+           scattered as decorations. */
+        @import url('https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Caveat:wght@700&display=swap');
+        body.ev-art {
+          --gold: #d14c2e;              /* tomato red accent (replaces gold) */
+          --amber: #e7b83a;             /* mustard yellow accent */
+          --accent-light: #1a1816;      /* near-black text for light panels */
+          --text: #1a1816;
+          --steel: #2c2826;
+          --muted: #6b6357;
+          --smoke: #8a8279;
+          --bg-a: #f2e1f0;
+          --bg-b: #d9a6d2;
+          --panel: #fffaf0;             /* aged paper cream */
+          --panel-strong: #f6ecd7;
+          --line: rgba(26,24,22,0.35);
+          --line-strong: rgba(26,24,22,0.65);
+          --shadow: rgba(65,30,70,0.35);
+          background:
+            url('/assets/artpopup/background.png') repeat,
+            linear-gradient(180deg, #b577b0, #d9a6d2);
+          color: var(--text);
+          font-family: 'Playfair Display', 'Iowan Old Style', Georgia, serif;
+        }
+        /* Cartoon art "splats" that drift behind content. Fixed layer so they
+           parallax-feel on scroll without affecting layout. */
+        .art-splats {
+          position: fixed;
+          inset: 0;
+          pointer-events: none;
+          z-index: 1;
+        }
+        .art-splat {
+          position: absolute;
+          background-size: contain;
+          background-repeat: no-repeat;
+          filter: drop-shadow(0 10px 18px rgba(0,0,0,0.25));
+          opacity: 0.95;
+        }
+        .art-splat-1 {
+          top: 80px; left: -40px;
+          width: 180px; height: 180px;
+          background-image: url('/assets/artpopup/paintbrush.png');
+          transform: rotate(-8deg);
+          animation: artbob 9s ease-in-out infinite;
+        }
+        .art-splat-2 {
+          top: 480px; right: -30px;
+          width: 160px; height: 160px;
+          background-image: url('/assets/artpopup/paint.png');
+          transform: rotate(12deg);
+          animation: artbob 11s ease-in-out infinite reverse;
+        }
+        .art-splat-3 {
+          bottom: 240px; left: -20px;
+          width: 170px; height: 170px;
+          background-image: url('/assets/artpopup/statue.png');
+          transform: rotate(-6deg);
+          animation: artbob 13s ease-in-out infinite;
+        }
+        .art-splat-4 {
+          bottom: 80px; right: 10px;
+          width: 160px; height: 160px;
+          background-image: url('/assets/artpopup/vendorpass.png');
+          transform: rotate(8deg);
+          animation: artbob 12s ease-in-out infinite reverse;
+        }
+        @keyframes artbob {
+          0%,100% { transform: translateY(0) rotate(var(--r,0deg)); }
+          50%     { transform: translateY(-12px) rotate(var(--r,0deg)); }
+        }
+        @media (max-width: 700px) {
+          .art-splat-1, .art-splat-4 { width: 110px; height: 110px; }
+          .art-splat-2, .art-splat-3 { display: none; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .art-splat { animation: none; }
+        }
+        body.ev-art .ev-wrap { position: relative; z-index: 2; }
+
+        /* Hero: bold black gallery placard on top of the damask */
+        body.ev-art .ev-hero {
+          background:
+            radial-gradient(circle at 50% 110%, rgba(231,184,58,0.35), transparent 55%),
+            linear-gradient(180deg, #fffaf0 0%, #f6ecd7 100%);
+          border: 3px solid #1a1816;
+          border-radius: 18px;
+          box-shadow: 12px 12px 0 #1a1816, 0 24px 60px rgba(0,0,0,0.35);
+          padding: 56px 24px 70px;
+        }
+        body.ev-art .ev-hero::before {
+          background: linear-gradient(90deg, transparent, #d14c2e 20%, #e7b83a 50%, #3a6d4a 80%, transparent);
+          opacity: 1;
+          height: 3px;
+        }
+        /* Big cartoon "ARTISTS" drip text anchored to the hero bottom */
+        body.ev-art .ev-hero::after {
+          content: '';
+          position: absolute;
+          left: 50%;
+          bottom: -28px;
+          transform: translateX(-50%) rotate(-4deg);
+          width: min(320px, 72%);
+          height: 110px;
+          background: url('/assets/artpopup/artist.png') center/contain no-repeat;
+          filter: drop-shadow(0 10px 18px rgba(0,0,0,0.3));
+          pointer-events: none;
+        }
+        body.ev-art .ev-hero-eyebrow {
+          color: #d14c2e;
+          font-family: 'Permanent Marker', 'Playfair Display', serif;
+          font-size: 1.1rem;
+          letter-spacing: 0.18em;
+          text-shadow: 2px 2px 0 rgba(231,184,58,0.5);
+        }
+        body.ev-art .ev-hero-title {
+          font-family: 'Playfair Display', 'Iowan Old Style', Georgia, serif;
+          font-weight: 900;
+          color: #1a1816;
+          font-size: clamp(2.4rem, 9vw, 3.6rem);
+          text-shadow: 4px 4px 0 #e7b83a, 8px 8px 0 rgba(26,24,22,0.2);
+          letter-spacing: -0.015em;
+        }
+        body.ev-art .ev-hero-divider {
+          background: linear-gradient(90deg, transparent, #d14c2e, #e7b83a, #3a6d4a, transparent);
+          opacity: 1;
+          height: 3px;
+          max-width: 320px;
+        }
+        body.ev-art .ev-hero-location {
+          color: #3a6d4a;
+          font-family: 'Caveat', 'Playfair Display', cursive;
+          font-size: 1.35rem;
+          font-weight: 700;
+          font-style: normal;
+        }
+        body.ev-art .ev-page-nav .ev-back,
+        body.ev-art .ev-page-nav .ev-all-events {
+          color: #fffaf0;
+          background: rgba(26,24,22,0.55);
+          padding: 8px 14px;
+          border-radius: 8px;
+          backdrop-filter: blur(4px);
+        }
+        body.ev-art .ev-page-nav .ev-back:hover,
+        body.ev-art .ev-page-nav .ev-all-events:hover { color: #e7b83a; }
+
+        /* Shared panel treatment: cream paper, hard black frame, drop-shadow
+           that gives each card a posted/pinned feeling. */
+        body.ev-art .ev-details,
+        body.ev-art .ev-side-card,
+        body.ev-art .ev-sec-text,
+        body.ev-art .ev-sec-details,
+        body.ev-art .ev-sec-schedule,
+        body.ev-art .ev-sec-faq,
+        body.ev-art .ev-sec-cocktails {
+          background: linear-gradient(180deg, #fffaf0, #f6ecd7);
+          border: 2px solid #1a1816;
+          border-radius: 14px;
+          box-shadow: 8px 8px 0 #1a1816, 0 16px 30px rgba(0,0,0,0.2);
+          position: relative;
+          margin-bottom: 28px;
+        }
+        body.ev-art .ev-details { margin-bottom: 20px; }
+        /* "WANTED" drip graffiti as a decorative tag on the gold-style card */
+        body.ev-art .ev-sec-bg-gold {
+          background:
+            radial-gradient(circle at 20% 0%, rgba(209,76,46,0.18), transparent 60%),
+            linear-gradient(180deg, #fff4dc, #ffe3a8) !important;
+          border-color: #1a1816 !important;
+          box-shadow: 8px 8px 0 #1a1816, 0 16px 30px rgba(0,0,0,0.2) !important;
+        }
+        body.ev-art .ev-sec-bg-gold::before {
+          content: '';
+          position: absolute;
+          top: -32px;
+          right: 14px;
+          width: 180px;
+          height: 70px;
+          background: url('/assets/artpopup/wanted.png') center/contain no-repeat;
+          filter: drop-shadow(0 6px 10px rgba(0,0,0,0.25));
+          transform: rotate(6deg);
+          pointer-events: none;
+        }
+        body.ev-art .ev-sec-bg-dark {
+          background: linear-gradient(180deg, #e8d9bd, #d4c098) !important;
+          border-color: #1a1816 !important;
+        }
+        body.ev-art .ev-sec-heading,
+        body.ev-art .ev-sec-details-title,
+        body.ev-art .ev-side-title {
+          font-family: 'Playfair Display', Georgia, serif;
+          font-weight: 900;
+          color: #1a1816;
+          letter-spacing: -0.01em;
+        }
+        body.ev-art .ev-sec-heading::after,
+        body.ev-art .ev-sec-details-title::after,
+        body.ev-art .ev-sec-text .ev-sec-heading::after {
+          background: linear-gradient(90deg, #d14c2e, #e7b83a);
+          opacity: 1;
+          width: 70px;
+          height: 3px;
+        }
+        body.ev-art .ev-datetime-label,
+        body.ev-art .ev-sec-details-label,
+        body.ev-art .ev-form label {
+          color: #6b6357;
+          font-family: 'Permanent Marker', 'Inter', sans-serif;
+          font-weight: 400;
+          letter-spacing: 0.08em;
+        }
+        body.ev-art .ev-datetime-value,
+        body.ev-art .ev-sec-details-value { color: #1a1816; font-family: 'Playfair Display', Georgia, serif; font-weight: 700; }
+        body.ev-art .ev-description { color: #2c2826; font-size: 1.02rem; line-height: 1.7; }
+        body.ev-art .ev-detail-chip {
+          background: #1a1816;
+          border-color: #1a1816;
+          color: #e7b83a;
+          font-family: 'Permanent Marker', 'Inter', sans-serif;
+        }
+        body.ev-art .ev-datetime-row { border-bottom-color: rgba(26,24,22,0.2); }
+
+        /* Sidebar form: the artist application lives here */
+        body.ev-art .ev-side-card { padding: 26px; }
+        body.ev-art .ev-side-kicker {
+          color: #d14c2e;
+          font-family: 'Permanent Marker', 'Inter', sans-serif;
+          font-size: 0.92rem;
+          letter-spacing: 0.1em;
+        }
+        body.ev-art .ev-side-copy { color: #2c2826; font-family: 'Inter', sans-serif; }
+        body.ev-art .ev-form input,
+        body.ev-art .ev-form textarea,
+        body.ev-art .ev-form select {
+          background: #fffdf5;
+          border: 2px solid #1a1816;
+          border-radius: 8px;
+          color: #1a1816;
+          font-family: 'Inter', sans-serif;
+        }
+        body.ev-art .ev-form input:focus,
+        body.ev-art .ev-form textarea:focus,
+        body.ev-art .ev-form select:focus {
+          background: #ffffff;
+          border-color: #d14c2e;
+          box-shadow: 4px 4px 0 rgba(209,76,46,0.35);
+        }
+        body.ev-art .ev-submit-btn {
+          background: #1a1816;
+          color: #e7b83a;
+          border: 2px solid #1a1816;
+          box-shadow: 6px 6px 0 #d14c2e;
+          text-shadow: none;
+          font-family: 'Permanent Marker', 'Inter', sans-serif;
+          letter-spacing: 0.06em;
+        }
+        body.ev-art .ev-submit-btn:hover {
+          background: #d14c2e;
+          color: #fffaf0;
+          transform: translate(-2px, -2px);
+          box-shadow: 8px 8px 0 #1a1816;
+        }
+        body.ev-art .ev-side-link {
+          background: #1a1816;
+          color: #e7b83a;
+          border: 2px solid #1a1816;
+          box-shadow: 4px 4px 0 #d14c2e;
+          font-family: 'Permanent Marker', 'Inter', sans-serif;
+        }
+        body.ev-art .ev-side-link:hover { background: #d14c2e; color: #fffaf0; }
+        body.ev-art .ev-side-link-muted {
+          background: transparent;
+          color: #1a1816;
+          border-color: #1a1816;
+          box-shadow: none;
+        }
+        body.ev-art .ev-side-link-muted:hover { background: #1a1816; color: #e7b83a; }
+        /* Banner image framed like a gallery piece */
+        body.ev-art .ev-banner-img {
+          border: 6px solid #1a1816;
+          border-radius: 6px;
+          box-shadow: 10px 10px 0 #e7b83a;
+          padding: 6px;
+          background: #fffaf0;
+        }
+        body.ev-art .ev-sec-divider {
+          background:
+            linear-gradient(90deg, transparent, #1a1816 20%, #d14c2e 50%, #1a1816 80%, transparent);
+          height: 3px;
+        }
+        /* FAQ accents */
+        body.ev-art .ev-sec-faq-question::after { color: #d14c2e; }
+        body.ev-art .ev-sec-faq-question:hover { color: #d14c2e; }
+        body.ev-art .ev-sec-schedule-time { color: #d14c2e; font-family: 'Permanent Marker', 'Inter', sans-serif; }
+        body.ev-art .ev-status {
+          background: #fffaf0;
+          border: 2px solid #1a1816;
+          color: #1a1816;
         }
         .ev-wrap {
           max-width: 1080px;
@@ -1427,8 +1750,8 @@ function generateEventPage(location, event, signupCount, options = {}) {
         }
       </style>
     </head>
-    <body${isVendor ? ' class="ev-vendor"' : ''}>
-      ${isVendor ? `<div class="spring-petals" aria-hidden="true">
+    <body${bodyClass ? ` class="${bodyClass}"` : ''}>
+      ${bodyClass === 'ev-vendor' ? `<div class="spring-petals" aria-hidden="true">
         ${Array.from({ length: 14 }).map((_, i) => {
           const left = (i * 7.3) % 100;
           const dur = 9 + (i % 6) * 1.8;
@@ -1436,6 +1759,12 @@ function generateEventPage(location, event, signupCount, options = {}) {
           const size = 14 + (i % 5) * 4;
           return `<span style="left:${left.toFixed(1)}%; animation-duration:${dur.toFixed(1)}s; animation-delay:${delay.toFixed(1)}s; width:${size}px; height:${size}px;"></span>`;
         }).join('')}
+      </div>` : ''}
+      ${bodyClass === 'ev-art' ? `<div class="art-splats" aria-hidden="true">
+        <span class="art-splat art-splat-1"></span>
+        <span class="art-splat art-splat-2"></span>
+        <span class="art-splat art-splat-3"></span>
+        <span class="art-splat art-splat-4"></span>
       </div>` : ''}
       <div class="ev-wrap">
         <div class="ev-page-nav">
@@ -1553,6 +1882,12 @@ function generateEventPage(location, event, signupCount, options = {}) {
 
 function generateEventConfirmationPage(location, event, signup) {
   const isVendor = event.isVendorEvent === true;
+  const themeKey = event.themeKey || (isVendor ? 'spring-market' : null);
+  const bodyClass = themeKey === 'art-gallery'
+    ? 'ev-art'
+    : themeKey === 'spring-market'
+      ? 'ev-vendor'
+      : '';
   const defaultMsg = isVendor
     ? "Thanks for applying! Our team will review your application and reach out once a decision has been made."
     : "Thanks for signing up! We'll see you at the event.";
@@ -1590,6 +1925,47 @@ function generateEventConfirmationPage(location, event, signup) {
             radial-gradient(900px 380px at 14% -8%, rgba(232,167,146,0.10), transparent 60%),
             radial-gradient(1080px 540px at 100% 0%, rgba(138,168,122,0.12), transparent 58%),
             linear-gradient(180deg, var(--bg-a), var(--bg-b));
+        }
+        /* Art-gallery confirmation: damask backdrop, cream placard, bold type. */
+        body.ev-art {
+          --gold: #d14c2e;
+          --amber: #e7b83a;
+          background:
+            url('/assets/artpopup/background.png') repeat,
+            linear-gradient(180deg, #b577b0, #d9a6d2);
+          color: #1a1816;
+        }
+        body.ev-art .ec-card {
+          background: linear-gradient(180deg, #fffaf0, #f6ecd7);
+          border: 3px solid #1a1816;
+          box-shadow: 10px 10px 0 #1a1816, 0 22px 58px rgba(0,0,0,0.35);
+        }
+        body.ev-art .ec-check {
+          background: linear-gradient(135deg, #d14c2e, #e7b83a);
+          color: #1a1816;
+          box-shadow: 6px 6px 0 #1a1816;
+        }
+        body.ev-art .ec-eyebrow { color: #d14c2e; font-family: 'Permanent Marker', 'Inter', sans-serif; }
+        body.ev-art .ec-title { color: #1a1816; }
+        body.ev-art .ec-subtitle,
+        body.ev-art .ec-details,
+        body.ev-art .ec-message { color: #2c2826; }
+        body.ev-art .ec-message {
+          background: #fffdf5;
+          border-color: #1a1816;
+        }
+        body.ev-art .ec-back {
+          background: #1a1816;
+          color: #e7b83a;
+          border-color: #1a1816;
+          box-shadow: 4px 4px 0 #d14c2e;
+        }
+        body.ev-art .ec-back:hover { background: #d14c2e; color: #fffaf0; }
+        body.ev-art .ec-back-muted {
+          background: transparent;
+          color: #1a1816;
+          border-color: #1a1816;
+          box-shadow: none;
         }
         .ec-card {
           max-width: 520px;
@@ -1673,7 +2049,7 @@ function generateEventConfirmationPage(location, event, signup) {
         .ec-back-muted:hover { color: var(--text); background: rgba(255,255,255,0.04); }
       </style>
     </head>
-    <body${isVendor ? ' class="ev-vendor"' : ''}>
+    <body${bodyClass ? ` class="${bodyClass}"` : ''}>
       <div class="ec-card">
         <div class="ec-check">✓</div>
         <div class="ec-eyebrow">${escHTML(eyebrowText)}</div>

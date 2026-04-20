@@ -139,6 +139,7 @@ async function main() {
       isActive: true,
       isCancelled: false,
       isVendorEvent: true,
+      themeKey: 'spring-market',
     };
 
     const existing = await prisma.event.findFirst({

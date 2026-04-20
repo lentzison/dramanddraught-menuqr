@@ -16,9 +16,9 @@ const END = new Date(Date.UTC(2026, 4, 16, 22, 0, 0));
 
 const TITLE = 'Neighborhood Art Pop-Up';
 const DESCRIPTION = [
-  "For one afternoon, Dram & Draught Raleigh turns into a gallery. Local painters, printmakers, ceramicists, photographers, jewelers, and sculptors set up across the room and out on our covered patio with pieces you can actually take home. Price points run from small affordable prints to one-of-a-kind collectibles, so come however your wallet is feeling.",
+  "For one afternoon, Dram & Draught Raleigh turns into a gallery. Local painters, printmakers, ceramicists, photographers, jewelers, and sculptors set up across the room and out on our covered patio with pieces you can actually take home.",
   '',
-  "Browse, meet the makers, buy what you love. Our full bar is open the whole time, including four brand-new signature cocktails built for the afternoon (all $12). Come early, stay late, bring friends who appreciate a good wall piece and a good drink.",
+  "Browse, meet the makers, buy what you love. Our full bar is open the whole time, including four brand-new signature cocktails built for the afternoon (all $12).",
   '',
   "Downtown Raleigh, easy walk from the parking deck across the street. No cover, no RSVP, just walk in.",
 ].join('\n');

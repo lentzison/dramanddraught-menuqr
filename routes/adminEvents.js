@@ -1,4 +1,4 @@
-const { sendHTML, parseBody, redirect, getFlashMsg } = require('../helpers');
+const { sendHTML, parseBody, redirect, getFlashMsg, sendEmailViaGoogle } = require('../helpers');
 const { requireAuth } = require('../auth');
 const {
   eventsList,
@@ -382,12 +382,94 @@ async function handleAdminEvents(req, res, pathname, prisma) {
     if (subpath === 'signups') {
       const flashMsg = getFlashMsg(req.url);
 
-      // Handle delete signup POST
+      // Handle signup actions: delete / approve / reject (approve + reject are
+      // only surfaced in the UI for vendor events).
       if (req.method === 'POST') {
         const body = await parseBody(req);
-        if (body._action === 'deleteSignup' && body.signupId) {
-          await prisma.eventSignup.delete({ where: { id: String(body.signupId) } }).catch(() => null);
+        const action = body._action || '';
+        const signupId = body.signupId ? String(body.signupId) : '';
+
+        if (action === 'deleteSignup' && signupId) {
+          await prisma.eventSignup.delete({ where: { id: signupId } }).catch(() => null);
           redirect(res, `/admin/events/${eventId}/signups?msg=deleted`);
+          return true;
+        }
+
+        if ((action === 'approveSignup' || action === 'rejectSignup') && signupId) {
+          const isApprove = action === 'approveSignup';
+          const reason = isApprove ? null : (String(body.rejectionReason || '').trim().slice(0, 500) || null);
+          let updated = null;
+          try {
+            updated = await prisma.eventSignup.update({
+              where: { id: signupId },
+              data: {
+                status: isApprove ? 'approved' : 'rejected',
+                approvedBy: user.email,
+                approvedAt: new Date(),
+                rejectionReason: reason,
+              },
+            });
+          } catch (err) {
+            console.error('Error updating signup status:', err.message);
+            redirect(res, `/admin/events/${eventId}/signups?msg=` + encodeURIComponent('error|Could not update status.'));
+            return true;
+          }
+
+          writeAudit(prisma, req, user, {
+            action: isApprove ? 'approve' : 'reject',
+            resourceType: 'eventSignup',
+            resourceId: signupId,
+            resourceLabel: `${updated?.name || ''} — ${event.title}`,
+            locationSlug: event.location?.slug || null,
+            details: reason ? { reason } : null,
+          });
+
+          // Best-effort email to the vendor with the decision.
+          if (updated && updated.email) {
+            try {
+              const dateStr = event.startDate
+                ? new Date(event.startDate).toLocaleString('en-US', {
+                    timeZone: 'America/New_York',
+                    weekday: 'long', month: 'long', day: 'numeric',
+                    hour: 'numeric', minute: '2-digit',
+                  })
+                : '';
+              const subject = isApprove
+                ? `You're confirmed: ${event.title}`
+                : `Update on your application: ${event.title}`;
+              const bodyLines = isApprove
+                ? [
+                    `Hi ${updated.name || 'there'},`,
+                    '',
+                    `Great news — your application for "${event.title}" at ${event.location?.name || ''} has been approved.`,
+                    dateStr ? `Event: ${dateStr}` : null,
+                    '',
+                    "We'll be in touch with load-in details closer to the date.",
+                    '',
+                    `— Dram & Draught ${event.location?.name || ''}`,
+                  ].filter(Boolean)
+                : [
+                    `Hi ${updated.name || 'there'},`,
+                    '',
+                    `Thanks for applying to be a vendor at "${event.title}". Unfortunately we're not able to include you in this event.`,
+                    reason ? `` : null,
+                    reason ? `Notes from our team: ${reason}` : null,
+                    '',
+                    "We appreciate your interest and hope to work with you at a future event.",
+                    '',
+                    `— Dram & Draught ${event.location?.name || ''}`,
+                  ].filter(Boolean);
+              await sendEmailViaGoogle({
+                to: updated.email,
+                subject,
+                body: bodyLines.join('\n'),
+              }).catch((err) => console.warn('Vendor decision email failed:', err.message));
+            } catch (err) {
+              console.warn('Vendor decision email error:', err.message);
+            }
+          }
+
+          redirect(res, `/admin/events/${eventId}/signups?msg=` + encodeURIComponent(isApprove ? 'approved' : 'rejected'));
           return true;
         }
       }

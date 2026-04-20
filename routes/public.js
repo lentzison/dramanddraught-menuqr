@@ -1513,6 +1513,8 @@ async function handlePublic(req, res, pathname, prisma) {
     const fwd = req.headers['x-forwarded-for'];
     const ip = fwd ? String(fwd).split(',')[0].trim() : (req.socket?.remoteAddress || null);
 
+    const isVendorEvent = event.isVendorEvent === true;
+
     let signup;
     try {
       signup = await prisma.eventSignup.create({
@@ -1525,6 +1527,7 @@ async function handlePublic(req, res, pathname, prisma) {
           notes,
           customAnswers: Object.keys(customAnswers).length > 0 ? customAnswers : null,
           ipAddress: ip,
+          status: isVendorEvent ? 'pending' : 'approved',
         },
       });
     } catch (err) {
@@ -1540,12 +1543,24 @@ async function handlePublic(req, res, pathname, prisma) {
       return true;
     }
 
-    // Best-effort notification email
-    if (event.notifyEmail) {
-      try {
-        const subject = `New signup: ${event.title}`;
+    // Best-effort notification email. For vendor events, always notify the
+    // location's GM/admin list in addition to the configured notifyEmail so
+    // the approval queue never gets missed.
+    try {
+      const recipients = new Set();
+      if (event.notifyEmail) recipients.add(String(event.notifyEmail).trim().toLowerCase());
+      if (isVendorEvent) {
+        const gmEmails = await getBarSupportEmailsForLocation(location.slug).catch(() => []);
+        for (const e of gmEmails) recipients.add(e);
+      }
+      if (recipients.size > 0) {
+        const subject = isVendorEvent
+          ? `New vendor application: ${event.title}`
+          : `New signup: ${event.title}`;
         const bodyLines = [
-          `New signup for "${event.title}" at ${location.name}`,
+          isVendorEvent
+            ? `New vendor application for "${event.title}" at ${location.name}`
+            : `New signup for "${event.title}" at ${location.name}`,
           `Event date: ${event.startDate ? new Date(event.startDate).toLocaleString('en-US', { timeZone: 'America/New_York' }) : ''}`,
           '',
           `Name: ${name}`,
@@ -1557,15 +1572,19 @@ async function handlePublic(req, res, pathname, prisma) {
         for (const q of questions) {
           if (customAnswers[q.id]) bodyLines.push(`${q.label}: ${customAnswers[q.id]}`);
         }
-        bodyLines.push('', `Total signups: ${signupCount + 1}${event.capacity ? ' / ' + event.capacity : ''}`);
+        if (isVendorEvent) {
+          bodyLines.push('', 'Review & approve: https://menuqr.dramanddraught.com/admin/events/' + event.id + '/signups');
+        } else {
+          bodyLines.push('', `Total signups: ${signupCount + 1}${event.capacity ? ' / ' + event.capacity : ''}`);
+        }
         await sendEmailViaGoogle({
-          to: event.notifyEmail,
+          to: Array.from(recipients),
           subject,
           body: bodyLines.join('\n'),
         }).catch(err => console.warn('Event notify email failed:', err.message));
-      } catch (err) {
-        console.warn('Event notify email error:', err.message);
       }
+    } catch (err) {
+      console.warn('Event notify email error:', err.message);
     }
 
     const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/events/${event.slug}/signup`, getQueryString(req));

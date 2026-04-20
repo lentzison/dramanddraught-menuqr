@@ -1332,6 +1332,14 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
 // ─── Signups viewer ───
 function eventSignupsView(event, signups, user, flashMsg) {
   const customDefs = Array.isArray(event.customQuestions) ? event.customQuestions : [];
+  const isVendor = event.isVendorEvent === true;
+
+  const statusBadge = (status) => {
+    const s = String(status || 'approved');
+    if (s === 'pending') return '<span class="evs-badge evs-badge-pending">Pending</span>';
+    if (s === 'rejected') return '<span class="evs-badge evs-badge-rejected">Rejected</span>';
+    return '<span class="evs-badge evs-badge-approved">Approved</span>';
+  };
 
   const rows = signups.map(s => {
     const answers = s.customAnswers || {};
@@ -1340,6 +1348,7 @@ function eventSignupsView(event, signups, user, flashMsg) {
       s.email || '',
       s.phone || '',
       s.notes || '',
+      s.status || '',
       ...customDefs.map(q => {
         if (q.type === 'image') return '';
         return answers[q.id] == null ? '' : answers[q.id];
@@ -1354,15 +1363,45 @@ function eventSignupsView(event, signups, user, flashMsg) {
       }
       return `<td>${escHTML(String(raw))}</td>`;
     }).join('');
-    return `
-      <tr data-search="${escHTML(searchText)}">
-        <td style="white-space:nowrap">${escHTML(formatFriendlyDate(s.createdAt))}</td>
-        <td><strong>${escHTML(s.name || '')}</strong></td>
-        <td>${s.email ? `<a href="mailto:${escHTML(s.email)}">${escHTML(s.email)}</a>` : '<span style="color:#555">—</span>'}</td>
-        <td>${s.phone ? `<a href="tel:${escHTML(s.phone)}">${escHTML(s.phone)}</a>` : '<span style="color:#555">—</span>'}</td>
-        ${event.collectPartySize ? `<td>${s.partySize || '<span style="color:#555">—</span>'}</td>` : ''}
-        ${event.collectNotes ? `<td>${escHTML(s.notes || '')}</td>` : ''}
-        ${customCells}
+
+    // Vendor events get approve/reject controls instead of just a Remove button.
+    // Pending rows show the decision buttons; already-decided rows show who + when + remove.
+    let actionCell;
+    if (isVendor) {
+      const status = String(s.status || 'pending');
+      if (status === 'pending') {
+        actionCell = `
+          <td class="evs-action-cell">
+            <form method="POST" action="/admin/events/${escHTML(event.id)}/signups" style="margin:0 0 6px 0">
+              <input type="hidden" name="_action" value="approveSignup" />
+              <input type="hidden" name="signupId" value="${escHTML(s.id)}" />
+              <button type="submit" class="btn btn-success btn-sm">Approve</button>
+            </form>
+            <form method="POST" action="/admin/events/${escHTML(event.id)}/signups" style="margin:0" onsubmit="var r=prompt('Optional note to send to the vendor (leave blank to skip):'); if (r===null) return false; this.rejectionReason.value = r || ''; return confirm('Reject this application?');">
+              <input type="hidden" name="_action" value="rejectSignup" />
+              <input type="hidden" name="signupId" value="${escHTML(s.id)}" />
+              <input type="hidden" name="rejectionReason" value="" />
+              <button type="submit" class="btn btn-danger btn-sm">Reject</button>
+            </form>
+          </td>
+        `;
+      } else {
+        const who = s.approvedBy ? `<div class="evs-who">${escHTML(s.approvedBy)}</div>` : '';
+        const when = s.approvedAt ? `<div class="evs-when">${escHTML(formatFriendlyDate(s.approvedAt))}</div>` : '';
+        const reason = s.rejectionReason ? `<div class="evs-reason" title="Rejection note">“${escHTML(s.rejectionReason)}”</div>` : '';
+        actionCell = `
+          <td class="evs-action-cell">
+            ${who}${when}${reason}
+            <form method="POST" action="/admin/events/${escHTML(event.id)}/signups" onsubmit="return confirm('Remove this signup?')" style="margin:6px 0 0">
+              <input type="hidden" name="_action" value="deleteSignup" />
+              <input type="hidden" name="signupId" value="${escHTML(s.id)}" />
+              <button type="submit" class="btn btn-secondary btn-sm">Remove</button>
+            </form>
+          </td>
+        `;
+      }
+    } else {
+      actionCell = `
         <td>
           <form method="POST" action="/admin/events/${escHTML(event.id)}/signups" onsubmit="return confirm('Remove this signup?')" style="margin:0">
             <input type="hidden" name="_action" value="deleteSignup" />
@@ -1370,12 +1409,27 @@ function eventSignupsView(event, signups, user, flashMsg) {
             <button type="submit" class="btn btn-danger btn-sm">Remove</button>
           </form>
         </td>
+      `;
+    }
+
+    return `
+      <tr data-search="${escHTML(searchText)}" data-status="${escHTML(s.status || 'approved')}">
+        <td style="white-space:nowrap">${escHTML(formatFriendlyDate(s.createdAt))}</td>
+        ${isVendor ? `<td>${statusBadge(s.status)}</td>` : ''}
+        <td><strong>${escHTML(s.name || '')}</strong></td>
+        <td>${s.email ? `<a href="mailto:${escHTML(s.email)}">${escHTML(s.email)}</a>` : '<span style="color:#555">—</span>'}</td>
+        <td>${s.phone ? `<a href="tel:${escHTML(s.phone)}">${escHTML(s.phone)}</a>` : '<span style="color:#555">—</span>'}</td>
+        ${event.collectPartySize ? `<td>${s.partySize || '<span style="color:#555">—</span>'}</td>` : ''}
+        ${event.collectNotes ? `<td>${escHTML(s.notes || '')}</td>` : ''}
+        ${customCells}
+        ${actionCell}
       </tr>
     `;
   }).join('');
 
   const headers = [
     '<th>Signed Up</th>',
+    isVendor ? '<th>Status</th>' : '',
     '<th>Name</th>',
     '<th>Email</th>',
     '<th>Phone</th>',
@@ -1384,6 +1438,11 @@ function eventSignupsView(event, signups, user, flashMsg) {
     ...customDefs.map(q => `<th>${escHTML(q.label)}</th>`),
     '<th></th>',
   ].filter(Boolean).join('');
+
+  // Count vendor signups by status for the stats row.
+  const pendingCount = isVendor ? signups.filter(s => s.status === 'pending').length : 0;
+  const approvedCount = isVendor ? signups.filter(s => s.status === 'approved').length : 0;
+  const rejectedCount = isVendor ? signups.filter(s => s.status === 'rejected').length : 0;
 
   const capacityText = event.capacity ? ` / ${event.capacity}` : '';
   const remainingSpots = event.capacity ? Math.max(event.capacity - signups.length, 0) : null;
@@ -1417,6 +1476,21 @@ function eventSignupsView(event, signups, user, flashMsg) {
       .evs-table tr:last-child td { border-bottom:none; }
       .evs-empty { padding:40px; text-align:center; color:#666; }
       .evs-empty[hidden] { display:none; }
+      .evs-badge { display:inline-block; padding:4px 10px; border-radius:999px; font-size:0.7rem; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; white-space:nowrap; }
+      .evs-badge-pending { background:rgba(251,191,36,0.12); color:#fcd34d; border:1px solid rgba(251,191,36,0.35); }
+      .evs-badge-approved { background:rgba(138,168,122,0.14); color:#b9d1a8; border:1px solid rgba(138,168,122,0.4); }
+      .evs-badge-rejected { background:rgba(239,68,68,0.1); color:#fca5a5; border:1px solid rgba(239,68,68,0.3); }
+      .evs-filter-tabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px; }
+      .evs-filter-tab { background:#111; border:1px solid #2a2a2a; color:#aaa; padding:8px 14px; border-radius:999px; font-size:0.8rem; font-weight:700; cursor:pointer; letter-spacing:0.04em; }
+      .evs-filter-tab.active { background:#d4af37; color:#111; border-color:#d4af37; }
+      .evs-filter-tab:hover { color:#eee; }
+      .evs-filter-tab.active:hover { color:#111; }
+      .evs-who { color:#aaa; font-size:0.75rem; }
+      .evs-when { color:#666; font-size:0.72rem; }
+      .evs-reason { color:#fca5a5; font-size:0.78rem; font-style:italic; margin-top:4px; max-width:220px; }
+      .evs-action-cell { min-width:150px; }
+      .btn-success { background:#567a46; color:#fff; border:1px solid #6b9057; }
+      .btn-success:hover { background:#6b9057; }
     </style>
 
     <div class="evs-head">
@@ -1436,8 +1510,22 @@ function eventSignupsView(event, signups, user, flashMsg) {
     <div class="evs-stats">
       <div class="evs-stat">
         <div class="evs-stat-num">${signups.length}${escHTML(capacityText)}</div>
-        <div class="evs-stat-lbl">Total Signups</div>
+        <div class="evs-stat-lbl">${isVendor ? 'Total Applications' : 'Total Signups'}</div>
       </div>
+      ${isVendor ? `
+        <div class="evs-stat">
+          <div class="evs-stat-num" style="color:#fcd34d">${pendingCount}</div>
+          <div class="evs-stat-lbl">Pending Review</div>
+        </div>
+        <div class="evs-stat">
+          <div class="evs-stat-num" style="color:#b9d1a8">${approvedCount}</div>
+          <div class="evs-stat-lbl">Approved</div>
+        </div>
+        <div class="evs-stat">
+          <div class="evs-stat-num" style="color:#fca5a5">${rejectedCount}</div>
+          <div class="evs-stat-lbl">Rejected</div>
+        </div>
+      ` : ''}
       ${totalGuests != null ? `
         <div class="evs-stat">
           <div class="evs-stat-num">${totalGuests}</div>
@@ -1452,10 +1540,19 @@ function eventSignupsView(event, signups, user, flashMsg) {
       ` : ''}
     </div>
 
+    ${isVendor && signups.length > 0 ? `
+      <div class="evs-filter-tabs" id="evs-filter-tabs">
+        <button type="button" class="evs-filter-tab active" data-filter="all">All (${signups.length})</button>
+        <button type="button" class="evs-filter-tab" data-filter="pending">Pending (${pendingCount})</button>
+        <button type="button" class="evs-filter-tab" data-filter="approved">Approved (${approvedCount})</button>
+        <button type="button" class="evs-filter-tab" data-filter="rejected">Rejected (${rejectedCount})</button>
+      </div>
+    ` : ''}
+
     ${signups.length > 0 ? `
       <div class="evs-toolbar">
         <input type="search" id="evs-search" class="evs-search" placeholder="Search by name, email, phone, notes, or answers" />
-        <div id="evs-filter-note" class="evs-filter-note">Showing all ${signups.length} signups</div>
+        <div id="evs-filter-note" class="evs-filter-note">Showing all ${signups.length} ${isVendor ? 'applications' : 'signups'}</div>
       </div>
     ` : ''}
 
@@ -1478,22 +1575,40 @@ function eventSignupsView(event, signups, user, flashMsg) {
       (function() {
         var search = document.getElementById('evs-search');
         var note = document.getElementById('evs-filter-note');
+        var tabs = Array.from(document.querySelectorAll('#evs-filter-tabs .evs-filter-tab'));
         var rows = Array.from(document.querySelectorAll('#evs-rows tr'));
-        if (!search || rows.length === 0) return;
-        search.addEventListener('input', function() {
-          var query = String(search.value || '').trim().toLowerCase();
+        var noun = ${isVendor ? "'applications'" : "'signups'"};
+        if (rows.length === 0) return;
+        var currentFilter = 'all';
+
+        function applyFilters() {
+          var query = search ? String(search.value || '').trim().toLowerCase() : '';
           var visible = 0;
           rows.forEach(function(row) {
             var haystack = row.getAttribute('data-search') || '';
-            var match = !query || haystack.indexOf(query) !== -1;
+            var status = row.getAttribute('data-status') || 'approved';
+            var matchesSearch = !query || haystack.indexOf(query) !== -1;
+            var matchesFilter = currentFilter === 'all' || status === currentFilter;
+            var match = matchesSearch && matchesFilter;
             row.hidden = !match;
             if (match) visible++;
           });
           if (note) {
-            note.textContent = query
-              ? 'Showing ' + visible + ' of ' + rows.length + ' signups'
-              : 'Showing all ' + rows.length + ' signups';
+            var isFiltered = query || currentFilter !== 'all';
+            note.textContent = isFiltered
+              ? 'Showing ' + visible + ' of ' + rows.length + ' ' + noun
+              : 'Showing all ' + rows.length + ' ' + noun;
           }
+        }
+
+        if (search) search.addEventListener('input', applyFilters);
+        tabs.forEach(function(tab) {
+          tab.addEventListener('click', function() {
+            tabs.forEach(function(t) { t.classList.remove('active'); });
+            tab.classList.add('active');
+            currentFilter = tab.getAttribute('data-filter') || 'all';
+            applyFilters();
+          });
         });
       })();
     </script>

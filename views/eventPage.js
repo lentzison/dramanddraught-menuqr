@@ -278,6 +278,17 @@ function generateEventPage(location, event, signupCount, options = {}) {
   const publicPath = `/${location.slug}/events/${event.slug}`;
   const eventsPath = `/${location.slug}/events`;
   const spotsLeft = event.capacity ? Math.max(event.capacity - signupCount, 0) : null;
+  const isVendor = event.isVendorEvent === true;
+
+  // Vendor-event copy: re-label the form as an application and hint that
+  // there's a review step before the vendor is confirmed.
+  const heroEyebrow = isVendor ? 'Vendor Applications' : 'Presents';
+  const sideKicker = isVendor ? 'Vendor Application' : 'Reserve Your Spot';
+  const sideTitle = isVendor ? 'Apply to be a vendor' : 'Join this event';
+  const sideCopy = isVendor
+    ? 'Tell us about your business below. Our team reviews each application and will reach out once a decision has been made.'
+    : 'Signups are open now.';
+  const submitLabel = isVendor ? 'Submit Application' : 'Sign Up';
 
   const descriptionHtml = event.description
     ? event.description.split(/\n\n+/).map(p => `<p>${escHTML(p).replace(/\n/g, '<br/>')}</p>`).join('')
@@ -287,7 +298,7 @@ function generateEventPage(location, event, signupCount, options = {}) {
     <form method="POST" action="${escHTML(publicPath)}/signup" class="ev-form">
       ${errorMessage ? `<div class="ev-error">${escHTML(errorMessage)}</div>` : ''}
 
-      <label for="ev-name">Name <span style="color:var(--amber)">*</span></label>
+      <label for="ev-name">${isVendor ? 'Contact Name' : 'Name'} <span style="color:var(--amber)">*</span></label>
       <input type="text" id="ev-name" name="name" required value="${escHTML(prevValues.name || '')}" autocomplete="name" />
 
       ${event.collectEmail ? `
@@ -306,21 +317,21 @@ function generateEventPage(location, event, signupCount, options = {}) {
       ` : ''}
 
       ${event.collectNotes ? `
-        <label for="ev-notes">Notes or Special Requests</label>
+        <label for="ev-notes">${isVendor ? 'Anything else we should know?' : 'Notes or Special Requests'}</label>
         <textarea id="ev-notes" name="notes" rows="3">${escHTML(prevValues.notes || '')}</textarea>
       ` : ''}
 
       ${renderCustomFields(event, prevValues)}
 
-      <button type="submit" class="ev-submit-btn">Sign Up</button>
+      <button type="submit" class="ev-submit-btn">${escHTML(submitLabel)}</button>
     </form>
   ` : '';
 
   const sideCard = canSignup ? `
     <aside class="ev-side-card">
-      <div class="ev-side-kicker">Reserve Your Spot</div>
-      <h2 class="ev-side-title">Join this event</h2>
-      <p class="ev-side-copy">Signups are open now.</p>
+      <div class="ev-side-kicker">${escHTML(sideKicker)}</div>
+      <h2 class="ev-side-title">${escHTML(sideTitle)}</h2>
+      <p class="ev-side-copy">${escHTML(sideCopy)}</p>
       ${signupForm}
     </aside>
   ` : status.key === 'no-signups' ? `
@@ -363,6 +374,37 @@ function generateEventPage(location, event, signupCount, options = {}) {
           color: var(--text);
           min-height: 100vh;
           font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+        }
+        /* ─── Spring palette override (vendor events) ───
+           Redefine --gold/--amber/--accent-light so existing gold accents pick up
+           fresh green + peach tones. Background also swaps to a softer floral wash. */
+        body.ev-vendor {
+          --gold: #8aa87a;           /* soft spring green — replaces gold accents */
+          --amber: #e8a792;          /* warm peach — replaces amber */
+          --accent-light: #f3e6c9;   /* cream — light accent text */
+          --steel: #e3ddd2;          /* lighter warm off-white for body copy */
+          background:
+            radial-gradient(900px 380px at 14% -8%, rgba(232,167,146,0.10), transparent 60%),
+            radial-gradient(1080px 540px at 100% 0%, rgba(138,168,122,0.12), transparent 58%),
+            radial-gradient(760px 380px at 50% 110%, rgba(243,230,201,0.08), transparent 62%),
+            linear-gradient(180deg, var(--bg-a) 0%, #11130f 42%, var(--bg-b) 100%);
+        }
+        body.ev-vendor .ev-hero::before {
+          background: linear-gradient(90deg, transparent, #e8a792, #8aa87a, transparent);
+          opacity: 0.8;
+        }
+        body.ev-vendor .ev-hero {
+          background:
+            linear-gradient(180deg, rgba(20,25,22,0.96), rgba(7,8,7,0.99)),
+            radial-gradient(circle at 50% 0%, rgba(138,168,122,0.22), transparent 55%),
+            radial-gradient(circle at 85% 120%, rgba(232,167,146,0.18), transparent 60%);
+        }
+        body.ev-vendor .ev-hero-eyebrow,
+        body.ev-vendor .ev-side-kicker { color: #e8a792; }
+        body.ev-vendor .ev-hero-divider {
+          background: linear-gradient(90deg, transparent, #8aa87a, #e8a792, transparent);
+          opacity: 0.8;
+          height: 2px;
         }
         .ev-wrap {
           max-width: 1080px;
@@ -1067,7 +1109,7 @@ function generateEventPage(location, event, signupCount, options = {}) {
         }
       </style>
     </head>
-    <body>
+    <body${isVendor ? ' class="ev-vendor"' : ''}>
       <div class="ev-wrap">
         <div class="ev-page-nav">
           <a href="/${escHTML(location.slug)}" class="ev-back">← ${escHTML(location.name)}</a>
@@ -1076,7 +1118,7 @@ function generateEventPage(location, event, signupCount, options = {}) {
 
         <div class="ev-hero">
           ${renderBrandMark()}
-          <div class="ev-hero-eyebrow">Presents</div>
+          <div class="ev-hero-eyebrow">${escHTML(heroEyebrow)}</div>
           <h1 class="ev-hero-title">${escHTML(event.title)}</h1>
           <div class="ev-hero-divider"></div>
           <div class="ev-hero-location">${escHTML(location.name)}</div>
@@ -1183,8 +1225,13 @@ function generateEventPage(location, event, signupCount, options = {}) {
 }
 
 function generateEventConfirmationPage(location, event, signup) {
-  const defaultMsg = "Thanks for signing up! We'll see you at the event.";
+  const isVendor = event.isVendorEvent === true;
+  const defaultMsg = isVendor
+    ? "Thanks for applying! Our team will review your application and reach out once a decision has been made."
+    : "Thanks for signing up! We'll see you at the event.";
   const message = (event.confirmationMessage && event.confirmationMessage.trim()) || defaultMsg;
+  const eyebrowText = isVendor ? 'Application Received' : "You're In";
+  const pageTitle = isVendor ? 'Application received' : "You're signed up";
   return `
     <!DOCTYPE html>
     <html lang="en">
@@ -1192,7 +1239,7 @@ function generateEventConfirmationPage(location, event, signup) {
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="theme-color" content="#0f1012">
-      <title>You're signed up - ${escHTML(event.title)}</title>
+      <title>${escHTML(pageTitle)} - ${escHTML(event.title)}</title>
       <style>
         ${vintageThemeCss()}
         ${brandMarkCss()}
@@ -1205,6 +1252,17 @@ function generateEventConfirmationPage(location, event, signup) {
           align-items: center;
           justify-content: center;
           padding: 24px 16px;
+        }
+        /* Spring palette for vendor-event confirmation. Overrides CSS vars so the
+           checkmark + eyebrow pick up green/peach instead of gold/amber. */
+        body.ev-vendor {
+          --gold: #8aa87a;
+          --amber: #e8a792;
+          --accent-light: #f3e6c9;
+          background:
+            radial-gradient(900px 380px at 14% -8%, rgba(232,167,146,0.10), transparent 60%),
+            radial-gradient(1080px 540px at 100% 0%, rgba(138,168,122,0.12), transparent 58%),
+            linear-gradient(180deg, var(--bg-a), var(--bg-b));
         }
         .ec-card {
           max-width: 520px;
@@ -1288,17 +1346,17 @@ function generateEventConfirmationPage(location, event, signup) {
         .ec-back-muted:hover { color: var(--text); background: rgba(255,255,255,0.04); }
       </style>
     </head>
-    <body>
+    <body${isVendor ? ' class="ev-vendor"' : ''}>
       <div class="ec-card">
         <div class="ec-check">✓</div>
-        <div class="ec-eyebrow">You're In</div>
+        <div class="ec-eyebrow">${escHTML(eyebrowText)}</div>
         <div class="ec-title">${escHTML(event.title)}</div>
         <div class="ec-subtitle">${escHTML(formatEventDate(event.startDate))} &middot; ${escHTML(formatEventTime(event.startDate))}</div>
 
         <div class="ec-message">${escHTML(message).replace(/\n/g, '<br/>')}</div>
 
         <div class="ec-details">
-          Signed up as <strong>${escHTML(signup.name)}</strong>${signup.email ? `<br/>Confirmation details may be sent to <strong>${escHTML(signup.email)}</strong>` : ''}
+          ${isVendor ? 'Application from' : 'Signed up as'} <strong>${escHTML(signup.name)}</strong>${signup.email ? `<br/>${isVendor ? "We'll contact you at" : 'Confirmation details may be sent to'} <strong>${escHTML(signup.email)}</strong>` : ''}
         </div>
 
         <div class="ec-actions">

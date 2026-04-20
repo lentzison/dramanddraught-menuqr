@@ -249,6 +249,11 @@ model Event {
   isActive         Boolean   @default(true)
   isCancelled      Boolean   @default(false)
 
+  // Vendor events route signups through a GM approval queue instead of
+  // confirming instantly. Flips the public page to the spring palette and
+  // re-labels the signup form as a vendor application.
+  isVendorEvent    Boolean   @default(false)
+
   location         Location       @relation(fields: [locationId], references: [id], onDelete: Cascade)
   signups          EventSignup[]
 
@@ -272,9 +277,16 @@ model EventSignup {
   ipAddress     String?
   createdAt     DateTime @default(now())
 
+  // Approval workflow (used by vendor events). Regular events leave status="approved".
+  status           String    @default("approved") // "approved" | "pending" | "rejected"
+  approvedBy       String?   // Email of GM who approved/rejected
+  approvedAt       DateTime?
+  rejectionReason  String?
+
   event         Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   @@index([eventId, createdAt])
+  @@index([eventId, status])
 }
 
 model BottleNotesCache {

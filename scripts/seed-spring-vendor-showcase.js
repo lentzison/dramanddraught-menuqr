@@ -16,7 +16,7 @@ const NOTIFY_EMAIL = 'anna@dramanddraught.com';
 const START = new Date(Date.UTC(2026, 4, 16, 18, 0, 0));
 const END = new Date(Date.UTC(2026, 4, 16, 22, 0, 0));
 
-const TITLE = 'Dram & Draught Spring Neighborhood Market';
+const TITLE = 'Spring Neighborhood Market';
 const DESCRIPTION = [
   "Come sip and shop at our outdoor spring market. Local makers, artists, and craftspeople set up for the afternoon with jewelry, ceramics, prints, paintings, candles, small-batch food, plants, vintage, and more.",
   '',

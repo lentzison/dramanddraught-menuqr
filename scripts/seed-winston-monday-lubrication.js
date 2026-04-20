@@ -1,12 +1,15 @@
-// Winston-Salem Monday specials: the six Lubrication Cup cocktails at $10.
+// Winston-Salem Monday specials: Industry Night + the six Lubrication Cup
+// cocktails at $10.
 //
-// Creates (or refreshes) a Winston-scoped DayTheme for MONDAY that holds
-// just these six classics. The public /specials lookup tries the
-// location-scoped theme first and falls back to the company-wide Monday
-// theme, so this override only affects the Winston QR code menu — every
-// other location keeps Industry Night.
+// The public /specials lookup prefers a location-scoped theme over the
+// company-wide default, so once we create a Winston Monday theme it
+// becomes the only thing Winston sees for that day. To avoid dropping
+// the existing Industry Night specials, this script copies them from the
+// company-wide Monday theme (locationId = null) into the Winston theme
+// and then APPENDS the six Lubrication Cup cocktails in a new section.
 //
-// Idempotent. Re-running wipes the theme's DailySpecials and reinserts.
+// Idempotent. Re-running wipes the theme's DailySpecials and rebuilds
+// the combined list from the current company-wide default.
 //
 // Run:  node scripts/seed-winston-monday-lubrication.js
 
@@ -15,15 +18,12 @@ const { PrismaClient } = require('@prisma/client');
 const LOCATION_SLUG = 'winston-salem';
 const DAY = 'MONDAY';
 
-const THEME = {
-  name: 'Lubrication Cup Classics',
-  tagline: 'The six cocktails that decide the cup',
-  description: 'All cocktails $10, all night.',
-};
+// Section label the added cocktails render under on the specials page.
+const LUB_SECTION = '$10 Lubrication Cup Classics';
 
 // Exactly the six drinks featured across Rounds 1, 2, and the Final of the
 // Lubrication Cup. Order matches competition flow (quarterfinals → final).
-const COCKTAILS = [
+const LUB_COCKTAILS = [
   { name: 'Manhattan',    description: 'Yellowstone Bourbon, Sweet Vermouth, Angostura Bitters' },
   { name: 'Dry Martini',  description: 'The Botanist Gin, Dry Vermouth, Lemon Twist or Olive' },
   { name: 'Daiquiri',     description: 'Brugal Rum, Lime, Simple Syrup' },
@@ -38,12 +38,25 @@ async function main() {
     const location = await prisma.location.findFirst({ where: { slug: LOCATION_SLUG } });
     if (!location) throw new Error(`Location not found: ${LOCATION_SLUG}`);
 
+    // Read the company-wide Monday theme + its specials so Winston inherits
+    // everything Industry Night usually shows.
+    const defaultTheme = await prisma.dayTheme.findFirst({
+      where: { dayOfWeek: DAY, locationId: null },
+      include: { specials: { where: { isActive: true }, orderBy: { displayOrder: 'asc' } } },
+    });
+    if (!defaultTheme) {
+      throw new Error('No company-wide Monday theme found. Seed it first.');
+    }
+    console.log(`Copying ${defaultTheme.specials.length} specials from "${defaultTheme.name}" (default Monday).`);
+
     const themeData = {
       dayOfWeek: DAY,
       locationId: location.id,
-      name: THEME.name,
-      tagline: THEME.tagline,
-      description: THEME.description,
+      name: defaultTheme.name,
+      tagline: defaultTheme.tagline,
+      description: defaultTheme.description,
+      themeColor: defaultTheme.themeColor,
+      halfPriceConfig: defaultTheme.halfPriceConfig || undefined,
       isActive: true,
     };
 
@@ -55,7 +68,6 @@ async function main() {
     let theme;
     if (existing) {
       theme = await prisma.dayTheme.update({ where: { id: existing.id }, data: themeData });
-      // Wipe existing specials on this theme so we reinsert cleanly.
       await prisma.dailySpecial.deleteMany({ where: { dayThemeId: theme.id } });
       console.log(`Updated DayTheme for Winston-Salem Monday (${theme.id})`);
     } else {
@@ -63,7 +75,30 @@ async function main() {
       console.log(`Created DayTheme for Winston-Salem Monday (${theme.id})`);
     }
 
-    for (const [idx, c] of COCKTAILS.entries()) {
+    // 1. Copy the default Industry Night specials.
+    for (const s of defaultTheme.specials) {
+      await prisma.dailySpecial.create({
+        data: {
+          dayThemeId: theme.id,
+          name: s.name,
+          description: s.description,
+          price: s.price,
+          imageUrl: s.imageUrl,
+          category: s.category,
+          displayOrder: s.displayOrder,
+          section: s.section,
+          detailText: s.detailText,
+          badges: s.badges,
+          timeWindow: s.timeWindow,
+          isFeatured: s.isFeatured,
+          isActive: true,
+        },
+      });
+    }
+
+    // 2. Append the six Lubrication Cup cocktails after the existing rows.
+    const lubStart = defaultTheme.specials.reduce((m, s) => Math.max(m, s.displayOrder), -1) + 1;
+    for (const [idx, c] of LUB_COCKTAILS.entries()) {
       await prisma.dailySpecial.create({
         data: {
           dayThemeId: theme.id,
@@ -71,14 +106,15 @@ async function main() {
           description: c.description,
           price: '$10',
           category: 'cocktail',
-          section: '$10 Classic Cocktails',
-          displayOrder: idx,
-          isFeatured: idx === 0, // Manhattan gets the gold border as the lead-off
+          section: LUB_SECTION,
+          displayOrder: lubStart + idx,
+          isFeatured: idx === 0,
           isActive: true,
         },
       });
     }
-    console.log(`  seeded ${COCKTAILS.length} cocktails.`);
+
+    console.log(`  copied ${defaultTheme.specials.length} Industry Night specials + appended ${LUB_COCKTAILS.length} Lubrication Cup cocktails.`);
     console.log(`Public URL: /${LOCATION_SLUG}/specials (Monday)`);
   } finally {
     await prisma.$disconnect();

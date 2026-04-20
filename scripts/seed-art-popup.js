@@ -20,7 +20,7 @@ const DESCRIPTION = [
   '',
   "Browse, meet the makers, buy what you love. Our full bar is open the whole time, including four brand-new signature cocktails built for the afternoon (all $12).",
   '',
-  "Downtown Raleigh, easy walk from the parking deck across the street. No cover, no RSVP, just walk in.",
+  "No cover, no RSVP, just walk in.",
 ].join('\n');
 
 const CONFIRMATION_MESSAGE = [
@@ -80,10 +80,10 @@ function buildSections() {
     {
       id: 'ap-closing',
       type: 'text',
-      bgStyle: 'default',
+      bgStyle: 'gold',
       align: 'center',
-      heading: 'Want to show your work here?',
-      body: "We're still taking artist applications. Fill it out and we'll be in touch if there's a spot for you.",
+      heading: "We're looking for vendors",
+      body: "If you're an artist, maker, or creator, we want to see your work. Fill out the application and we'll be in touch if there's a spot for you.",
     },
     {
       id: 'ap-closing-btn',

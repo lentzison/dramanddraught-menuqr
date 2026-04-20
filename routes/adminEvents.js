@@ -366,7 +366,13 @@ async function handleAdminEvents(req, res, pathname, prisma) {
           s.phone || '',
           s.partySize || '',
           s.notes || '',
-          ...customDefs.map(q => (answers[q.id] == null ? '' : answers[q.id])),
+          ...customDefs.map(q => {
+            const v = answers[q.id];
+            if (v == null) return '';
+            // images-multi: CSV shouldn't carry base64 blobs. Just summarize.
+            if (Array.isArray(v)) return `${v.length} image${v.length === 1 ? '' : 's'} attached`;
+            return v;
+          }),
         ].map(csvEscape).join(',');
       });
       const csv = headers.map(csvEscape).join(',') + '\n' + rows.join('\n');

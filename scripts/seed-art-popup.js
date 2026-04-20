@@ -127,13 +127,8 @@ const CUSTOM_QUESTIONS = [
   { id: 'q_price_range', label: 'Price Range of Your Work', type: 'text', required: true },
   { id: 'q_instagram', label: 'Instagram Handle', type: 'text', required: false },
   { id: 'q_table', label: 'Would you like to use one of our tables?', type: 'yesno', required: true },
-  // Up to 5 work samples. First is required so every application includes at
-  // least one piece; the rest are optional.
-  { id: 'q_work_1', label: 'Image 1 of your work', type: 'image', required: true },
-  { id: 'q_work_2', label: 'Image 2 (optional)', type: 'image', required: false },
-  { id: 'q_work_3', label: 'Image 3 (optional)', type: 'image', required: false },
-  { id: 'q_work_4', label: 'Image 4 (optional)', type: 'image', required: false },
-  { id: 'q_work_5', label: 'Image 5 (optional)', type: 'image', required: false },
+  // Up to 5 work samples in one compact uploader.
+  { id: 'q_work', label: 'Images of your work (up to 5)', type: 'images-multi', required: true, max: 5 },
 ];
 
 async function main() {

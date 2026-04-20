@@ -1492,11 +1492,30 @@ async function handlePublic(req, res, pathname, prisma) {
     if (!name) errors.push('Name is required.');
     if (event.collectEmail && !email) errors.push('Email is required.');
 
-    // Custom answers — image questions can hold a base64 data URL up to ~750KB
+    // Custom answers — image questions can hold a base64 data URL up to ~750KB.
+    // images-multi questions carry a JSON-stringified array of data URLs
+    // (same per-entry cap, max count enforced client-side and re-checked here).
     const customAnswers = {};
     const questions = Array.isArray(event.customQuestions) ? event.customQuestions : [];
     for (const q of questions) {
       const raw = body[`cq_${q.id}`];
+      if (q.type === 'images-multi') {
+        const rawStr = String(raw == null ? '' : raw).trim();
+        let arr = [];
+        try {
+          const parsed = JSON.parse(rawStr || '[]');
+          if (Array.isArray(parsed)) arr = parsed;
+        } catch (e) { arr = []; }
+        const max = Number.isFinite(q.max) && q.max > 0 ? q.max : 5;
+        arr = arr
+          .filter((x) => typeof x === 'string')
+          .filter((x) => /^(data:image\/(jpeg|jpg|png|gif|webp);base64,|https?:\/\/)/i.test(x))
+          .filter((x) => x.length <= 750 * 1024)
+          .slice(0, max);
+        if (q.required && arr.length === 0) errors.push(`${q.label} is required.`);
+        if (arr.length > 0) customAnswers[q.id] = arr;
+        continue;
+      }
       let val = String(raw == null ? '' : raw).trim();
       if (q.type === 'image') {
         // Accept either a data URL or http(s) URL; cap at ~750KB
@@ -1602,7 +1621,14 @@ async function handlePublic(req, res, pathname, prisma) {
           notes ? `Notes: ${notes}` : null,
         ].filter(Boolean);
         for (const q of questions) {
-          if (customAnswers[q.id]) bodyLines.push(`${q.label}: ${customAnswers[q.id]}`);
+          const v = customAnswers[q.id];
+          if (!v) continue;
+          if (Array.isArray(v)) {
+            // Don't dump base64 blobs in email bodies — summarize.
+            bodyLines.push(`${q.label}: ${v.length} image${v.length === 1 ? '' : 's'} attached (view in admin)`);
+          } else {
+            bodyLines.push(`${q.label}: ${v}`);
+          }
         }
         if (isVendorEvent) {
           bodyLines.push('', 'Review & approve: https://menuqr.dramanddraught.com/admin/events/' + event.id + '/signups');

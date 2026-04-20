@@ -1357,7 +1357,14 @@ function eventSignupsView(event, signups, user, flashMsg) {
     const customCells = customDefs.map(q => {
       const raw = answers[q.id];
       if (raw == null || raw === '') return '<td><span style="color:#555">—</span></td>';
-      // Image questions: render a thumbnail
+      // images-multi: stored as an array of data URLs. Render a row of
+      // thumbnails, each clickable to open full-size in a new tab.
+      if (q.type === 'images-multi' && Array.isArray(raw)) {
+        const imgs = raw.filter(x => typeof x === 'string' && /^(data:image|https?:\/\/)/i.test(x));
+        if (imgs.length === 0) return '<td><span style="color:#555">—</span></td>';
+        return `<td><div style="display:flex; gap:4px; flex-wrap:wrap;">${imgs.map(src => `<a href="${escHTML(src)}" target="_blank" rel="noopener"><img src="${escHTML(src)}" alt="${escHTML(q.label)}" style="width:60px; height:60px; object-fit:cover; border-radius:6px; border:1px solid #333; display:block;" /></a>`).join('')}</div></td>`;
+      }
+      // Single-image questions
       if (q.type === 'image' && /^(data:image|https?:\/\/)/i.test(String(raw))) {
         return `<td><a href="${escHTML(raw)}" target="_blank" rel="noopener"><img src="${escHTML(raw)}" alt="${escHTML(q.label)}" style="max-width:80px; max-height:80px; border-radius:6px; border:1px solid #333; display:block;" /></a></td>`;
       }

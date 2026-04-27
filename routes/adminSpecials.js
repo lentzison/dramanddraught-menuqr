@@ -1455,21 +1455,28 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       const byLocation = {};
       const locationDayMap = {};
       sessions.forEach(s => {
-        const slug = s.locationSlug || 'home';
+        if (!s.locationSlug) return;
+        const slug = s.locationSlug;
         byLocation[slug] = (byLocation[slug] || 0) + 1;
         const day = s.startedAt ? s.startedAt.toISOString().slice(0, 10) : 'unknown';
         if (!locationDayMap[slug]) locationDayMap[slug] = {};
         locationDayMap[slug][day] = (locationDayMap[slug][day] || 0) + 1;
       });
       const prevByLocation = {};
-      prevSessions.forEach(s => { const slug = s.locationSlug || 'home'; prevByLocation[slug] = (prevByLocation[slug] || 0) + 1; });
+      prevSessions.forEach(s => {
+        if (!s.locationSlug) return;
+        const slug = s.locationSlug;
+        prevByLocation[slug] = (prevByLocation[slug] || 0) + 1;
+      });
       const locationsSorted = Object.entries(byLocation).sort((a, b) => b[1] - a[1]);
       const locationNameMap = {};
       locations.forEach(l => { locationNameMap[l.slug] = l.name; });
+      const unassignedSessions = sessions.filter(s => !s.locationSlug).length;
 
       const locationMetricsMap = {};
       sessions.forEach(s => {
-        const slug = s.locationSlug || 'home';
+        if (!s.locationSlug) return;
+        const slug = s.locationSlug;
         if (!locationMetricsMap[slug]) {
           locationMetricsMap[slug] = {
             slug,
@@ -1763,6 +1770,9 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
           ? 'Locations to coach on tagged sharing: ' + lowTaggedLocations.map(m => m.name).join(', ') + '.'
           : 'No obvious low-sharing location needs attention in this range.',
       ];
+      const unassignedAnalyticsNote = unassignedSessions > 0
+        ? '<div class="a-note">There are ' + unassignedSessions + ' non-location sessions in this range. They are included in total traffic, but left out of location rankings because they are not tied to a location.</div>'
+        : '';
 
       const marketingSection = `
         <div class="a-card analytics-callout" style="margin-bottom:24px;background:#101114;border-color:#283244;">
@@ -1783,6 +1793,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
           <div class="a-insights">
             ${insightList.map(text => '<div class="a-insight">' + esc(text) + '</div>').join('')}
           </div>
+          ${unassignedAnalyticsNote}
 
           <div class="a-grid-2" style="margin-bottom:0;">
             <div style="overflow-x:auto;">
@@ -2085,6 +2096,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
           .metric-pill strong { color:#fff; }
           .a-insights { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:18px; }
           .a-insight { background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:10px;color:#d1d5db;font-size:0.84rem;line-height:1.4; }
+          .a-note { background:rgba(212,175,55,0.08);border:1px solid rgba(212,175,55,0.18);border-radius:8px;padding:9px 10px;color:#e6d39c;font-size:0.82rem;line-height:1.4;margin-bottom:16px; }
           .a-table { width:100%;border-collapse:collapse;font-size:0.82rem;min-width:560px; }
           .a-table th { padding:7px 6px;color:#8b949e;text-align:left;border-bottom:1px solid rgba(255,255,255,0.12);font-weight:700; }
           .a-table td { padding:8px 6px;color:#d1d5db;border-bottom:1px solid rgba(255,255,255,0.06);vertical-align:top; }

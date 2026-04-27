@@ -1354,7 +1354,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       const [sessions, prevSessions, locations, pageViews, liveCount, distinctSources] = await Promise.all([
         prisma.visitorSession.findMany({ where, orderBy: { startedAt: 'desc' }, take: 10000 }),
         prisma.visitorSession.findMany({ where: prevWhere, orderBy: { startedAt: 'desc' }, take: 10000 }),
-        prisma.location.findMany({ where: locationListWhere, orderBy: { name: 'asc' }, select: { slug: true, name: true } }),
+        prisma.location.findMany({ where: locationListWhere, orderBy: { name: 'asc' }, select: { id: true, slug: true, name: true } }),
         prisma.pageView.groupBy({ by: ['pageType'], _count: true, where: pvWhere }),
         prisma.visitorSession.count({ where: { updatedAt: { gte: fiveMinAgo }, ...slugScopeFragment } }),
         prisma.visitorSession.findMany({ where: sourceListWhere, select: { source: true }, distinct: ['source'], take: 50 }),
@@ -1364,13 +1364,21 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       // Returning visitors — who visited before this period?
       const currentVisitorIds = [...new Set(sessions.map(s => s.visitorId))];
       let returningVisitorIdSet = new Set();
+      let returningVisitorLocationSet = new Set();
       if (currentVisitorIds.length > 0 && currentVisitorIds.length <= 5000) {
+        const priorWhere = { visitorId: { in: currentVisitorIds }, startedAt: { lt: rangeStart } };
+        if (scopedFilterSlug) {
+          priorWhere.locationSlug = scopedFilterSlug;
+        } else if (!userIsCompanyWide) {
+          priorWhere.locationSlug = { in: userSlugs.length > 0 ? userSlugs : ['__none__'] };
+        }
         const prior = await prisma.visitorSession.findMany({
-          where: { visitorId: { in: currentVisitorIds }, startedAt: { lt: rangeStart } },
-          select: { visitorId: true },
-          distinct: ['visitorId'],
+          where: priorWhere,
+          select: { visitorId: true, locationSlug: true },
+          distinct: ['visitorId', 'locationSlug'],
         }).catch(() => []);
         returningVisitorIdSet = new Set(prior.map(p => p.visitorId));
+        returningVisitorLocationSet = new Set(prior.map(p => (p.locationSlug || 'home') + '::' + p.visitorId));
       }
 
       // ── Current period metrics ──
@@ -1395,6 +1403,8 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       });
       const sourcesSorted = Object.entries(sourceCounts).sort((a, b) => b[1] - a[1]);
       const taggedSessions = totalSessions - (sourceCounts.organic || 0);
+      const taggedRate = totalSessions > 0 ? Math.round((taggedSessions / totalSessions) * 100) : 0;
+      const organicSessions = sourceCounts.organic || 0;
 
       // ── Previous period metrics ──
       const prevTotal = prevSessions.length;
@@ -1403,6 +1413,13 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       const prevAvgDur = prevDurValid.length > 0 ? Math.round(prevDurValid.reduce((sum, s) => sum + s.durationSecs, 0) / prevDurValid.length) : 0;
       const prevAvgPages = prevTotal > 0 ? +(prevSessions.reduce((sum, s) => sum + (s.pageCount || 1), 0) / prevTotal).toFixed(1) : 0;
       const prevReturnRate = (() => { const u = new Set(prevSessions.map(s => s.visitorId)).size; const r = (() => { const c = {}; prevSessions.forEach(s => { c[s.visitorId] = (c[s.visitorId] || 0) + 1; }); return Object.values(c).filter(v => v > 1).length; })(); return u > 0 ? Math.round((r / u) * 100) : 0; })();
+      const prevSourceCounts = {};
+      prevSessions.forEach(s => {
+        const key = (s.source && s.source.trim()) ? s.source.trim().toLowerCase() : 'organic';
+        prevSourceCounts[key] = (prevSourceCounts[key] || 0) + 1;
+      });
+      const prevTaggedSessions = prevTotal - (prevSourceCounts.organic || 0);
+      const prevOrganicSessions = prevSourceCounts.organic || 0;
 
       function pctChange(curr, prev) {
         if (prev === 0) return curr > 0 ? 100 : 0;
@@ -1449,6 +1466,65 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       const locationsSorted = Object.entries(byLocation).sort((a, b) => b[1] - a[1]);
       const locationNameMap = {};
       locations.forEach(l => { locationNameMap[l.slug] = l.name; });
+
+      const locationMetricsMap = {};
+      sessions.forEach(s => {
+        const slug = s.locationSlug || 'home';
+        if (!locationMetricsMap[slug]) {
+          locationMetricsMap[slug] = {
+            slug,
+            sessions: 0,
+            tagged: 0,
+            organic: 0,
+            visitorIds: new Set(),
+            returningVisitorIds: new Set(),
+            pageTotal: 0,
+            durationTotal: 0,
+            durationCount: 0,
+          };
+        }
+        const metric = locationMetricsMap[slug];
+        metric.sessions++;
+        if (s.source && s.source.trim()) metric.tagged++; else metric.organic++;
+        metric.visitorIds.add(s.visitorId);
+        if (returningVisitorLocationSet.has(slug + '::' + s.visitorId)) metric.returningVisitorIds.add(s.visitorId);
+        metric.pageTotal += s.pageCount || 1;
+        if (s.durationSecs && s.durationSecs > 0) {
+          metric.durationTotal += s.durationSecs;
+          metric.durationCount++;
+        }
+      });
+      const locationMetrics = Object.values(locationMetricsMap).map(m => {
+        const unique = m.visitorIds.size;
+        const returning = m.returningVisitorIds.size;
+        const avgPagesForLocation = m.sessions > 0 ? +(m.pageTotal / m.sessions).toFixed(1) : 0;
+        const avgDurationForLocation = m.durationCount > 0 ? Math.round(m.durationTotal / m.durationCount) : 0;
+        const shareScore = Math.round((m.tagged * 3) + (returning * 2) + (avgPagesForLocation * 4) + Math.min(avgDurationForLocation / 15, 20) + m.sessions);
+        return {
+          slug: m.slug,
+          name: locationNameMap[m.slug] || m.slug,
+          sessions: m.sessions,
+          tagged: m.tagged,
+          organic: m.organic,
+          unique,
+          returning,
+          taggedRate: m.sessions > 0 ? Math.round((m.tagged / m.sessions) * 100) : 0,
+          returnRate: unique > 0 ? Math.round((returning / unique) * 100) : 0,
+          avgPages: avgPagesForLocation,
+          avgDuration: avgDurationForLocation,
+          shareScore,
+        };
+      });
+      const sharingLeaderboardRows = locationMetrics.slice().sort((a, b) => b.tagged - a.tagged || b.shareScore - a.shareScore || b.sessions - a.sessions);
+      const returningLeaderboardRows = locationMetrics.slice().sort((a, b) => b.returning - a.returning || b.returnRate - a.returnRate || b.sessions - a.sessions);
+      const lowTaggedLocations = locationMetrics
+        .filter(m => m.sessions >= 5 && m.taggedRate < 20)
+        .sort((a, b) => b.sessions - a.sessions)
+        .slice(0, 3);
+      const strongReturningLocations = locationMetrics
+        .filter(m => m.returning > 0)
+        .sort((a, b) => b.returnRate - a.returnRate || b.returning - a.returning)
+        .slice(0, 3);
 
       // ── Content funnel ──
       const pageTypeCounts = {};
@@ -1648,6 +1724,86 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
             </tr></thead>
             <tbody style="color:#ccc;">${locLeaderboard}</tbody>
           </table>
+        </div>`;
+
+      const sharingRows = sharingLeaderboardRows.length > 0 ? sharingLeaderboardRows.map((m, i) => {
+        return '<tr>'
+          + '<td style="color:#666;font-weight:700;">' + (i + 1) + '</td>'
+          + '<td><div style="font-weight:700;color:#fff;">' + esc(m.name) + '</div><div style="color:#777;font-size:0.74rem;">Score ' + m.shareScore + '</div></td>'
+          + '<td><strong style="color:#93c5fd;">' + m.tagged + '</strong><div style="color:#777;font-size:0.74rem;">' + m.taggedRate + '% of traffic</div></td>'
+          + '<td>' + m.sessions + '</td>'
+          + '<td>' + m.unique + '</td>'
+          + '<td>' + m.avgPages + '</td>'
+          + '<td>' + (m.avgDuration ? fmtDur(m.avgDuration) : '-') + '</td>'
+          + '</tr>';
+      }).join('') : '<tr><td colspan="7" style="color:#666;padding:12px;">No sharing data yet</td></tr>';
+
+      const returningRows = returningLeaderboardRows.length > 0 ? returningLeaderboardRows.map((m, i) => {
+        return '<tr>'
+          + '<td style="color:#666;font-weight:700;">' + (i + 1) + '</td>'
+          + '<td style="font-weight:700;color:#fff;">' + esc(m.name) + '</td>'
+          + '<td><strong style="color:#a78bfa;">' + m.returning + '</strong></td>'
+          + '<td>' + m.returnRate + '%</td>'
+          + '<td>' + m.unique + '</td>'
+          + '<td>' + m.organic + '</td>'
+          + '</tr>';
+      }).join('') : '<tr><td colspan="6" style="color:#666;padding:12px;">No returning visitors yet</td></tr>';
+
+      const insightList = [
+        taggedSessions === 0
+          ? 'No tagged sharing is showing yet. Use Trackable Links below for Instagram, Facebook, event posts, email, and ads.'
+          : taggedSessions + ' sessions came from tagged links. Those are the clearest signal of locations actively sharing links.',
+        organicSessions > 0
+          ? organicSessions + ' sessions are organic/direct. This includes store QR scans, typed links, bookmarks, and untagged social links.'
+          : 'No organic/direct sessions in this range.',
+        strongReturningLocations.length > 0
+          ? 'Best return signal: ' + strongReturningLocations.map(m => m.name + ' (' + m.returnRate + '%)').join(', ') + '.'
+          : 'Returning visitor data will become more useful after visitors come back across multiple days.',
+        lowTaggedLocations.length > 0
+          ? 'Locations to coach on tagged sharing: ' + lowTaggedLocations.map(m => m.name).join(', ') + '.'
+          : 'No obvious low-sharing location needs attention in this range.',
+      ];
+
+      const marketingSection = `
+        <div class="a-card analytics-callout" style="margin-bottom:24px;background:#101114;border-color:#283244;">
+          <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start;flex-wrap:wrap;margin-bottom:14px;">
+            <div>
+              <h3 class="a-heading" style="color:#93c5fd;margin-bottom:6px;">Sharing and Return Rankings</h3>
+              <p style="color:#aaa;font-size:0.86rem;line-height:1.5;margin:0;max-width:760px;">
+                Tagged traffic is the reliable way to rank who is sharing links. Organic/direct traffic is still valuable, but it cannot prove whether the visit came from a printed QR, a bookmark, or an untagged post.
+              </p>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <span class="metric-pill"><strong>${taggedSessions}</strong> tagged</span>
+              <span class="metric-pill"><strong>${taggedRate}%</strong> tagged rate</span>
+              <span class="metric-pill"><strong>${organicSessions}</strong> organic/direct</span>
+            </div>
+          </div>
+
+          <div class="a-insights">
+            ${insightList.map(text => '<div class="a-insight">' + esc(text) + '</div>').join('')}
+          </div>
+
+          <div class="a-grid-2" style="margin-bottom:0;">
+            <div style="overflow-x:auto;">
+              <h4 style="color:#fff;font-size:0.92rem;margin:0 0 10px;">Locations driving shared traffic</h4>
+              <table class="a-table">
+                <thead><tr>
+                  <th>#</th><th>Location</th><th>Tagged Visits</th><th>Sessions</th><th>Visitors</th><th>Pages</th><th>Time</th>
+                </tr></thead>
+                <tbody>${sharingRows}</tbody>
+              </table>
+            </div>
+            <div style="overflow-x:auto;">
+              <h4 style="color:#fff;font-size:0.92rem;margin:0 0 10px;">Best returning audience</h4>
+              <table class="a-table">
+                <thead><tr>
+                  <th>#</th><th>Location</th><th>Returning</th><th>Rate</th><th>Visitors</th><th>Organic</th>
+                </tr></thead>
+                <tbody>${returningRows}</tbody>
+              </table>
+            </div>
+          </div>
         </div>`;
 
       // ── Content engagement funnel ──
@@ -1925,11 +2081,20 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
           .a-grid-2 { display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px; }
           .a-grid-3 { display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px; }
           .a-grid-stats { display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:24px; }
+          .metric-pill { display:inline-flex;align-items:center;gap:5px;padding:7px 10px;border:1px solid rgba(147,197,253,0.24);background:rgba(96,165,250,0.08);border-radius:999px;color:#bfdbfe;font-size:0.8rem;white-space:nowrap; }
+          .metric-pill strong { color:#fff; }
+          .a-insights { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:18px; }
+          .a-insight { background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:10px;color:#d1d5db;font-size:0.84rem;line-height:1.4; }
+          .a-table { width:100%;border-collapse:collapse;font-size:0.82rem;min-width:560px; }
+          .a-table th { padding:7px 6px;color:#8b949e;text-align:left;border-bottom:1px solid rgba(255,255,255,0.12);font-weight:700; }
+          .a-table td { padding:8px 6px;color:#d1d5db;border-bottom:1px solid rgba(255,255,255,0.06);vertical-align:top; }
           @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
           @media(max-width:768px) {
             .a-grid-2 { grid-template-columns:1fr; }
             .a-grid-3 { grid-template-columns:1fr; }
             .a-grid-stats { grid-template-columns:repeat(2,1fr); }
+            .a-insights { grid-template-columns:1fr; }
+            .metric-pill { font-size:0.76rem;padding:6px 8px; }
           }
         </style>
         <div class="page-header">
@@ -1947,6 +2112,9 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
           ${statCard('Unique Visitors', uniqueVisitors, pctChange(uniqueVisitors, prevUnique))}
           ${statCard('Avg Duration', fmtDur(avgDuration), pctChange(avgDuration, prevAvgDur))}
           ${statCard('Pages / Session', avgPages, pctChange(avgPages, prevAvgPages))}
+          ${statCard('Tagged Sharing', taggedSessions, pctChange(taggedSessions, prevTaggedSessions))}
+          ${statCard('Organic / Direct', organicSessions, pctChange(organicSessions, prevOrganicSessions))}
+          ${statCard('Returning Visitors', returningVisitors)}
           ${statCard('Return Rate', returnRate + '%', pctChange(returnRate, prevReturnRate))}
         </div>
 
@@ -1955,6 +2123,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
           ${heatmapChart}
         </div>
 
+        ${marketingSection}
         ${locationSection}
         ${funnelSection}
 

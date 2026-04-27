@@ -1714,9 +1714,21 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
           locationsCount: v.locations.size,
           score: (v.sessions * 3) + v.pageTotal + Math.min(Math.round(v.durationTotal / 30), 20) + (v.known ? 8 : 0),
         }))
-        .filter(v => v.sessions > 1 || v.pageTotal >= 4 || v.durationTotal >= 120 || v.known)
+        .filter(v => v.known && (v.sessions > 1 || v.pageTotal >= 4 || v.durationTotal >= 120))
         .sort((a, b) => b.score - a.score)
         .slice(0, 10);
+      const anonymousIntentRows = Object.values(visitorIntentMap)
+        .map(v => ({
+          ...v,
+          locationsCount: v.locations.size,
+        }))
+        .filter(v => !v.known);
+      const anonymousRepeatVisitors = anonymousIntentRows.filter(v => v.sessions > 1).length;
+      const anonymousDeepBrowsers = anonymousIntentRows.filter(v => v.pageTotal >= 8).length;
+      const anonymousMultiLocationVisitors = anonymousIntentRows.filter(v => v.locationsCount >= 2).length;
+      const anonymousActionableNote = anonymousIntentRows.length > 0
+        ? 'Anonymous behavior is useful as a pattern, not as a person list. Use gift-card, feedback, newsletter, and event forms to turn these visitors into known repeat guests.'
+        : 'No anonymous visitor behavior in this range.';
 
       const eventInterestMap = {};
       eventPageViews.forEach(pv => {
@@ -2096,14 +2108,22 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       const highIntentTableRows = highIntentRows.length > 0 ? highIntentRows.map((row, i) => {
         return '<tr>'
           + '<td style="color:#666;font-weight:700;">' + (i + 1) + '</td>'
-          + '<td><strong style="color:#fff;">' + esc(row.label) + '</strong><div style="color:#777;font-size:0.74rem;">' + (row.known ? 'known guest' : 'anonymous visitor') + '</div></td>'
+          + '<td><strong style="color:#fff;">' + esc(row.label) + '</strong><div style="color:#777;font-size:0.74rem;">known guest</div></td>'
           + '<td>' + row.sessions + '</td>'
           + '<td>' + row.pageTotal + '</td>'
           + '<td>' + (row.durationTotal ? fmtDur(row.durationTotal) : '-') + '</td>'
           + '<td>' + row.locationsCount + '</td>'
           + '<td>' + row.score + '</td>'
           + '</tr>';
-      }).join('') : '<tr><td colspan="7" style="color:#666;padding:12px;">No high-intent visitors in this range yet</td></tr>';
+      }).join('') : '<tr><td colspan="7" style="color:#666;padding:12px;">No known high-intent guests in this range yet. This table will populate after guests enter an email and return.</td></tr>';
+
+      const anonymousIntentSection = `
+        <div class="anonymous-summary">
+          <div><strong>${anonymousRepeatVisitors}</strong><span>anonymous repeat visitors</span></div>
+          <div><strong>${anonymousDeepBrowsers}</strong><span>viewed 8+ pages</span></div>
+          <div><strong>${anonymousMultiLocationVisitors}</strong><span>visited 2+ locations</span></div>
+        </div>
+        <p style="color:#9ca3af;font-size:0.82rem;line-height:1.45;margin:10px 0 0;">${esc(anonymousActionableNote)}</p>`;
 
       const funnelConversionRate = totalSessions > 0 ? Math.round(((giftCardEntries + eventSignupCount) / totalSessions) * 100) : 0;
       const conversionSection = `
@@ -2148,11 +2168,12 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
             </table>
           </div>
           <div class="a-card" style="overflow-x:auto;">
-            <h3 class="a-heading">High-Intent Visitors</h3>
+            <h3 class="a-heading">Known High-Intent Guests</h3>
             <table class="a-table">
-              <thead><tr><th>#</th><th>Visitor</th><th>Sessions</th><th>Pages</th><th>Time</th><th>Locations</th><th>Score</th></tr></thead>
+              <thead><tr><th>#</th><th>Guest</th><th>Sessions</th><th>Pages</th><th>Time</th><th>Locations</th><th>Score</th></tr></thead>
               <tbody>${highIntentTableRows}</tbody>
             </table>
+            ${anonymousIntentSection}
           </div>
         </div>`;
 
@@ -2462,6 +2483,10 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
           .conversion-strip div { background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:10px;text-align:center;min-width:0; }
           .conversion-strip strong { display:block;color:#fff;font-size:1.25rem;line-height:1; }
           .conversion-strip span { display:block;color:#8b949e;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.07em;margin-top:6px; }
+          .anonymous-summary { display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px; }
+          .anonymous-summary div { background:rgba(255,255,255,0.035);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:9px;text-align:center; }
+          .anonymous-summary strong { display:block;color:#fff;font-size:1.15rem;line-height:1; }
+          .anonymous-summary span { display:block;color:#8b949e;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;margin-top:6px; }
           @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
           @media(max-width:1100px) {
             .tl-grid { grid-template-columns:repeat(2,minmax(0,1fr)) !important; }
@@ -2473,6 +2498,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
             .a-insights { grid-template-columns:1fr; }
             .metric-pill { font-size:0.76rem;padding:6px 8px; }
             .conversion-strip { grid-template-columns:repeat(2,minmax(0,1fr)); }
+            .anonymous-summary { grid-template-columns:1fr; }
             .tl-grid { grid-template-columns:1fr !important; }
           }
         </style>

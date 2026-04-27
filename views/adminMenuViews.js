@@ -35,27 +35,25 @@ function menuLocationsList(locations, user, flashMsg) {
       .menu-loc-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:14px; margin-top:20px; }
       .menu-loc-card {
         display:block;
-        background:#1a1a1a;
-        border:1px solid #2a2a2a;
-        border-radius:12px;
+        background:linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015)), var(--surface);
+        border:1px solid var(--line);
+        border-radius:var(--radius);
         padding:20px;
         text-decoration:none;
         color:inherit;
         transition:all 0.2s;
       }
-      .menu-loc-card:hover { border-color:#d4af37; transform:translateY(-2px); text-decoration:none; }
-      .menu-loc-name { font-size:1.05rem; font-weight:700; color:#fff; margin-bottom:3px; }
-      .menu-loc-city { font-size:0.82rem; color:#888; margin-bottom:10px; }
-      .menu-loc-count { font-size:0.78rem; color:#d4af37; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; }
+      .menu-loc-card:hover { border-color:var(--gold); transform:translateY(-2px); text-decoration:none; }
+      .menu-loc-name { font-size:1.05rem; font-weight:800; color:var(--text); margin-bottom:3px; }
+      .menu-loc-city { font-size:0.82rem; color:var(--text-muted); margin-bottom:10px; }
+      .menu-loc-count { font-size:0.78rem; color:var(--gold-strong); font-weight:800; text-transform:uppercase; letter-spacing:0.08em; }
     </style>
-    <h1>Food Menu</h1>
-    <p style="color:#888; margin-bottom:8px">
-      Manage food menu categories and items per location. This drives the snacks, appetizers, and any other
-      food section on each location's public menu and home pages.
-    </p>
-    <p style="color:#666; font-size:0.85rem; margin-bottom:0">
-      Each location has its own menu &mdash; you can create different categories and items for each.
-    </p>
+    <div class="page-header">
+      <div>
+        <h1>Food Menu</h1>
+        <p class="page-subtitle">Choose a location to edit categories, menu items, prices, featured items, and availability.</p>
+      </div>
+    </div>
     <div class="menu-loc-grid">${cards || '<p style="color:#666">No active locations found.</p>'}</div>
   `, user, { pathname: '/admin/menu', flashMsg });
 }
@@ -210,10 +208,10 @@ function menuLocationEditor(location, categories, user, flashMsg) {
 
   return adminLayout(`${location.name} Menu`, `
     <style>
-      .menu-summary { display:flex; gap:20px; flex-wrap:wrap; margin:12px 0 20px; }
-      .menu-stat { background:#1a1a1a; border:1px solid #2a2a2a; border-radius:10px; padding:12px 18px; }
-      .menu-stat-num { font-size:1.4rem; font-weight:800; color:#d4af37; }
-      .menu-stat-lbl { font-size:0.72rem; color:#888; text-transform:uppercase; letter-spacing:0.08em; margin-top:2px; }
+      .menu-summary { display:flex; gap:12px; flex-wrap:wrap; margin:0 0 20px; }
+      .menu-stat { background:rgba(255,255,255,0.045); border:1px solid var(--line); border-radius:var(--radius); padding:12px 18px; min-width:132px; }
+      .menu-stat-num { font-size:1.4rem; font-weight:850; color:var(--gold-strong); }
+      .menu-stat-lbl { font-size:0.72rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.08em; margin-top:2px; font-weight:800; }
 
       .mc-add-cat {
         background:#141414;
@@ -301,11 +299,14 @@ function menuLocationEditor(location, categories, user, flashMsg) {
       }
     </style>
 
-    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:10px">
-      <h1 style="margin:0">${escHTML(location.name)} &mdash; Menu</h1>
-      <div style="display:flex; gap:8px">
-        <a href="/admin/menu" class="btn btn-secondary btn-sm">← All Locations</a>
-        <a href="/${escHTML(location.slug)}/menu" class="btn btn-secondary btn-sm" target="_blank">View Public Menu ↗</a>
+    <div class="page-header">
+      <div>
+        <h1>${escHTML(location.name)} Menu</h1>
+        <p class="page-subtitle">Edit what guests see on this location’s public food menu.</p>
+      </div>
+      <div class="page-actions">
+        <a href="/admin/menu" class="btn btn-secondary btn-sm">All Locations</a>
+        <a href="/${escHTML(location.slug)}/menu" class="btn btn-secondary btn-sm" target="_blank">View Public Menu</a>
       </div>
     </div>
 

@@ -48,8 +48,12 @@ function locationsList(locations, user, flashMsg) {
   `).join('');
 
   return adminLayout('Locations', `
-    <h1>Locations</h1>
-    <p style="color:#888; margin-bottom:20px">Manage location details, hours, and link buttons.</p>
+    <div class="page-header">
+      <div>
+        <h1>Locations</h1>
+        <p class="page-subtitle">Manage public location details, hours, contact information, and link buttons.</p>
+      </div>
+    </div>
     ${locations.length === 0 ? '<div class="empty-state">No locations yet. <a href="/admin/seed">Seed default locations</a></div>' : `
       <div class="grid-7">${cards}</div>
     `}
@@ -88,10 +92,18 @@ function locationEditor(location, user, flashMsg) {
   `).join('');
 
   return adminLayout(`Edit ${escHTML(loc.name)}`, `
-    <h1>Edit ${escHTML(loc.name)}</h1>
-    <p style="margin-bottom:20px"><a href="/admin/locations">&larr; Back to Locations</a> &nbsp; <a href="/${escHTML(loc.slug)}" target="_blank">View public page</a></p>
+    <div class="page-header">
+      <div>
+        <h1>Edit ${escHTML(loc.name)}</h1>
+        <p class="page-subtitle">Keep the public location page accurate for guests.</p>
+      </div>
+      <div class="page-actions">
+        <a href="/admin/locations" class="btn btn-secondary">All Locations</a>
+        <a href="/${escHTML(loc.slug)}" target="_blank" class="btn btn-secondary">View Public Page</a>
+      </div>
+    </div>
 
-    <form method="POST" action="/admin/locations/${escHTML(loc.slug)}">
+    <form method="POST" action="/admin/locations/${escHTML(loc.slug)}" data-autosave="location-${escHTML(loc.slug)}">
       <div class="card">
         <h2>Basic Info</h2>
         <div class="form-row">

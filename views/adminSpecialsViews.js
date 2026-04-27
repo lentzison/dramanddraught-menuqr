@@ -867,7 +867,7 @@ function specialsDashboard(themes, user, flashMsg, opts = {}) {
   }).join('');
 
   const locationTabs = (opts.locationOptions && opts.locationOptions.length > 1) ? `
-    <div style="margin-bottom:18px; display:flex; gap:8px; flex-wrap:wrap">
+    <div class="admin-tabs" style="margin-bottom:18px">
       ${opts.locationOptions.map(l => `<a href="/admin/specials?location=${escHTML(l.slug)}" class="btn ${l.slug === locationSlug ? 'btn-primary' : 'btn-secondary'} btn-sm">${escHTML(l.name)}</a>`).join('')}
     </div>` : '';
 
@@ -879,8 +879,12 @@ function specialsDashboard(themes, user, flashMsg, opts = {}) {
     : 'Manage the weekly programming for all locations. Click a day to edit its theme and specials.';
 
   return adminLayout('Daily Specials', `
-    <h1>${heading}</h1>
-    <p style="color:#888; margin-bottom:20px">${intro}</p>
+    <div class="page-header">
+      <div>
+        <h1>${heading}</h1>
+        <p class="page-subtitle">${intro}</p>
+      </div>
+    </div>
     ${locationTabs}
     <div class="grid-7">${grid}</div>
   `, user, { pathname: '/admin/specials', flashMsg });
@@ -894,7 +898,7 @@ function dayThemeEditor(day, theme, specials, locations, locationSlug, user, mes
   const showCompanyDefault = opts.showCompanyDefault !== false;
 
   const overrideTabs = locations.length > 0 ? `
-    <div style="margin-bottom:20px; display:flex; gap:8px; flex-wrap:wrap">
+    <div class="admin-tabs" style="margin-bottom:20px">
       ${showCompanyDefault ? `<a href="/admin/specials/day/${day}" class="btn ${!isOverride ? 'btn-primary' : 'btn-secondary'} btn-sm">Company Default</a>` : ''}
       ${locations.map(l => `<a href="/admin/specials/day/${day}/location/${l.slug}" class="btn ${locationSlug === l.slug ? 'btn-primary' : 'btn-secondary'} btn-sm">${escHTML(l.name)}</a>`).join('')}
     </div>
@@ -975,13 +979,21 @@ function dayThemeEditor(day, theme, specials, locations, locationSlug, user, mes
   `).join('');
 
   return adminLayout(`${DAY_LABELS[day]} Theme`, `
-    <h1>${DAY_LABELS[day]}${isOverride && loc ? ` &mdash; ${escHTML(loc.name)}` : ''}</h1>
+    <div class="page-header">
+      <div>
+        <h1>${DAY_LABELS[day]}${isOverride && loc ? ` Specials for ${escHTML(loc.name)}` : ' Specials'}</h1>
+        <p class="page-subtitle">${isOverride ? 'Location-specific programming and discounted spirit selection.' : 'Company default theme and specials for this day.'}</p>
+      </div>
+      <div class="page-actions">
+        <a href="/admin/specials" class="btn btn-secondary btn-sm">Weekly Overview</a>
+      </div>
+    </div>
     ${message ? `<div class="alert ${message.type === 'error' ? 'alert-error' : 'alert-success'}">${message.text}</div>` : ''}
     ${overrideTabs}
 
     <div class="card">
       <h2>Theme Details</h2>
-      <form method="POST" action="/admin/specials/day/${day}${isOverride ? `/location/${locationSlug}` : ''}">
+      <form method="POST" action="/admin/specials/day/${day}${isOverride ? `/location/${locationSlug}` : ''}" data-autosave="special-theme-${day}${isOverride ? '-' + escHTML(locationSlug) : '-default'}">
         <input type="hidden" name="_action" value="saveTheme" />
         <label>Theme Name</label>
         <input type="text" name="name" value="${escHTML(theme ? theme.name : '')}" required placeholder="e.g. Industry Night" />
@@ -1035,7 +1047,7 @@ function dayThemeEditor(day, theme, specials, locations, locationSlug, user, mes
 
       <div class="add-special-box">
         <h3 style="margin-top:0">Add Special</h3>
-        <form method="POST" action="${actionUrl}">
+        <form method="POST" action="${actionUrl}" data-autosave="special-add-${day}${isOverride ? '-' + escHTML(locationSlug) : '-default'}">
           <input type="hidden" name="_action" value="addSpecial" />
           <div class="form-row">
             <div>
@@ -1108,7 +1120,6 @@ function dayThemeEditor(day, theme, specials, locations, locationSlug, user, mes
     </div>
     ` : ''}
 
-    <p style="margin-top:20px"><a href="/admin/specials">&larr; Back to Weekly Overview</a></p>
     <script>
       function refreshSpecialOrderState() {
         const container = document.getElementById('specialsList');
@@ -1117,10 +1128,8 @@ function dayThemeEditor(day, theme, specials, locations, locationSlug, user, mes
         const items = Array.from(container.querySelectorAll('.special-item'));
         items.forEach((item, index) => {
           item.dataset.orderIndex = String(index);
-          var name = item.querySelector('.name');
-          if (name) {
-            name.innerHTML = name.textContent.replace(/\\s+#\\d+$/, '') + ' <span class="muted">#' + (index + 1) + '</span>';
-          }
+          var orderBadge = item.querySelector('.name .muted');
+          if (orderBadge) orderBadge.textContent = '#' + (index + 1);
         });
 
         const payload = JSON.stringify(items.map((item) => item.dataset.specialId).filter(Boolean));

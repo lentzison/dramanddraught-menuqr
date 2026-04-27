@@ -335,24 +335,24 @@ function eventsList(events, user, flashMsg) {
         align-items:center;
         gap:16px;
         padding:16px 18px;
-        background:#1a1a1a;
-        border:1px solid #2a2a2a;
-        border-radius:10px;
+        background:linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015)), var(--surface);
+        border:1px solid var(--line);
+        border-radius:var(--radius);
         margin-bottom:10px;
         flex-wrap:wrap;
       }
-      .ev-row:hover { border-color:#3a3a3a; }
+      .ev-row:hover { border-color:rgba(214,173,75,0.38); }
       .ev-row-main { flex:1; min-width:240px; }
       .ev-row-title { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:4px; }
-      .ev-row-link { font-size:1.05rem; font-weight:700; color:#fff; text-decoration:none; }
-      .ev-row-link:hover { color:#d4af37; text-decoration:none; }
-      .ev-row-meta { color:#888; font-size:0.85rem; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+      .ev-row-link { font-size:1.05rem; font-weight:800; color:var(--text); text-decoration:none; }
+      .ev-row-link:hover { color:var(--gold-strong); text-decoration:none; }
+      .ev-row-meta { color:var(--text-muted); font-size:0.85rem; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
       .ev-row-meta span { white-space:nowrap; }
 
       .ev-row-stats { display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
       .ev-signup-count { text-align:right; min-width:80px; }
-      .ev-signup-num { display:block; font-size:1.4rem; font-weight:800; color:#d4af37; line-height:1; }
-      .ev-signup-lbl { display:block; font-size:0.68rem; color:#888; text-transform:uppercase; letter-spacing:0.08em; margin-top:3px; }
+      .ev-signup-num { display:block; font-size:1.4rem; font-weight:850; color:var(--gold-strong); line-height:1; }
+      .ev-signup-lbl { display:block; font-size:0.68rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.08em; margin-top:3px; }
       .ev-row-actions { display:flex; gap:6px; flex-wrap:wrap; }
 
       .ev-badge { display:inline-block; padding:3px 9px; border-radius:10px; font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; }
@@ -364,10 +364,10 @@ function eventsList(events, user, flashMsg) {
       .ev-badge-inactive { background:rgba(150,150,150,0.15); color:#888; }
     </style>
 
-    <div class="ev-header-row">
+    <div class="page-header">
       <div>
-        <h1 style="margin:0">Events</h1>
-        <p style="color:#888; margin:4px 0 0; font-size:0.9rem">Create signup pages for events like Lubrication Cup, tastings, and private parties.</p>
+        <h1>Events</h1>
+        <p class="page-subtitle">Create public signup pages, manage RSVPs, and build event landing pages.</p>
       </div>
       <a href="/admin/events/new" class="btn btn-primary">+ New Event</a>
     </div>

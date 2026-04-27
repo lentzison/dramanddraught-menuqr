@@ -74,10 +74,6 @@ function adminActivityView(entries, filters, locations, user, flashMsg) {
 
   return adminLayout('Activity', `
     <style>
-      .act-head { margin-bottom: 18px; }
-      .act-head h1 { margin: 0 0 4px; }
-      .act-head p { color: #888; font-size: 0.92rem; margin: 0; }
-
       .act-filters {
         display: flex;
         gap: 10px;
@@ -86,17 +82,17 @@ function adminActivityView(entries, filters, locations, user, flashMsg) {
       }
       .act-filters select {
         padding: 8px 12px;
-        background: #1a1a1d;
-        color: #ccc;
-        border: 1px solid #333;
-        border-radius: 8px;
+        background: #12110f;
+        color: var(--text);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
         font-size: 0.88rem;
       }
 
       .act-list {
-        background: #1a1a1a;
-        border: 1px solid #2a2a2a;
-        border-radius: 12px;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
         overflow: hidden;
       }
       .act-row {
@@ -105,12 +101,12 @@ function adminActivityView(entries, filters, locations, user, flashMsg) {
         gap: 14px;
         align-items: center;
         padding: 12px 16px;
-        border-bottom: 1px solid #222;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
         font-size: 0.88rem;
       }
       .act-row:last-child { border-bottom: none; }
-      .act-row:hover { background: #1f1f1f; }
-      .act-time { color: #888; font-size: 0.82rem; white-space: nowrap; }
+      .act-row:hover { background: rgba(255,255,255,0.035); }
+      .act-time { color: var(--text-muted); font-size: 0.82rem; white-space: nowrap; }
       .act-badges { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
       .act-badge {
         display: inline-block;
@@ -121,11 +117,11 @@ function adminActivityView(entries, filters, locations, user, flashMsg) {
         text-transform: uppercase;
         letter-spacing: 0.04em;
       }
-      .act-resource { color: #888; font-size: 0.78rem; }
-      .act-label { color: #fff; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .act-loc { color: #aaa; font-size: 0.82rem; text-transform: capitalize; }
-      .act-user { color: #888; font-size: 0.82rem; }
-      .act-empty { padding: 50px 20px; text-align: center; color: #666; }
+      .act-resource { color: var(--text-muted); font-size: 0.78rem; }
+      .act-label { color: var(--text); font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .act-loc { color: #d8cfc2; font-size: 0.82rem; text-transform: capitalize; }
+      .act-user { color: var(--text-muted); font-size: 0.82rem; }
+      .act-empty { padding: 50px 20px; text-align: center; color: var(--text-soft); }
 
       @media (max-width: 768px) {
         .act-row {
@@ -137,9 +133,11 @@ function adminActivityView(entries, filters, locations, user, flashMsg) {
       }
     </style>
 
-    <div class="act-head">
-      <h1>Activity</h1>
-      <p>Recent admin changes across all locations. Useful for multi-admin teams to see who did what.</p>
+    <div class="page-header">
+      <div>
+        <h1>Activity</h1>
+        <p class="page-subtitle">Recent admin changes across all locations, including who changed what and when.</p>
+      </div>
     </div>
 
     <form method="GET" action="/admin/activity" class="act-filters">

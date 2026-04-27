@@ -41,7 +41,13 @@ const { generateSpiritsPage } = require('../views/spiritsPage');
 const { generateEventPage, generateEventConfirmationPage, generateEventTermsPage, eventStatus } = require('../views/eventPage');
 const { generateEventsIndexPage } = require('../views/eventsIndexPage');
 const { generateNotFoundPage } = require('../views/notFoundPage');
-const { trackPageView, buildTrackingScript } = require('../analytics');
+const {
+  trackPageView,
+  buildTrackingScript,
+  getVisitorId,
+  linkVisitorToEmail,
+  recordAnalyticsEvent,
+} = require('../analytics');
 
 const DAYS_ORDER = Array.isArray(importDaysOrder) && importDaysOrder.length > 0 ? importDaysOrder : ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'];
 
@@ -378,6 +384,10 @@ async function handleFeedback(req, res, prisma) {
     newsletterOptIn,
   });
 
+  const visitorId = getVisitorId(req);
+  const currentSession = visitorId && prisma?.visitorSession
+    ? await prisma.visitorSession.findFirst({ where: { visitorId }, orderBy: { updatedAt: 'desc' } }).catch(() => null)
+    : null;
   let savedFeedbackId = null;
   if (prisma && prisma.guestFeedback && typeof prisma.guestFeedback.create === 'function') {
     try {
@@ -392,12 +402,67 @@ async function handleFeedback(req, res, prisma) {
           feedbackText: normalizedFeedback,
           newsletterOptIn: Boolean(newsletterOptIn),
           giftCardOptIn: Boolean(giftCardOptIn),
+          visitorId: visitorId || null,
+          sessionId: currentSession?.id || null,
+          source: currentSession?.source || null,
         },
       });
       savedFeedbackId = created?.id || null;
     } catch (err) {
       console.warn('Error storing feedback in database:', err.message);
     }
+  }
+
+  if (guestEmail) {
+    await linkVisitorToEmail(req, prisma, guestEmail, {
+      visitorId,
+      session: currentSession,
+      locationSlug: requestedSlug,
+      source: currentSession?.source || null,
+      giftCardOptIn: Boolean(giftCardOptIn),
+      newsletterOptIn: Boolean(newsletterOptIn),
+      kind: 'feedback',
+    });
+  }
+  await recordAnalyticsEvent(req, prisma, 'feedback_submit', {
+    visitorId,
+    session: currentSession,
+    email: guestEmail || null,
+    locationId: location.id || null,
+    locationSlug: requestedSlug,
+    source: currentSession?.source || null,
+    pagePath: `/${requestedSlug}`,
+    entityType: 'feedback',
+    entityId: savedFeedbackId,
+    metadata: { rating, giftCardOptIn: Boolean(giftCardOptIn), newsletterOptIn: Boolean(newsletterOptIn) },
+  });
+  if (giftCardOptIn && guestEmail) {
+    await recordAnalyticsEvent(req, prisma, 'gift_card_entry', {
+      visitorId,
+      session: currentSession,
+      email: guestEmail,
+      locationId: location.id || null,
+      locationSlug: requestedSlug,
+      source: currentSession?.source || null,
+      pagePath: `/${requestedSlug}`,
+      entityType: 'feedback',
+      entityId: savedFeedbackId,
+      metadata: { rating },
+    });
+  }
+  if (newsletterOptIn && guestEmail) {
+    await recordAnalyticsEvent(req, prisma, 'newsletter_optin', {
+      visitorId,
+      session: currentSession,
+      email: guestEmail,
+      locationId: location.id || null,
+      locationSlug: requestedSlug,
+      source: currentSession?.source || null,
+      pagePath: `/${requestedSlug}`,
+      entityType: 'feedback',
+      entityId: savedFeedbackId,
+      metadata: { rating },
+    });
   }
 
   // Sync newsletter opt-in to public site email marketing
@@ -1565,6 +1630,10 @@ async function handlePublic(req, res, pathname, prisma) {
     const ip = fwd ? String(fwd).split(',')[0].trim() : (req.socket?.remoteAddress || null);
 
     const isVendorEvent = event.isVendorEvent === true;
+    const visitorId = getVisitorId(req);
+    const currentSession = visitorId && prisma?.visitorSession
+      ? await prisma.visitorSession.findFirst({ where: { visitorId }, orderBy: { updatedAt: 'desc' } }).catch(() => null)
+      : null;
 
     let signup;
     try {
@@ -1578,6 +1647,9 @@ async function handlePublic(req, res, pathname, prisma) {
           notes,
           customAnswers: Object.keys(customAnswers).length > 0 ? customAnswers : null,
           ipAddress: ip,
+          visitorId: visitorId || null,
+          sessionId: currentSession?.id || null,
+          source: currentSession?.source || null,
           status: isVendorEvent ? 'pending' : 'approved',
         },
       });
@@ -1593,6 +1665,34 @@ async function handlePublic(req, res, pathname, prisma) {
       ));
       return true;
     }
+
+    if (email) {
+      await linkVisitorToEmail(req, prisma, email, {
+        visitorId,
+        session: currentSession,
+        locationSlug: location.slug,
+        source: currentSession?.source || null,
+        kind: 'event_signup',
+      });
+    }
+    await recordAnalyticsEvent(req, prisma, 'event_signup', {
+      visitorId,
+      session: currentSession,
+      email,
+      locationId: location.id || null,
+      locationSlug: location.slug,
+      source: currentSession?.source || null,
+      pagePath: `/${location.slug}/events/${event.slug}/signup`,
+      entityType: 'event',
+      entityId: event.id,
+      entityName: event.title,
+      metadata: {
+        eventSlug: event.slug,
+        status: isVendorEvent ? 'pending' : 'approved',
+        partySize,
+        isVendorEvent,
+      },
+    });
 
     // Best-effort notification email. For vendor events, always notify the
     // location's GM/admin list in addition to the configured notifyEmail so

@@ -1351,13 +1351,35 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
         ? { isActive: true }
         : { isActive: true, slug: { in: userSlugs.length > 0 ? userSlugs : ['__none__'] } };
 
-      const [sessions, prevSessions, locations, pageViews, liveCount, distinctSources] = await Promise.all([
+      const analyticsEventWhere = { createdAt: { gte: rangeStart }, ...slugScopeFragment };
+      if (filterSource) {
+        analyticsEventWhere.source = filterSource === 'organic' ? null : filterSource;
+      }
+      const eventPageViewWhere = {
+        viewedAt: { gte: rangeStart },
+        pagePath: { contains: '/events/' },
+        ...slugScopeFragment,
+      };
+      const guestLinkWhere = {};
+      if (scopedFilterSlug) {
+        guestLinkWhere.lastLocationSlug = scopedFilterSlug;
+      } else if (!userIsCompanyWide) {
+        guestLinkWhere.lastLocationSlug = { in: userSlugs.length > 0 ? userSlugs : ['__none__'] };
+      }
+      if (filterSource) {
+        guestLinkWhere.lastSource = filterSource === 'organic' ? null : filterSource;
+      }
+
+      const [sessions, prevSessions, locations, pageViews, liveCount, distinctSources, analyticsEvents, knownGuestLinks, eventPageViews] = await Promise.all([
         prisma.visitorSession.findMany({ where, orderBy: { startedAt: 'desc' }, take: 10000 }),
         prisma.visitorSession.findMany({ where: prevWhere, orderBy: { startedAt: 'desc' }, take: 10000 }),
         prisma.location.findMany({ where: locationListWhere, orderBy: { name: 'asc' }, select: { id: true, slug: true, name: true } }),
         prisma.pageView.groupBy({ by: ['pageType'], _count: true, where: pvWhere }),
         prisma.visitorSession.count({ where: { updatedAt: { gte: fiveMinAgo }, ...slugScopeFragment } }),
         prisma.visitorSession.findMany({ where: sourceListWhere, select: { source: true }, distinct: ['source'], take: 50 }),
+        prisma.analyticsEvent ? prisma.analyticsEvent.findMany({ where: analyticsEventWhere, orderBy: { createdAt: 'desc' }, take: 5000 }) : Promise.resolve([]),
+        prisma.guestVisitorLink ? prisma.guestVisitorLink.findMany({ where: guestLinkWhere, orderBy: { lastSeenAt: 'desc' }, take: 5000 }) : Promise.resolve([]),
+        prisma.pageView.findMany({ where: eventPageViewWhere, select: { visitorId: true, locationSlug: true, pagePath: true, viewedAt: true }, take: 5000 }),
       ]);
       const availableSources = distinctSources.map(s => s.source).filter(Boolean).sort();
 
@@ -1533,6 +1555,209 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
         .sort((a, b) => b.returnRate - a.returnRate || b.returning - a.returning)
         .slice(0, 3);
 
+      // ── Campaign, conversion, and known-guest analytics ──
+      const eventsByType = {};
+      analyticsEvents.forEach(ev => {
+        eventsByType[ev.eventType] = (eventsByType[ev.eventType] || 0) + 1;
+      });
+      const giftCardEntries = eventsByType.gift_card_entry || 0;
+      const newsletterOptIns = eventsByType.newsletter_optin || 0;
+      const feedbackSubmits = eventsByType.feedback_submit || 0;
+      const eventSignupCount = eventsByType.event_signup || 0;
+
+      const campaignMap = {};
+      sessions.forEach(s => {
+        const key = s.qrId || s.campaign || s.source || 'organic';
+        if (!campaignMap[key]) {
+          campaignMap[key] = {
+            label: key,
+            qrId: s.qrId || '',
+            campaign: s.campaign || '',
+            source: s.source || 'organic',
+            sessions: 0,
+            visitorIds: new Set(),
+            returningVisitorIds: new Set(),
+            locations: new Set(),
+            pageTotal: 0,
+          };
+        }
+        const c = campaignMap[key];
+        c.sessions++;
+        c.visitorIds.add(s.visitorId);
+        if (returningVisitorIdSet.has(s.visitorId)) c.returningVisitorIds.add(s.visitorId);
+        if (s.locationSlug) c.locations.add(s.locationSlug);
+        c.pageTotal += s.pageCount || 1;
+      });
+      const campaignRows = Object.values(campaignMap).map(c => ({
+        label: c.label,
+        qrId: c.qrId,
+        campaign: c.campaign,
+        source: c.source,
+        sessions: c.sessions,
+        unique: c.visitorIds.size,
+        returning: c.returningVisitorIds.size,
+        returnRate: c.visitorIds.size > 0 ? Math.round((c.returningVisitorIds.size / c.visitorIds.size) * 100) : 0,
+        locations: c.locations.size,
+        avgPages: c.sessions > 0 ? +(c.pageTotal / c.sessions).toFixed(1) : 0,
+      })).sort((a, b) => {
+        const aTracked = a.label === 'organic' ? 0 : 1;
+        const bTracked = b.label === 'organic' ? 0 : 1;
+        return bTracked - aTracked || b.sessions - a.sessions;
+      }).slice(0, 12);
+
+      const linksByVisitor = {};
+      knownGuestLinks.forEach(link => {
+        if (!linksByVisitor[link.visitorId]) linksByVisitor[link.visitorId] = [];
+        linksByVisitor[link.visitorId].push(link);
+      });
+      const knownVisitorIds = [...new Set(knownGuestLinks.map(link => link.visitorId).filter(Boolean))];
+      const lifetimeKnownSessions = knownVisitorIds.length > 0 && knownVisitorIds.length <= 5000
+        ? await prisma.visitorSession.findMany({
+            where: { visitorId: { in: knownVisitorIds }, ...slugScopeFragment },
+            select: { visitorId: true, locationSlug: true, pageCount: true, startedAt: true },
+            orderBy: { startedAt: 'desc' },
+            take: 20000,
+          }).catch(() => [])
+        : [];
+      const guestIdentityMap = {};
+      knownGuestLinks.forEach(link => {
+        if (!guestIdentityMap[link.emailHash]) {
+          guestIdentityMap[link.emailHash] = {
+            emailHash: link.emailHash,
+            emailMasked: link.emailMasked,
+            visitorIds: new Set(),
+            firstSeenAt: link.firstSeenAt,
+            lastSeenAt: link.lastSeenAt,
+            locations: new Set(),
+            giftCardOptIn: false,
+            newsletterOptIn: false,
+            feedbackCount: 0,
+            eventSignupCount: 0,
+            lifetimeSessions: 0,
+            lifetimePageTotal: 0,
+          };
+        }
+        const g = guestIdentityMap[link.emailHash];
+        g.visitorIds.add(link.visitorId);
+        if (link.lastLocationSlug) g.locations.add(link.lastLocationSlug);
+        if (link.firstSeenAt && (!g.firstSeenAt || link.firstSeenAt < g.firstSeenAt)) g.firstSeenAt = link.firstSeenAt;
+        if (link.lastSeenAt && (!g.lastSeenAt || link.lastSeenAt > g.lastSeenAt)) g.lastSeenAt = link.lastSeenAt;
+        g.giftCardOptIn = g.giftCardOptIn || Boolean(link.giftCardOptIn);
+        g.newsletterOptIn = g.newsletterOptIn || Boolean(link.newsletterOptIn);
+        g.feedbackCount += link.feedbackCount || 0;
+        g.eventSignupCount += link.eventSignupCount || 0;
+      });
+      lifetimeKnownSessions.forEach(s => {
+        (linksByVisitor[s.visitorId] || []).forEach(link => {
+          const g = guestIdentityMap[link.emailHash];
+          if (!g) return;
+          g.lifetimeSessions++;
+          g.lifetimePageTotal += s.pageCount || 1;
+          if (s.locationSlug) g.locations.add(s.locationSlug);
+        });
+      });
+      sessions.forEach(s => {
+        (linksByVisitor[s.visitorId] || []).forEach(link => {
+          const g = guestIdentityMap[link.emailHash];
+          if (!g) return;
+          g.currentSessions = (g.currentSessions || 0) + 1;
+          g.currentPageTotal = (g.currentPageTotal || 0) + (s.pageCount || 1);
+          if (s.locationSlug) g.locations.add(s.locationSlug);
+          if (returningVisitorIdSet.has(s.visitorId)) g.returning = true;
+        });
+      });
+      const knownGuestRows = Object.values(guestIdentityMap)
+        .filter(g => (g.currentSessions || 0) > 0 || g.lastSeenAt >= rangeStart)
+        .map(g => ({
+          emailMasked: g.emailMasked,
+          visits: g.currentSessions || 0,
+          lifetimeVisits: g.lifetimeSessions || 0,
+          linkedDevices: g.visitorIds.size,
+          locations: g.locations.size,
+          returning: Boolean(g.returning) || g.visitorIds.size > 1,
+          giftCardOptIn: g.giftCardOptIn,
+          newsletterOptIn: g.newsletterOptIn,
+          feedbackCount: g.feedbackCount,
+          eventSignupCount: g.eventSignupCount,
+          lastSeenAt: g.lastSeenAt,
+        }))
+        .sort((a, b) => b.visits - a.visits || Number(b.returning) - Number(a.returning) || b.lastSeenAt - a.lastSeenAt)
+        .slice(0, 10);
+
+      const visitorIntentMap = {};
+      sessions.forEach(s => {
+        if (!visitorIntentMap[s.visitorId]) {
+          const link = (linksByVisitor[s.visitorId] || [])[0];
+          visitorIntentMap[s.visitorId] = {
+            visitorId: s.visitorId,
+            label: link ? link.emailMasked : 'Visitor ' + String(s.visitorId || '').slice(0, 8),
+            known: Boolean(link),
+            sessions: 0,
+            pageTotal: 0,
+            durationTotal: 0,
+            locations: new Set(),
+            sources: new Set(),
+            lastSeenAt: s.updatedAt || s.startedAt,
+          };
+        }
+        const v = visitorIntentMap[s.visitorId];
+        v.sessions++;
+        v.pageTotal += s.pageCount || 1;
+        v.durationTotal += s.durationSecs || 0;
+        if (s.locationSlug) v.locations.add(s.locationSlug);
+        if (s.source) v.sources.add(s.source);
+        if ((s.updatedAt || s.startedAt) > v.lastSeenAt) v.lastSeenAt = s.updatedAt || s.startedAt;
+      });
+      const highIntentRows = Object.values(visitorIntentMap)
+        .map(v => ({
+          ...v,
+          locationsCount: v.locations.size,
+          score: (v.sessions * 3) + v.pageTotal + Math.min(Math.round(v.durationTotal / 30), 20) + (v.known ? 8 : 0),
+        }))
+        .filter(v => v.sessions > 1 || v.pageTotal >= 4 || v.durationTotal >= 120 || v.known)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 10);
+
+      const eventInterestMap = {};
+      eventPageViews.forEach(pv => {
+        const match = String(pv.pagePath || '').match(/\/events\/([^/?#]+)/);
+        if (!match) return;
+        const key = (pv.locationSlug || '') + '::' + match[1];
+        if (!eventInterestMap[key]) {
+          eventInterestMap[key] = {
+            slug: match[1],
+            locationSlug: pv.locationSlug || '',
+            views: 0,
+            visitors: new Set(),
+            signups: 0,
+          };
+        }
+        eventInterestMap[key].views++;
+        eventInterestMap[key].visitors.add(pv.visitorId);
+      });
+      analyticsEvents.filter(ev => ev.eventType === 'event_signup').forEach(ev => {
+        const slug = ev.metadata && ev.metadata.eventSlug ? ev.metadata.eventSlug : (ev.entityName || ev.entityId || 'event');
+        const key = (ev.locationSlug || '') + '::' + slug;
+        if (!eventInterestMap[key]) {
+          eventInterestMap[key] = {
+            slug,
+            locationSlug: ev.locationSlug || '',
+            views: 0,
+            visitors: new Set(),
+            signups: 0,
+          };
+        }
+        eventInterestMap[key].signups++;
+      });
+      const eventInterestRows = Object.values(eventInterestMap).map(e => ({
+        location: locationNameMap[e.locationSlug] || e.locationSlug || 'Unknown',
+        event: e.slug,
+        views: e.views,
+        visitors: e.visitors.size,
+        signups: e.signups,
+        conversionRate: e.visitors.size > 0 ? Math.round((e.signups / e.visitors.size) * 100) : 0,
+      })).sort((a, b) => b.views - a.views || b.signups - a.signups).slice(0, 10);
+
       // ── Content funnel ──
       const pageTypeCounts = {};
       pageViews.forEach(p => { pageTypeCounts[p.pageType] = p._count; });
@@ -1562,6 +1787,9 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       // ── Helpers ──
       function esc(s) { return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
       function fmtDur(s) { return s >= 60 ? Math.floor(s / 60) + 'm ' + (s % 60) + 's' : s + 's'; }
+      function fmtShortDate(d) {
+        return d ? new Date(d).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '-';
+      }
 
       function changeArrow(pct) {
         if (pct > 0) return '<span style="color:#4ade80;font-size:0.75rem;font-weight:700;">&uarr; ' + pct + '%</span>';
@@ -1817,6 +2045,117 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
           </div>
         </div>`;
 
+      const campaignTableRows = campaignRows.length > 0 ? campaignRows.map((row, i) => {
+        const label = row.label === 'organic' ? 'Organic / direct' : row.label;
+        const detail = [
+          row.qrId ? 'QR: ' + row.qrId : '',
+          row.campaign ? 'Campaign: ' + row.campaign : '',
+          row.source && row.source !== row.label ? 'Source: ' + row.source : '',
+        ].filter(Boolean).join(' | ');
+        return '<tr>'
+          + '<td style="color:#666;font-weight:700;">' + (i + 1) + '</td>'
+          + '<td><strong style="color:#fff;">' + esc(label) + '</strong>' + (detail ? '<div style="color:#777;font-size:0.74rem;">' + esc(detail) + '</div>' : '') + '</td>'
+          + '<td>' + row.sessions + '</td>'
+          + '<td>' + row.unique + '</td>'
+          + '<td>' + row.returning + ' <span style="color:#777;">(' + row.returnRate + '%)</span></td>'
+          + '<td>' + row.locations + '</td>'
+          + '<td>' + row.avgPages + '</td>'
+          + '</tr>';
+      }).join('') : '<tr><td colspan="7" style="color:#666;padding:12px;">No campaign data yet</td></tr>';
+
+      const knownGuestTableRows = knownGuestRows.length > 0 ? knownGuestRows.map((row, i) => {
+        const tags = [
+          row.returning ? 'returning' : '',
+          row.giftCardOptIn ? 'gift card' : '',
+          row.newsletterOptIn ? 'newsletter' : '',
+        ].filter(Boolean).map(t => '<span class="tiny-tag">' + esc(t) + '</span>').join(' ');
+        return '<tr>'
+          + '<td style="color:#666;font-weight:700;">' + (i + 1) + '</td>'
+          + '<td><strong style="color:#fff;">' + esc(row.emailMasked) + '</strong><div style="margin-top:3px;">' + tags + '</div></td>'
+          + '<td>' + row.visits + '</td>'
+          + '<td>' + row.lifetimeVisits + '</td>'
+          + '<td>' + row.linkedDevices + '</td>'
+          + '<td>' + row.locations + '</td>'
+          + '<td>' + row.feedbackCount + '</td>'
+          + '<td>' + row.eventSignupCount + '</td>'
+          + '<td>' + esc(fmtShortDate(row.lastSeenAt)) + '</td>'
+          + '</tr>';
+      }).join('') : '<tr><td colspan="9" style="color:#666;padding:12px;">No known guests in this range yet</td></tr>';
+
+      const eventInterestTableRows = eventInterestRows.length > 0 ? eventInterestRows.map((row, i) => {
+        return '<tr>'
+          + '<td style="color:#666;font-weight:700;">' + (i + 1) + '</td>'
+          + '<td><strong style="color:#fff;">' + esc(row.event) + '</strong><div style="color:#777;font-size:0.74rem;">' + esc(row.location) + '</div></td>'
+          + '<td>' + row.views + '</td>'
+          + '<td>' + row.visitors + '</td>'
+          + '<td>' + row.signups + '</td>'
+          + '<td>' + row.conversionRate + '%</td>'
+          + '</tr>';
+      }).join('') : '<tr><td colspan="6" style="color:#666;padding:12px;">No event traffic in this range yet</td></tr>';
+
+      const highIntentTableRows = highIntentRows.length > 0 ? highIntentRows.map((row, i) => {
+        return '<tr>'
+          + '<td style="color:#666;font-weight:700;">' + (i + 1) + '</td>'
+          + '<td><strong style="color:#fff;">' + esc(row.label) + '</strong><div style="color:#777;font-size:0.74rem;">' + (row.known ? 'known guest' : 'anonymous visitor') + '</div></td>'
+          + '<td>' + row.sessions + '</td>'
+          + '<td>' + row.pageTotal + '</td>'
+          + '<td>' + (row.durationTotal ? fmtDur(row.durationTotal) : '-') + '</td>'
+          + '<td>' + row.locationsCount + '</td>'
+          + '<td>' + row.score + '</td>'
+          + '</tr>';
+      }).join('') : '<tr><td colspan="7" style="color:#666;padding:12px;">No high-intent visitors in this range yet</td></tr>';
+
+      const funnelConversionRate = totalSessions > 0 ? Math.round(((giftCardEntries + eventSignupCount) / totalSessions) * 100) : 0;
+      const conversionSection = `
+        <div class="a-card" style="margin-bottom:24px;background:#111318;border-color:#263143;">
+          <h3 class="a-heading" style="color:#93c5fd;">Conversion Analytics</h3>
+          <div class="conversion-strip">
+            <div><strong>${totalSessions}</strong><span>sessions</span></div>
+            <div><strong>${feedbackSubmits}</strong><span>feedback</span></div>
+            <div><strong>${giftCardEntries}</strong><span>gift card entries</span></div>
+            <div><strong>${newsletterOptIns}</strong><span>newsletter opt-ins</span></div>
+            <div><strong>${eventSignupCount}</strong><span>event signups</span></div>
+            <div><strong>${funnelConversionRate}%</strong><span>entry/signup rate</span></div>
+          </div>
+          <p style="color:#9ca3af;font-size:0.84rem;line-height:1.5;margin:12px 0 0;">
+            Known-guest reporting starts when someone enters an email on feedback, gift-card, newsletter, or event forms. Emails are masked in analytics, and repeat visits are matched through the visitor cookie linked to that email.
+          </p>
+        </div>`;
+
+      const deeperAnalyticsSection = `
+        <div class="a-grid-2">
+          <div class="a-card" style="overflow-x:auto;">
+            <h3 class="a-heading">QR and Campaign Performance</h3>
+            <table class="a-table">
+              <thead><tr><th>#</th><th>Campaign</th><th>Sessions</th><th>Visitors</th><th>Returning</th><th>Locations</th><th>Pages</th></tr></thead>
+              <tbody>${campaignTableRows}</tbody>
+            </table>
+          </div>
+          <div class="a-card" style="overflow-x:auto;">
+            <h3 class="a-heading">Known Repeat Guests</h3>
+            <table class="a-table">
+              <thead><tr><th>#</th><th>Guest</th><th>Range</th><th>Total</th><th>Devices</th><th>Locations</th><th>Feedback</th><th>Events</th><th>Last Seen</th></tr></thead>
+              <tbody>${knownGuestTableRows}</tbody>
+            </table>
+          </div>
+        </div>
+        <div class="a-grid-2">
+          <div class="a-card" style="overflow-x:auto;">
+            <h3 class="a-heading">Event Impact</h3>
+            <table class="a-table">
+              <thead><tr><th>#</th><th>Event</th><th>Views</th><th>Visitors</th><th>Signups</th><th>Rate</th></tr></thead>
+              <tbody>${eventInterestTableRows}</tbody>
+            </table>
+          </div>
+          <div class="a-card" style="overflow-x:auto;">
+            <h3 class="a-heading">High-Intent Visitors</h3>
+            <table class="a-table">
+              <thead><tr><th>#</th><th>Visitor</th><th>Sessions</th><th>Pages</th><th>Time</th><th>Locations</th><th>Score</th></tr></thead>
+              <tbody>${highIntentTableRows}</tbody>
+            </table>
+          </div>
+        </div>`;
+
       // ── Content engagement funnel ──
       const funnelSection = `
         <div class="a-card" style="margin-bottom:24px;">
@@ -1947,7 +2286,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
           <p style="color:#aaa;font-size:0.85rem;margin-bottom:14px;line-height:1.5;">
             Generate a tagged URL to paste into social posts, emails, or ads. Traffic from tagged links shows up under its source tag in the breakdown above &mdash; everything else stays in &ldquo;Organic&rdquo; (store QR scans and direct visits).
           </p>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+          <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin-bottom:12px;" class="tl-grid">
             <div>
               <label style="display:block;font-size:0.72rem;color:#888;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:5px;">Location</label>
               <select id="tl-location" style="width:100%;padding:8px 10px;background:#1a1a1d;color:#ccc;border:1px solid #333;border-radius:6px;font-size:0.85rem;">
@@ -1969,6 +2308,14 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
             <div>
               <label style="display:block;font-size:0.72rem;color:#888;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:5px;">Source Tag</label>
               <input type="text" id="tl-source" placeholder="e.g. instagram, event" value="instagram" style="width:100%;padding:8px 10px;background:#1a1a1d;color:#ccc;border:1px solid #333;border-radius:6px;font-size:0.85rem;" />
+            </div>
+            <div>
+              <label style="display:block;font-size:0.72rem;color:#888;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:5px;">Campaign</label>
+              <input type="text" id="tl-campaign" placeholder="spring-menu" style="width:100%;padding:8px 10px;background:#1a1a1d;color:#ccc;border:1px solid #333;border-radius:6px;font-size:0.85rem;" />
+            </div>
+            <div>
+              <label style="display:block;font-size:0.72rem;color:#888;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:5px;">QR ID</label>
+              <input type="text" id="tl-qr" placeholder="table-tent-1" style="width:100%;padding:8px 10px;background:#1a1a1d;color:#ccc;border:1px solid #333;border-radius:6px;font-size:0.85rem;" />
             </div>
           </div>
           <div id="tl-event-row" style="display:none;margin-bottom:12px;">
@@ -1997,6 +2344,8 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
             var locSel = document.getElementById('tl-location');
             var pageSel = document.getElementById('tl-page');
             var srcIn = document.getElementById('tl-source');
+            var campaignIn = document.getElementById('tl-campaign');
+            var qrIn = document.getElementById('tl-qr');
             var urlIn = document.getElementById('tl-url');
             var copyBtn = document.getElementById('tl-copy');
             var copied = document.getElementById('tl-copied');
@@ -2020,6 +2369,8 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
               var loc = locSel.value;
               var pageVal = pageSel.value;
               var src = (srcIn.value || '').trim().toLowerCase().replace(/[^a-z0-9_.\\-]/g, '');
+              var campaign = (campaignIn.value || '').trim().toLowerCase().replace(/[^a-z0-9_.\\-]/g, '');
+              var qr = (qrIn.value || '').trim().toLowerCase().replace(/[^a-z0-9_.\\-]/g, '');
 
               if (eventRow) eventRow.style.display = pageVal === '__event__' ? 'block' : 'none';
 
@@ -2035,12 +2386,18 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
                 pagePath = pageVal;
               }
               var url = base + '/' + loc + pagePath;
-              if (src) url += '?src=' + encodeURIComponent(src);
+              var params = [];
+              if (src) params.push('src=' + encodeURIComponent(src));
+              if (campaign) params.push('campaign=' + encodeURIComponent(campaign));
+              if (qr) params.push('qr=' + encodeURIComponent(qr));
+              if (params.length) url += '?' + params.join('&');
               urlIn.value = url;
             }
             locSel.addEventListener('change', function() { refreshEventOptions(); update(); });
             pageSel.addEventListener('change', update);
             srcIn.addEventListener('input', update);
+            campaignIn.addEventListener('input', update);
+            qrIn.addEventListener('input', update);
             if (eventSel) eventSel.addEventListener('change', update);
             document.querySelectorAll('.tl-quick').forEach(function(btn) {
               btn.addEventListener('click', function() {
@@ -2100,13 +2457,23 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
           .a-table { width:100%;border-collapse:collapse;font-size:0.82rem;min-width:560px; }
           .a-table th { padding:7px 6px;color:#8b949e;text-align:left;border-bottom:1px solid rgba(255,255,255,0.12);font-weight:700; }
           .a-table td { padding:8px 6px;color:#d1d5db;border-bottom:1px solid rgba(255,255,255,0.06);vertical-align:top; }
+          .tiny-tag { display:inline-block;background:rgba(147,197,253,0.12);border:1px solid rgba(147,197,253,0.22);color:#bfdbfe;border-radius:999px;padding:2px 7px;font-size:0.68rem;margin:0 3px 3px 0; }
+          .conversion-strip { display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px; }
+          .conversion-strip div { background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:10px;text-align:center;min-width:0; }
+          .conversion-strip strong { display:block;color:#fff;font-size:1.25rem;line-height:1; }
+          .conversion-strip span { display:block;color:#8b949e;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.07em;margin-top:6px; }
           @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+          @media(max-width:1100px) {
+            .tl-grid { grid-template-columns:repeat(2,minmax(0,1fr)) !important; }
+          }
           @media(max-width:768px) {
             .a-grid-2 { grid-template-columns:1fr; }
             .a-grid-3 { grid-template-columns:1fr; }
             .a-grid-stats { grid-template-columns:repeat(2,1fr); }
             .a-insights { grid-template-columns:1fr; }
             .metric-pill { font-size:0.76rem;padding:6px 8px; }
+            .conversion-strip { grid-template-columns:repeat(2,minmax(0,1fr)); }
+            .tl-grid { grid-template-columns:1fr !important; }
           }
         </style>
         <div class="page-header">
@@ -2136,6 +2503,8 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
         </div>
 
         ${marketingSection}
+        ${conversionSection}
+        ${deeperAnalyticsSection}
         ${locationSection}
         ${funnelSection}
 

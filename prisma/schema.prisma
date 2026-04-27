@@ -280,6 +280,9 @@ model EventSignup {
   notes         String?
   customAnswers Json?
   ipAddress     String?
+  visitorId     String?
+  sessionId     String?
+  source        String?
   createdAt     DateTime @default(now())
 
   // Approval workflow (used by vendor events). Regular events leave status="approved".
@@ -292,6 +295,8 @@ model EventSignup {
 
   @@index([eventId, createdAt])
   @@index([eventId, status])
+  @@index([visitorId])
+  @@index([source])
 }
 
 model BottleNotesCache {
@@ -315,6 +320,9 @@ model GuestFeedback {
   feedbackText    String
   newsletterOptIn Boolean  @default(false)
   giftCardOptIn   Boolean  @default(false)
+  visitorId        String?
+  sessionId        String?
+  source           String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -322,6 +330,8 @@ model GuestFeedback {
 
   @@index([locationId])
   @@index([createdAt])
+  @@index([visitorId])
+  @@index([source])
 }
 
 model VisitorSession {
@@ -340,6 +350,9 @@ model VisitorSession {
   referrer      String?
   isQrScan      Boolean  @default(true)
   source        String?  // Traffic source from ?src= or ?utm_source= (e.g. "instagram", "event", "qr")
+  medium        String?  // Traffic medium from ?utm_medium= (e.g. "social", "email", "print")
+  campaign      String?  // Campaign from ?campaign= or ?utm_campaign=
+  qrId          String?  // Specific QR placement/code from ?qr= or ?qrid=
   entryPage     String
   pageCount     Int      @default(1)
   durationSecs  Int?
@@ -356,6 +369,8 @@ model VisitorSession {
   @@index([startedAt])
   @@index([locationSlug, startedAt])
   @@index([source])
+  @@index([campaign])
+  @@index([qrId])
 }
 
 model PageView {
@@ -374,6 +389,59 @@ model PageView {
   @@index([locationSlug, viewedAt])
   @@index([pageType])
   @@index([viewedAt])
+}
+
+model GuestVisitorLink {
+  id                String   @id @default(uuid())
+  emailHash         String
+  emailMasked       String
+  visitorId         String
+  firstSeenAt       DateTime @default(now())
+  lastSeenAt        DateTime @updatedAt
+  firstLocationSlug String?
+  lastLocationSlug  String?
+  firstSource       String?
+  lastSource        String?
+  giftCardOptIn     Boolean  @default(false)
+  newsletterOptIn   Boolean  @default(false)
+  feedbackCount     Int      @default(0)
+  eventSignupCount  Int      @default(0)
+
+  @@unique([emailHash, visitorId])
+  @@index([emailHash])
+  @@index([visitorId])
+  @@index([lastSeenAt])
+  @@index([lastLocationSlug])
+}
+
+model AnalyticsEvent {
+  id            String   @id @default(uuid())
+  eventType     String
+  visitorId     String?
+  sessionId     String?
+  emailHash     String?
+  emailMasked   String?
+  locationId    String?
+  locationSlug  String?
+  source        String?
+  medium        String?
+  campaign      String?
+  qrId          String?
+  pagePath      String?
+  entityType    String?
+  entityId      String?
+  entityName    String?
+  metadata      Json?
+  createdAt     DateTime @default(now())
+
+  @@index([eventType, createdAt])
+  @@index([visitorId])
+  @@index([emailHash])
+  @@index([locationSlug, createdAt])
+  @@index([source])
+  @@index([campaign])
+  @@index([qrId])
+  @@index([entityType, entityId])
 }
 
 model GiftCardDrawing {

@@ -26,6 +26,85 @@ function formatEventTime(value) {
   });
 }
 
+function isSafeLinkHref(value) {
+  return /^(https?:\/\/|mailto:|tel:)/i.test(String(value || '').trim());
+}
+
+function renderInlineRichText(value) {
+  const input = String(value || '');
+  if (!input) return '';
+  const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+|tel:[^\s)]+)\)|(https?:\/\/[^\s<]+)/gi;
+  let out = '';
+  let lastIndex = 0;
+
+  function formatPlain(text) {
+    return escHTML(text)
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*([^*]+)\*/g, '<em>$1</em>');
+  }
+
+  input.replace(linkRegex, (match, label, explicitUrl, bareUrl, offset) => {
+    out += formatPlain(input.slice(lastIndex, offset));
+    let href = explicitUrl || bareUrl || '';
+    let trailing = '';
+    if (bareUrl) {
+      const trailingMatch = href.match(/[),.!?;:]+$/);
+      if (trailingMatch) {
+        trailing = trailingMatch[0];
+        href = href.slice(0, -trailing.length);
+      }
+    }
+    if (isSafeLinkHref(href)) {
+      const text = label ? formatPlain(label) : escHTML(href);
+      out += `<a href="${escHTML(href)}" target="_blank" rel="noopener noreferrer">${text}</a>${escHTML(trailing)}`;
+    } else {
+      out += formatPlain(match);
+    }
+    lastIndex = offset + match.length;
+    return match;
+  });
+  out += formatPlain(input.slice(lastIndex));
+  return out;
+}
+
+function renderRichText(value) {
+  const lines = String(value || '').replace(/\r\n/g, '\n').split('\n');
+  const chunks = [];
+  let para = [];
+  let list = [];
+
+  function flushPara() {
+    if (!para.length) return;
+    chunks.push(`<p>${para.map(line => renderInlineRichText(line)).join('<br/>')}</p>`);
+    para = [];
+  }
+
+  function flushList() {
+    if (!list.length) return;
+    chunks.push(`<ul>${list.map(line => `<li>${renderInlineRichText(line)}</li>`).join('')}</ul>`);
+    list = [];
+  }
+
+  lines.forEach((line) => {
+    const bullet = line.match(/^\s*(?:[-*•]\s+)(.+)$/);
+    if (!line.trim()) {
+      flushPara();
+      flushList();
+      return;
+    }
+    if (bullet) {
+      flushPara();
+      list.push(bullet[1]);
+      return;
+    }
+    flushList();
+    para.push(line);
+  });
+  flushPara();
+  flushList();
+  return chunks.join('');
+}
+
 function eventStatus(event, signupCount, now = new Date()) {
   if (event.isCancelled) return { key: 'cancelled', message: 'This event has been cancelled.' };
   if (!event.isActive) return { key: 'hidden', message: 'This event is not currently available.' };
@@ -139,9 +218,7 @@ function renderSections(sections, options = {}) {
 
     if (type === 'text') {
       const heading = s.heading ? `<h2 class="ev-sec-heading">${escHTML(s.heading)}</h2>` : '';
-      const body = s.body
-        ? s.body.split(/\n\n+/).map(p => `<p>${escHTML(p).replace(/\n/g, '<br/>')}</p>`).join('')
-        : '';
+      const body = s.body ? renderRichText(s.body) : '';
       const align = (s.align === 'center' || s.align === 'right') ? ` ev-sec-align-${s.align}` : '';
       // Optional stacked images above the heading — used by the art pop-up
       // "ARTISTS WANTED" callout where the two drip-text graphics stack.
@@ -169,7 +246,7 @@ function renderSections(sections, options = {}) {
           ${items.map(it => `
             <div class="ev-sec-details-row">
               <div class="ev-sec-details-label">${escHTML(it.label || '')}</div>
-              <div class="ev-sec-details-value">${escHTML(it.value || '')}</div>
+              <div class="ev-sec-details-value">${renderInlineRichText(it.value || '')}</div>
             </div>
           `).join('')}
         </div>
@@ -217,9 +294,7 @@ function renderSections(sections, options = {}) {
     if (type === 'twocol') {
       if (!isValidImageSrc(s.src)) return '';
       const heading = s.heading ? `<h2 class="ev-sec-heading">${escHTML(s.heading)}</h2>` : '';
-      const body = s.body
-        ? s.body.split(/\n\n+/).map(p => `<p>${escHTML(p).replace(/\n/g, '<br/>')}</p>`).join('')
-        : '';
+      const body = s.body ? renderRichText(s.body) : '';
       const posClass = s.imagePosition === 'right' ? ' ev-sec-twocol-right' : '';
       return `<section class="ev-sec ev-sec-twocol${bgStyleClass(s)}${posClass}">
         <div class="ev-sec-twocol-image">
@@ -243,7 +318,7 @@ function renderSections(sections, options = {}) {
               <div class="ev-sec-schedule-time">${escHTML(it.time || '')}</div>
               <div class="ev-sec-schedule-content">
                 ${it.title ? `<div class="ev-sec-schedule-title">${escHTML(it.title)}</div>` : ''}
-                ${it.description ? `<div class="ev-sec-schedule-desc">${escHTML(it.description)}</div>` : ''}
+                ${it.description ? `<div class="ev-sec-schedule-desc">${renderInlineRichText(it.description)}</div>` : ''}
               </div>
             </div>
           `).join('')}
@@ -286,7 +361,7 @@ function renderSections(sections, options = {}) {
           ${items.map(it => `
             <details class="ev-sec-faq-item">
               <summary class="ev-sec-faq-question">${escHTML(it.question || '')}</summary>
-              <div class="ev-sec-faq-answer">${escHTML(it.answer || '').replace(/\n/g, '<br/>')}</div>
+              <div class="ev-sec-faq-answer">${renderRichText(it.answer || '')}</div>
             </details>
           `).join('')}
         </div>
@@ -401,9 +476,7 @@ function generateEventPage(location, event, signupCount, options = {}) {
       : 'Signups are open now.';
   const submitLabel = isVendor ? 'Submit Application' : 'Sign Up';
 
-  const descriptionHtml = event.description
-    ? event.description.split(/\n\n+/).map(p => `<p>${escHTML(p).replace(/\n/g, '<br/>')}</p>`).join('')
-    : '';
+  const descriptionHtml = event.description ? renderRichText(event.description) : '';
 
   const signupForm = canSignup ? `
     <form method="POST" action="${escHTML(publicPath)}/signup" class="ev-form">
@@ -1367,6 +1440,27 @@ function generateEventPage(location, event, signupCount, options = {}) {
         }
         .ev-description p { margin-bottom: 10px; }
         .ev-description p:last-child { margin-bottom: 0; }
+        .ev-description ul,
+        .ev-sec-body ul,
+        .ev-sec-faq-answer ul {
+          margin: 8px 0 12px 1.25rem;
+          padding: 0;
+        }
+        .ev-description li,
+        .ev-sec-body li,
+        .ev-sec-faq-answer li {
+          margin-bottom: 7px;
+        }
+        .ev-description a,
+        .ev-sec-body a,
+        .ev-sec-details-value a,
+        .ev-sec-schedule-desc a,
+        .ev-sec-faq-answer a {
+          color: var(--gold);
+          font-weight: 800;
+          text-decoration: underline;
+          text-underline-offset: 3px;
+        }
 
         .ev-capacity {
           display: inline-block;
@@ -2489,6 +2583,7 @@ function generateEventConfirmationPage(location, event, signup) {
     ? "Thanks for applying! Our team will review your application and reach out once a decision has been made."
     : "Thanks for signing up! We'll see you at the event.";
   const message = (event.confirmationMessage && event.confirmationMessage.trim()) || defaultMsg;
+  const messageHtml = renderRichText(message);
   const eyebrowText = isVendor ? 'Application Received' : "You're In";
   const pageTitle = isVendor ? 'Application received' : "You're signed up";
   return `
@@ -2551,6 +2646,7 @@ function generateEventConfirmationPage(location, event, signup) {
           background: #fffdf5;
           border-color: #1a1816;
         }
+        body.ev-art .ec-message a { color: #d14c2e; }
         body.ev-art .ec-back {
           background: #1a1816;
           color: #e7b83a;
@@ -2612,6 +2708,19 @@ function generateEventConfirmationPage(location, event, signup) {
           margin-bottom: 22px;
           text-align: left;
         }
+        .ec-message p { margin: 0 0 10px; }
+        .ec-message p:last-child { margin-bottom: 0; }
+        .ec-message ul {
+          margin: 8px 0 12px 1.25rem;
+          padding: 0;
+        }
+        .ec-message li { margin-bottom: 7px; }
+        .ec-message a {
+          color: var(--gold);
+          font-weight: 800;
+          text-decoration: underline;
+          text-underline-offset: 3px;
+        }
         .ec-details {
           color: var(--muted);
           font-size: 0.85rem;
@@ -2653,7 +2762,7 @@ function generateEventConfirmationPage(location, event, signup) {
         <div class="ec-title">${escHTML(event.title)}</div>
         <div class="ec-subtitle">${escHTML(formatEventDate(event.startDate))} &middot; ${escHTML(formatEventTime(event.startDate))}</div>
 
-        <div class="ec-message">${escHTML(message).replace(/\n/g, '<br/>')}</div>
+        <div class="ec-message">${messageHtml}</div>
 
         <div class="ec-details">
           ${isVendor ? 'Application from' : 'Signed up as'} <strong>${escHTML(signup.name)}</strong>${signup.email ? `<br/>${isVendor ? "We'll contact you at" : 'Confirmation details may be sent to'} <strong>${escHTML(signup.email)}</strong>` : ''}

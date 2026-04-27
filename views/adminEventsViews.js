@@ -45,6 +45,18 @@ function imageUploadFragment(section, idPrefix) {
   `;
 }
 
+function richTextToolbar(targetId) {
+  return `
+    <div class="rich-toolbar" data-target="${escHTML(targetId)}">
+      <button type="button" class="rt-btn" data-action="bold">Bold</button>
+      <button type="button" class="rt-btn" data-action="italic">Italic</button>
+      <button type="button" class="rt-btn" data-action="bullet">Bullet</button>
+      <button type="button" class="rt-btn" data-action="link">Link</button>
+      <span class="rt-help">Use **bold**, *italic*, bullets, and pasted URLs.</span>
+    </div>
+  `;
+}
+
 // Render the inline edit form for a single section, by type. Used both for
 // existing sections (when expanded) and the "add new section" panel.
 function renderSectionEditFields(section, idPrefix) {
@@ -55,7 +67,8 @@ function renderSectionEditFields(section, idPrefix) {
       <label for="${idPrefix}-heading">Heading <span style="color:#888; font-weight:400; font-size:0.78rem">(optional)</span></label>
       <input type="text" id="${idPrefix}-heading" name="heading" value="${escHTML(section?.heading || '')}" placeholder="e.g. About the Event" />
       <label for="${idPrefix}-body">Body Text</label>
-      <textarea id="${idPrefix}-body" name="body" rows="5" placeholder="What guests should know. Plain text or one paragraph per blank line.">${escHTML(section?.body || '')}</textarea>
+      ${richTextToolbar(`${idPrefix}-body`)}
+      <textarea id="${idPrefix}-body" class="rich-textarea" name="body" rows="5" placeholder="What guests should know. Use bullets, pasted links, or [link text](https://example.com).">${escHTML(section?.body || '')}</textarea>
       <label>Text Alignment</label>
       <div style="display:flex; gap:14px;">
         <label class="ev-check"><input type="radio" name="align" value="left" ${align === 'left' ? 'checked' : ''} /> Left</label>
@@ -149,7 +162,8 @@ function renderSectionEditFields(section, idPrefix) {
       <label for="${idPrefix}-heading">Heading <span style="color:#888; font-weight:400; font-size:0.78rem">(optional)</span></label>
       <input type="text" id="${idPrefix}-heading" name="heading" value="${escHTML(section?.heading || '')}" placeholder="e.g. About the Cup" />
       <label for="${idPrefix}-body">Body Text</label>
-      <textarea id="${idPrefix}-body" name="body" rows="6" placeholder="The story alongside the image. Plain text or one paragraph per blank line.">${escHTML(section?.body || '')}</textarea>
+      ${richTextToolbar(`${idPrefix}-body`)}
+      <textarea id="${idPrefix}-body" class="rich-textarea" name="body" rows="6" placeholder="The story alongside the image. Use bullets, pasted links, or [link text](https://example.com).">${escHTML(section?.body || '')}</textarea>
       ${bgStylePicker(section, idPrefix)}
     `;
   }
@@ -177,7 +191,7 @@ function renderSectionEditFields(section, idPrefix) {
     const rows = items.map(it => `
       <div class="sec-faq-row">
         <input type="text" name="faq_question" value="${escHTML(it.question || '')}" placeholder="Question (e.g. How do I sign up?)" />
-        <textarea name="faq_answer" rows="2" placeholder="Answer">${escHTML(it.answer || '')}</textarea>
+        <textarea name="faq_answer" class="rich-textarea" rows="2" placeholder="Answer">${escHTML(it.answer || '')}</textarea>
         <button type="button" class="btn btn-secondary btn-sm sec-faq-remove">×</button>
       </div>
     `).join('');
@@ -655,7 +669,7 @@ function renderSectionsCard(event, actionUrl) {
           row.className = 'sec-faq-row';
           row.innerHTML =
             '<input type="text" name="faq_question" placeholder="Question" />' +
-            '<textarea name="faq_answer" rows="2" placeholder="Answer"></textarea>' +
+            '<textarea name="faq_answer" class="rich-textarea" rows="2" placeholder="Answer"></textarea>' +
             '<button type="button" class="btn btn-secondary btn-sm sec-faq-remove">×</button>';
           list.appendChild(row);
         }
@@ -916,6 +930,46 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
         font-size:0.82rem;
         margin-bottom:14px;
       }
+      .rich-toolbar {
+        display:flex;
+        align-items:center;
+        gap:8px;
+        flex-wrap:wrap;
+        padding:10px;
+        margin:6px 0 0;
+        background:#0d0f12;
+        border:1px solid rgba(255,255,255,0.08);
+        border-bottom:0;
+        border-radius:8px 8px 0 0;
+      }
+      .rt-btn {
+        min-height:34px;
+        border:1px solid rgba(214,173,75,0.35);
+        border-radius:7px;
+        background:rgba(214,173,75,0.08);
+        color:var(--gold-strong);
+        font:inherit;
+        font-size:0.82rem;
+        font-weight:800;
+        cursor:pointer;
+        padding:7px 10px;
+      }
+      .rt-btn:hover,
+      .rt-btn:focus {
+        border-color:var(--gold-strong);
+        background:rgba(214,173,75,0.16);
+        outline:none;
+      }
+      .rt-help {
+        color:var(--text-muted);
+        font-size:0.78rem;
+        line-height:1.35;
+      }
+      .rich-textarea {
+        min-height:120px;
+        border-top-left-radius:0 !important;
+        border-top-right-radius:0 !important;
+      }
 
       .ev-check { display:flex; align-items:center; gap:8px; color:#ccc; font-size:0.9rem; margin:0; padding:10px 0; cursor:pointer; }
       .ev-check input[type="checkbox"] { width:auto; margin:0; }
@@ -985,6 +1039,8 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
         .cq-required-col, .cq-del-col { align-items:flex-start; }
         .ev-jump-nav { position:static; }
         .ev-header-actions { width:100%; justify-content:space-between; }
+        .rich-toolbar { align-items:flex-start; }
+        .rt-help { flex-basis:100%; }
       }
     </style>
 
@@ -1033,7 +1089,8 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
         </div>
 
         <label for="ev-description">Description</label>
-        <textarea id="ev-description" name="description" rows="4" placeholder="Tell people what the event is about, what to expect, what to bring...">${escHTML(event?.description || '')}</textarea>
+        ${richTextToolbar('ev-description')}
+        <textarea id="ev-description" class="rich-textarea" name="description" rows="6" placeholder="Tell people what the event is about. Use bullets, pasted links, or [link text](https://example.com).">${escHTML(event?.description || '')}</textarea>
 
         <label>Banner Image <span style="color:#888; font-weight:400; font-size:0.8rem">(optional &mdash; shown above the event details)</span></label>
         ${(() => {
@@ -1117,7 +1174,8 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
         <button type="button" id="cq-add" class="btn btn-secondary btn-sm">+ Add Custom Question</button>
 
         <label for="ev-confirm" style="margin-top:18px">Confirmation Message <span style="color:#888; font-weight:400; font-size:0.8rem">(shown after signup)</span></label>
-        <textarea id="ev-confirm" name="confirmationMessage" rows="3" placeholder="Thanks for signing up! We'll see you at the event. Check your email for details.">${escHTML(event?.confirmationMessage || '')}</textarea>
+        ${richTextToolbar('ev-confirm')}
+        <textarea id="ev-confirm" class="rich-textarea" name="confirmationMessage" rows="4" placeholder="Thanks for signing up! Use bullets, pasted links, or [link text](https://example.com).">${escHTML(event?.confirmationMessage || '')}</textarea>
       </div>
 
       <div class="form-actions">
@@ -1241,6 +1299,71 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
           if (e.target && e.target.classList && e.target.classList.contains('cq-remove')) {
             var row = e.target.closest('.cq-row');
             if (row) row.remove();
+          }
+        });
+
+        // Rich text helper buttons for event descriptions and content sections.
+        function replaceTextareaRange(textarea, text, selectStart, selectEnd) {
+          var start = textarea.selectionStart || 0;
+          var end = textarea.selectionEnd || start;
+          textarea.value = textarea.value.slice(0, start) + text + textarea.value.slice(end);
+          var nextStart = typeof selectStart === 'number' ? start + selectStart : start + text.length;
+          var nextEnd = typeof selectEnd === 'number' ? start + selectEnd : nextStart;
+          textarea.focus();
+          textarea.setSelectionRange(nextStart, nextEnd);
+          textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+        function applyTextWrap(textarea, before, after, fallback) {
+          var start = textarea.selectionStart || 0;
+          var end = textarea.selectionEnd || start;
+          var selected = textarea.value.slice(start, end) || fallback;
+          replaceTextareaRange(textarea, before + selected + after, before.length, before.length + selected.length);
+        }
+        function applyBullets(textarea) {
+          var start = textarea.selectionStart || 0;
+          var end = textarea.selectionEnd || start;
+          var selected = textarea.value.slice(start, end);
+          if (!selected) {
+            replaceTextareaRange(textarea, '• ', 2, 2);
+            return;
+          }
+          var lines = selected.split('\\n').map(function(line) {
+            if (!line.trim()) return line;
+            if (/^\\s*(?:[-*•])\\s+/.test(line)) return line;
+            return line.replace(/^(\\s*)/, '$1• ');
+          });
+          replaceTextareaRange(textarea, lines.join('\\n'));
+        }
+        function normalizeLinkUrl(url) {
+          var trimmed = (url || '').trim();
+          if (!trimmed) return '';
+          if (/^(https?:\\/\\/|mailto:|tel:)/i.test(trimmed)) return trimmed;
+          return 'https://' + trimmed;
+        }
+        document.addEventListener('click', function(e) {
+          if (!e.target.classList || !e.target.classList.contains('rt-btn')) return;
+          var toolbar = e.target.closest('.rich-toolbar');
+          var targetId = toolbar ? toolbar.getAttribute('data-target') : '';
+          var textarea = targetId ? document.getElementById(targetId) : null;
+          if (!textarea) return;
+          var action = e.target.getAttribute('data-action');
+          if (action === 'bold') {
+            applyTextWrap(textarea, '**', '**', 'important text');
+          } else if (action === 'italic') {
+            applyTextWrap(textarea, '*', '*', 'emphasized text');
+          } else if (action === 'bullet') {
+            applyBullets(textarea);
+          } else if (action === 'link') {
+            var start = textarea.selectionStart || 0;
+            var end = textarea.selectionEnd || start;
+            var selected = textarea.value.slice(start, end).trim();
+            var url = normalizeLinkUrl(prompt('Paste the link URL') || '');
+            if (!url) {
+              textarea.focus();
+              return;
+            }
+            var label = selected || prompt('Link text', url) || url;
+            replaceTextareaRange(textarea, '[' + label + '](' + url + ')', 1, 1 + label.length);
           }
         });
 

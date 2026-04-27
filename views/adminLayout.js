@@ -1,3 +1,5 @@
+const { isCompanyWide } = require('../auth');
+
 const FLASH_LABELS = {
   saved: 'Changes saved.',
   created: 'Created successfully.',
@@ -323,14 +325,14 @@ function adminLayout(title, content, user, options = {}) {
       <nav class="admin-nav">
         <span class="brand">${BRAND_NAME_SHORT} Admin</span>
         <a href="/admin"${pathname === '/admin' || pathname === '/admin/dashboard' ? ' class="active"' : ''}>Dashboard</a>
-        <a href="/admin/locations"${navClass('/admin/locations')}>Locations</a>
+        ${isCompanyWide(user) ? `<a href="/admin/locations"${navClass('/admin/locations')}>Locations</a>` : ''}
         <a href="/admin/specials"${navClass('/admin/specials')}>Daily Specials</a>
         <a href="/admin/menu"${navClass('/admin/menu')}>Food Menu</a>
         <a href="/admin/events"${navClass('/admin/events')}>Events</a>
-        <a href="/admin/flights"${navClass('/admin/flights')}>Flights</a>
+        ${isCompanyWide(user) ? `<a href="/admin/flights"${navClass('/admin/flights')}>Flights</a>` : ''}
         <a href="/admin/feedback"${navClass('/admin/feedback')}>Feedback</a>
         <a href="/admin/analytics"${navClass('/admin/analytics')}>Analytics</a>
-        <a href="/admin/activity"${navClass('/admin/activity')}>Activity</a>
+        ${isCompanyWide(user) ? `<a href="/admin/activity"${navClass('/admin/activity')}>Activity</a>` : ''}
         <span class="nav-spacer"></span>
         ${user ? `<span class="nav-user">${userName}</span><a href="/admin/logout">Logout</a>` : ''}
       </nav>

@@ -1,5 +1,5 @@
 const { sendHTML, parseBody, redirect, generateCocktailImage, getFlashMsg } = require('../helpers');
-const { requireAuth } = require('../auth');
+const { requireAuth, isCompanyWide, getUserLocationSlugs, canAccessLocation } = require('../auth');
 const { specialsDashboard, dayThemeEditor, flightsList, flightEditor, bottlesList, bottleEditor, DAYS } = require('../views/adminSpecialsViews');
 const { adminLayout } = require('../views/adminLayout');
 const { getSpiritCategories, getSpiritCatalog, getHalfPriceSpirits, getUpcomingSpiritFlightsAdmin, buildSpiritFlightBuilderUrl } = require('../bartenderDb');
@@ -534,6 +534,9 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
   const user = requireAuth(req, res);
   if (!user) { redirect(res, '/admin/login'); return true; }
 
+  const userIsCompanyWide = isCompanyWide(user);
+  const userSlugs = userIsCompanyWide ? null : getUserLocationSlugs(user);
+
   if (pathname === '/admin/feedback/export') {
     try {
       if (!prisma?.guestFeedback) {
@@ -543,7 +546,18 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       }
 
       const parsedUrl = `http://${req.headers.host || 'localhost'}${req.url}`;
-      const { where, includeOptInOnly, locationSlug } = buildGuestFeedbackWhere(parsedUrl);
+      const { where, locationSlug } = buildGuestFeedbackWhere(parsedUrl);
+      if (!userIsCompanyWide) {
+        if (locationSlug && !canAccessLocation(user, locationSlug)) {
+          res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end('Forbidden');
+          return true;
+        }
+        // No location filter from the user → constrain to their slugs.
+        if (!locationSlug) {
+          where.locationSlug = { in: userSlugs.length > 0 ? userSlugs : ['__none__'] };
+        }
+      }
       const rows = await prisma.guestFeedback.findMany({
         where,
         orderBy: { createdAt: 'desc' },
@@ -573,13 +587,25 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
 
       const parsedUrl = `http://${req.headers.host || 'localhost'}${req.url}`;
       const { where, includeOptInOnly, locationSlug } = buildGuestFeedbackWhere(parsedUrl);
+      if (!userIsCompanyWide) {
+        if (locationSlug && !canAccessLocation(user, locationSlug)) {
+          redirect(res, '/admin/feedback');
+          return true;
+        }
+        if (!locationSlug) {
+          where.locationSlug = { in: userSlugs.length > 0 ? userSlugs : ['__none__'] };
+        }
+      }
+      const locationListWhere = userIsCompanyWide
+        ? { isActive: true }
+        : { isActive: true, slug: { in: userSlugs.length > 0 ? userSlugs : ['__none__'] } };
       const [rows, locations] = await Promise.all([
         prisma.guestFeedback.findMany({
           where,
           orderBy: { createdAt: 'desc' },
         }),
         prisma.location.findMany({
-          where: { isActive: true },
+          where: locationListWhere,
           orderBy: { name: 'asc' },
         }),
       ]);
@@ -642,11 +668,64 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
   // ─── Daily Specials Dashboard ───
   if (pathname === '/admin/specials') {
     const flashMsg = getFlashMsg(req.url);
-    const themes = await prisma.dayTheme.findMany({
-      where: { locationId: null },
-      include: { specials: { where: { isActive: true }, orderBy: { displayOrder: 'asc' } } },
+
+    // Company-wide users see the company default themes; their grid edits the
+    // null-location theme. GMs are scoped to their own location(s) — the grid
+    // shows that location's overrides (falling back to the company default
+    // theme name when no override exists yet) and links into the per-location
+    // editor.
+    if (userIsCompanyWide) {
+      const themes = await prisma.dayTheme.findMany({
+        where: { locationId: null },
+        include: { specials: { where: { isActive: true }, orderBy: { displayOrder: 'asc' } } },
+      });
+      sendHTML(res, 200, specialsDashboard(themes, user, flashMsg));
+      return true;
+    }
+
+    if (!userSlugs.length) {
+      sendHTML(res, 403, adminLayout('Daily Specials', '<h1>No Location Access</h1><p>Your account isn\'t assigned to a location yet. Ask an admin to set you up.</p>', user, { pathname: '/admin/specials' }));
+      return true;
+    }
+
+    const url = require('url');
+    const parsed = url.parse(req.url, true);
+    const requestedSlug = String(parsed.query.location || '').toLowerCase();
+    const activeSlug = userSlugs.includes(requestedSlug) ? requestedSlug : userSlugs[0];
+
+    const allowedLocations = await prisma.location.findMany({
+      where: { slug: { in: userSlugs }, isActive: true },
+      orderBy: { name: 'asc' },
+      select: { id: true, slug: true, name: true },
     });
-    sendHTML(res, 200, specialsDashboard(themes, user, flashMsg));
+    const activeLocation = allowedLocations.find(l => l.slug === activeSlug) || null;
+    if (!activeLocation) {
+      sendHTML(res, 404, '<h1>Location not found</h1>');
+      return true;
+    }
+
+    // Pull both the location overrides and the company defaults; merge so each
+    // day card shows whichever is the source of truth for this location.
+    const [overrides, defaults] = await Promise.all([
+      prisma.dayTheme.findMany({
+        where: { locationId: activeLocation.id },
+        include: { specials: { where: { isActive: true }, orderBy: { displayOrder: 'asc' } } },
+      }),
+      prisma.dayTheme.findMany({
+        where: { locationId: null },
+        include: { specials: { where: { isActive: true }, orderBy: { displayOrder: 'asc' } } },
+      }),
+    ]);
+    const themesByDay = {};
+    defaults.forEach(t => { themesByDay[t.dayOfWeek] = t; });
+    overrides.forEach(t => { themesByDay[t.dayOfWeek] = t; });
+    const themes = Object.values(themesByDay);
+
+    sendHTML(res, 200, specialsDashboard(themes, user, flashMsg, {
+      locationSlug: activeLocation.slug,
+      locationName: activeLocation.name,
+      locationOptions: allowedLocations,
+    }));
     return true;
   }
 
@@ -663,7 +742,24 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       return true;
     }
 
-    const locations = await prisma.location.findMany({ where: { isActive: true }, orderBy: { name: 'asc' } });
+    // GMs cannot edit the company default theme (no location slug) and cannot
+    // touch locations they don't own. Bounce them back to their dashboard.
+    if (!userIsCompanyWide) {
+      if (!locationSlug) {
+        const target = userSlugs.length === 1 ? `/admin/specials/day/${day}/location/${userSlugs[0]}` : '/admin/specials';
+        redirect(res, target);
+        return true;
+      }
+      if (!canAccessLocation(user, locationSlug)) {
+        redirect(res, '/admin/specials');
+        return true;
+      }
+    }
+
+    const locationListWhere = userIsCompanyWide
+      ? { isActive: true }
+      : { isActive: true, slug: { in: userSlugs.length > 0 ? userSlugs : ['__none__'] } };
+    const locations = await prisma.location.findMany({ where: locationListWhere, orderBy: { name: 'asc' } });
     let location = null;
     if (locationSlug) {
       location = locations.find(l => l.slug === locationSlug);
@@ -1024,13 +1120,15 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       flashMsg,
       spiritCatalog,
       spiritCategories,
-      halfPriceTheme
+      halfPriceTheme,
+      { showCompanyDefault: userIsCompanyWide }
     ));
     return true;
   }
 
   // ─── Flights List ───
   if (pathname === '/admin/flights') {
+    if (!userIsCompanyWide) { redirect(res, '/admin'); return true; }
     const flashMsg = getFlashMsg(req.url);
     const overview = await getUpcomingSpiritFlightsAdmin();
     sendHTML(res, 200, renderFlightBridgePage(overview, user, flashMsg));
@@ -1039,6 +1137,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
 
   // ─── New Flight ───
   if (pathname === '/admin/flights/new') {
+    if (!userIsCompanyWide) { redirect(res, '/admin'); return true; }
     redirect(res, buildSpiritFlightBuilderUrl());
     return true;
   }
@@ -1046,12 +1145,14 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
   // ─── Edit/Delete Flight ───
   const flightMatch = pathname.match(/^\/admin\/flights\/([a-f0-9-]+)$/);
   if (flightMatch) {
+    if (!userIsCompanyWide) { redirect(res, '/admin'); return true; }
     redirect(res, buildSpiritFlightBuilderUrl());
     return true;
   }
 
   // ─── Bottles List ───
   if (pathname === '/admin/bottles') {
+    if (!userIsCompanyWide) { redirect(res, '/admin'); return true; }
     const flashMsg = getFlashMsg(req.url);
     const bottles = await prisma.featuredBottle.findMany({
       orderBy: [{ year: 'desc' }, { month: 'desc' }, { displayOrder: 'asc' }],
@@ -1062,6 +1163,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
 
   // ─── New Bottle ───
   if (pathname === '/admin/bottles/new') {
+    if (!userIsCompanyWide) { redirect(res, '/admin'); return true; }
     if (req.method === 'POST') {
       const body = await parseBody(req);
       const bottle = await prisma.featuredBottle.create({
@@ -1087,6 +1189,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
   // ─── Edit/Delete Bottle ───
   const bottleMatch = pathname.match(/^\/admin\/bottles\/([a-f0-9-]+)$/);
   if (bottleMatch) {
+    if (!userIsCompanyWide) { redirect(res, '/admin'); return true; }
     const bottleId = bottleMatch[1];
     const bottle = await prisma.featuredBottle.findUnique({ where: { id: bottleId } });
     if (!bottle) { sendHTML(res, 404, '<h1>Bottle not found</h1>'); return true; }
@@ -1123,15 +1226,18 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
 
   // Analytics — live count endpoint
   if (pathname === '/admin/analytics/live') {
-    const user = requireAuth(req, res);
-    if (!user) { sendJSON(res, 401, { ok: false }); return true; }
     if (!prisma?.visitorSession) { sendJSON(res, 200, { count: 0 }); return true; }
     const url = require('url');
     const parsed = url.parse(req.url, true);
     const slug = parsed.query.location || '';
     const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
     const liveWhere = { updatedAt: { gte: fiveMinAgo } };
-    if (slug) liveWhere.locationSlug = slug;
+    if (slug) {
+      if (!userIsCompanyWide && !canAccessLocation(user, slug)) { sendJSON(res, 403, { ok: false }); return true; }
+      liveWhere.locationSlug = slug;
+    } else if (!userIsCompanyWide) {
+      liveWhere.locationSlug = { in: userSlugs.length > 0 ? userSlugs : ['__none__'] };
+    }
     const count = await prisma.visitorSession.count({ where: liveWhere }).catch(() => 0);
     sendJSON(res, 200, { count });
     return true;
@@ -1139,9 +1245,6 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
 
   // Analytics dashboard
   if (pathname === '/admin/analytics' || pathname === '/admin/analytics/export') {
-    const user = requireAuth(req, res);
-    if (!user) { redirect(res, '/admin/login'); return true; }
-
     if (!prisma?.visitorSession) {
       sendHTML(res, 200, adminLayout('Analytics', '<p>Analytics not available yet. Waiting for database migration.</p>', user, { pathname: '/admin/analytics' }));
       return true;
@@ -1174,10 +1277,26 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       rangeDurationMs = 7 * 24 * 60 * 60 * 1000;
     }
 
+    // Enforce scope: GMs cannot select a location outside their own and cannot
+    // see aggregate analytics across all locations. If they didn't pick a slug
+    // (or picked an off-limits one), constrain the query to their slugs.
+    let scopedFilterSlug = filterSlug;
+    if (!userIsCompanyWide) {
+      if (filterSlug && !canAccessLocation(user, filterSlug)) {
+        scopedFilterSlug = '';
+      }
+    }
     const prevRangeStart = new Date(rangeStart.getTime() - Math.max(rangeDurationMs, 24 * 60 * 60 * 1000));
     const where = { startedAt: { gte: rangeStart } };
     const prevWhere = { startedAt: { gte: prevRangeStart, lt: rangeStart } };
-    if (filterSlug) { where.locationSlug = filterSlug; prevWhere.locationSlug = filterSlug; }
+    if (scopedFilterSlug) {
+      where.locationSlug = scopedFilterSlug;
+      prevWhere.locationSlug = scopedFilterSlug;
+    } else if (!userIsCompanyWide) {
+      const slugFilter = { in: userSlugs.length > 0 ? userSlugs : ['__none__'] };
+      where.locationSlug = slugFilter;
+      prevWhere.locationSlug = slugFilter;
+    }
     if (filterSource) {
       if (filterSource === 'organic') {
         where.source = null;
@@ -1214,16 +1333,24 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
 
       // Dashboard data
       const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
-      const pvWhere = { viewedAt: { gte: rangeStart }, ...(filterSlug ? { locationSlug: filterSlug } : {}) };
+      // The same scoping rule applies to pageView/source queries: respect the
+      // user's chosen slug if allowed, else cap to their assigned slugs.
+      const slugScopeFragment = scopedFilterSlug
+        ? { locationSlug: scopedFilterSlug }
+        : (!userIsCompanyWide ? { locationSlug: { in: userSlugs.length > 0 ? userSlugs : ['__none__'] } } : {});
+      const pvWhere = { viewedAt: { gte: rangeStart }, ...slugScopeFragment };
       // For the source dropdown, query distinct sources within the current date range ignoring the source filter itself
-      const sourceListWhere = { startedAt: { gte: rangeStart }, ...(filterSlug ? { locationSlug: filterSlug } : {}), source: { not: null } };
+      const sourceListWhere = { startedAt: { gte: rangeStart }, ...slugScopeFragment, source: { not: null } };
+      const locationListWhere = userIsCompanyWide
+        ? { isActive: true }
+        : { isActive: true, slug: { in: userSlugs.length > 0 ? userSlugs : ['__none__'] } };
 
       const [sessions, prevSessions, locations, pageViews, liveCount, distinctSources] = await Promise.all([
         prisma.visitorSession.findMany({ where, orderBy: { startedAt: 'desc' }, take: 10000 }),
         prisma.visitorSession.findMany({ where: prevWhere, orderBy: { startedAt: 'desc' }, take: 10000 }),
-        prisma.location.findMany({ where: { isActive: true }, orderBy: { name: 'asc' }, select: { slug: true, name: true } }),
+        prisma.location.findMany({ where: locationListWhere, orderBy: { name: 'asc' }, select: { slug: true, name: true } }),
         prisma.pageView.groupBy({ by: ['pageType'], _count: true, where: pvWhere }),
-        prisma.visitorSession.count({ where: { updatedAt: { gte: fiveMinAgo }, ...(filterSlug ? { locationSlug: filterSlug } : {}) } }),
+        prisma.visitorSession.count({ where: { updatedAt: { gte: fiveMinAgo }, ...slugScopeFragment } }),
         prisma.visitorSession.findMany({ where: sourceListWhere, select: { source: true }, distinct: ['source'], take: 50 }),
       ]);
       const availableSources = distinctSources.map(s => s.source).filter(Boolean).sort();

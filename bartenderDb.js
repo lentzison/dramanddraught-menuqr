@@ -38,14 +38,23 @@ async function getUserRoles(userId) {
   );
   const supportRoles = supportResult.rows.map(r => r.role);
 
-  // Check location roles
+  // Check location roles. Join Location so we can resolve back to a menuqr slug.
   const locationResult = await db.query(
-    'SELECT role FROM "UserLocation" WHERE "userId" = $1',
+    `SELECT ul.role, ul."locationId", l.name AS "locationName"
+     FROM "UserLocation" ul
+     JOIN "Location" l ON l.id = ul."locationId"
+     WHERE ul."userId" = $1`,
     [userId]
   );
-  const locationRoles = locationResult.rows.map(r => r.role);
+  const locations = locationResult.rows.map(row => ({
+    role: row.role,
+    locationId: row.locationId,
+    locationName: row.locationName,
+    slug: LOCATION_NAME_TO_SLUG[row.locationName] || null,
+  }));
+  const locationRoles = locations.map(l => l.role);
 
-  return { supportRoles, locationRoles };
+  return { supportRoles, locationRoles, locations };
 }
 
 const ALLOWED_SUPPORT_ROLES = ['FOUNDER', 'MANAGING_DIRECTOR', 'HR', 'TRAINING', 'FINANCE', 'MARKETING'];
@@ -117,6 +126,10 @@ const SLUG_TO_LOCATION_NAME = {
   'charlotte': 'Charlotte',
   'wilmington': 'Wilmington',
 };
+
+// Reverse: bartender Location.name -> menuqr slug
+const LOCATION_NAME_TO_SLUG = Object.entries(SLUG_TO_LOCATION_NAME)
+  .reduce((acc, [slug, name]) => { acc[name] = slug; return acc; }, {});
 
 async function getBreakEvenBottles(locationSlug) {
   try {

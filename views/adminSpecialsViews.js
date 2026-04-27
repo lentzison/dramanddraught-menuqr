@@ -841,14 +841,23 @@ function renderHalfPricePicker(day, theme, actionUrl, spiritCatalog, spiritCateg
 }
 
 // ─── 7-Day Grid Dashboard ───
-function specialsDashboard(themes, user, flashMsg) {
+// Optional opts:
+//   - locationSlug: if set, day cards link to that location's override editor and the
+//     intro text reflects single-location editing.
+//   - locationName: friendly name to show in the heading.
+//   - locationOptions: when provided, renders a row of location tabs at the top.
+function specialsDashboard(themes, user, flashMsg, opts = {}) {
   const themeMap = {};
   themes.forEach(t => { themeMap[t.dayOfWeek] = t; });
+
+  const locationSlug = opts.locationSlug || '';
+  const locationName = opts.locationName || '';
+  const locSegment = locationSlug ? `/location/${locationSlug}` : '';
 
   const grid = DAYS.map(day => {
     const theme = themeMap[day];
     return `
-      <a href="/admin/specials/day/${day}" class="day-card" style="text-decoration:none">
+      <a href="/admin/specials/day/${day}${locSegment}" class="day-card" style="text-decoration:none">
         <div class="day-name">${DAY_LABELS[day]}</div>
         <div class="theme-name">${theme ? escHTML(theme.name) : '<em style="color:#555">Not set</em>'}</div>
         <div class="specials-count">${theme ? `${theme.specials.length} special${theme.specials.length !== 1 ? 's' : ''}` : ''}</div>
@@ -857,22 +866,36 @@ function specialsDashboard(themes, user, flashMsg) {
     `;
   }).join('');
 
+  const locationTabs = (opts.locationOptions && opts.locationOptions.length > 1) ? `
+    <div style="margin-bottom:18px; display:flex; gap:8px; flex-wrap:wrap">
+      ${opts.locationOptions.map(l => `<a href="/admin/specials?location=${escHTML(l.slug)}" class="btn ${l.slug === locationSlug ? 'btn-primary' : 'btn-secondary'} btn-sm">${escHTML(l.name)}</a>`).join('')}
+    </div>` : '';
+
+  const heading = locationSlug && locationName
+    ? `Daily Specials &mdash; ${escHTML(locationName)}`
+    : 'Daily Specials';
+  const intro = locationSlug
+    ? `Manage the weekly programming for ${escHTML(locationName || 'your location')}. Click a day to edit its theme and specials.`
+    : 'Manage the weekly programming for all locations. Click a day to edit its theme and specials.';
+
   return adminLayout('Daily Specials', `
-    <h1>Daily Specials</h1>
-    <p style="color:#888; margin-bottom:20px">Manage the weekly programming for all locations. Click a day to edit its theme and specials.</p>
+    <h1>${heading}</h1>
+    <p style="color:#888; margin-bottom:20px">${intro}</p>
+    ${locationTabs}
     <div class="grid-7">${grid}</div>
   `, user, { pathname: '/admin/specials', flashMsg });
 }
 
 // ─── Day Theme Editor ───
-function dayThemeEditor(day, theme, specials, locations, locationSlug, user, message, categoryOptions = [], flashMsg, spiritCatalog = [], spiritCategories = {}, halfPriceTheme = null) {
+function dayThemeEditor(day, theme, specials, locations, locationSlug, user, message, categoryOptions = [], flashMsg, spiritCatalog = [], spiritCategories = {}, halfPriceTheme = null, opts = {}) {
   const isNew = !theme;
   const isOverride = !!locationSlug;
   const loc = locationSlug ? locations.find(l => l.slug === locationSlug) : null;
+  const showCompanyDefault = opts.showCompanyDefault !== false;
 
   const overrideTabs = locations.length > 0 ? `
     <div style="margin-bottom:20px; display:flex; gap:8px; flex-wrap:wrap">
-      <a href="/admin/specials/day/${day}" class="btn ${!isOverride ? 'btn-primary' : 'btn-secondary'} btn-sm">Company Default</a>
+      ${showCompanyDefault ? `<a href="/admin/specials/day/${day}" class="btn ${!isOverride ? 'btn-primary' : 'btn-secondary'} btn-sm">Company Default</a>` : ''}
       ${locations.map(l => `<a href="/admin/specials/day/${day}/location/${l.slug}" class="btn ${locationSlug === l.slug ? 'btn-primary' : 'btn-secondary'} btn-sm">${escHTML(l.name)}</a>`).join('')}
     </div>
   ` : '';

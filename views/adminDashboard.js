@@ -1,5 +1,6 @@
 const { adminLayout } = require('./adminLayout');
 const { escHTML } = require('./escapeHtml');
+const { isCompanyWide } = require('../auth');
 
 const DAYS = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
 const DAY_LABELS = { SUNDAY: 'Sunday', MONDAY: 'Monday', TUESDAY: 'Tuesday', WEDNESDAY: 'Wednesday', THURSDAY: 'Thursday', FRIDAY: 'Friday', SATURDAY: 'Saturday' };
@@ -208,7 +209,7 @@ function adminDashboard(dashboardData, user, flashMsg) {
       <a href="/admin/specials">All Specials</a>
       <a href="/admin/menu">All Menus</a>
       <a href="/admin/events">All Events</a>
-      <a href="/admin/flights">Flights</a>
+      ${isCompanyWide(user) ? '<a href="/admin/flights">Flights</a>' : ''}
       <a href="/admin/analytics">Analytics</a>
       <a href="/admin/feedback">Feedback</a>
     </div>

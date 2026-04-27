@@ -1,5 +1,14 @@
 const { sendHTML, parseBody, redirect, getFlashMsg, fallbackLocations, sendJSON } = require('../helpers');
-const { authenticate, createSession, destroySession, requireAuth, refreshSession } = require('../auth');
+const {
+  authenticate,
+  createSession,
+  destroySession,
+  requireAuth,
+  refreshSession,
+  isCompanyWide,
+  getUserLocationSlugs,
+  canAccessLocation,
+} = require('../auth');
 const { loginPage } = require('../views/adminLayout');
 const { locationsList, locationEditor } = require('../views/adminLocationViews');
 const { adminDashboard } = require('../views/adminDashboard');
@@ -12,11 +21,16 @@ function getEasternToday() {
 }
 
 // Build the per-location summary the dashboard renders.
-async function buildDashboardData(prisma) {
+// If `restrictToSlugs` is a non-empty array, only those locations are surfaced.
+async function buildDashboardData(prisma, restrictToSlugs = null) {
   if (!prisma) return [];
   const todayDay = getEasternToday();
+  const where = { isActive: true };
+  if (Array.isArray(restrictToSlugs) && restrictToSlugs.length > 0) {
+    where.slug = { in: restrictToSlugs };
+  }
   const locations = await prisma.location.findMany({
-    where: { isActive: true },
+    where,
     orderBy: { name: 'asc' },
     select: { id: true, slug: true, name: true, city: true },
   }).catch(() => []);
@@ -183,6 +197,7 @@ async function handleAdmin(req, res, pathname, prisma) {
   if (pathname === '/admin/activity') {
     const user = requireAuth(req, res);
     if (!user) { redirect(res, '/admin/login'); return true; }
+    if (!isCompanyWide(user)) { redirect(res, '/admin'); return true; }
     if (!prisma || !prisma.auditLog) {
       sendHTML(res, 200, adminActivityView([], { location: '', action: '', resourceType: '' }, [], user, ''));
       return true;
@@ -221,7 +236,8 @@ async function handleAdmin(req, res, pathname, prisma) {
     const user = requireAuth(req, res);
     if (!user) { redirect(res, '/admin/login'); return true; }
     const flashMsg = getFlashMsg(req.url);
-    const dashboardData = await buildDashboardData(prisma).catch((err) => {
+    const restrictToSlugs = isCompanyWide(user) ? null : getUserLocationSlugs(user);
+    const dashboardData = await buildDashboardData(prisma, restrictToSlugs).catch((err) => {
       console.warn('Dashboard build error:', err.message);
       return [];
     });
@@ -233,6 +249,7 @@ async function handleAdmin(req, res, pathname, prisma) {
   if (pathname === '/admin/seed') {
     const user = requireAuth(req, res);
     if (!user) { redirect(res, '/admin/login'); return true; }
+    if (!isCompanyWide(user)) { redirect(res, '/admin'); return true; }
     if (!prisma) { sendHTML(res, 500, '<p>DB not available</p>'); return true; }
     for (const l of fallbackLocations) {
       await prisma.location.upsert({
@@ -257,6 +274,7 @@ async function handleAdmin(req, res, pathname, prisma) {
   if (pathname === '/admin/locations') {
     const user = requireAuth(req, res);
     if (!user) { redirect(res, '/admin/login'); return true; }
+    if (!isCompanyWide(user)) { redirect(res, '/admin'); return true; }
     const flashMsg = getFlashMsg(req.url);
     const locs = prisma
       ? await prisma.location.findMany({ orderBy: { name: 'asc' } }).catch(() => [])
@@ -278,6 +296,7 @@ async function handleAdmin(req, res, pathname, prisma) {
     const slug = locMatch[1];
     const user = requireAuth(req, res);
     if (!user) { redirect(res, '/admin/login'); return true; }
+    if (!isCompanyWide(user)) { redirect(res, '/admin'); return true; }
 
     if (!prisma) { sendHTML(res, 500, '<p>DB not available</p>'); return true; }
     const loc = await prisma.location.findUnique({ where: { slug } }).catch(() => null);

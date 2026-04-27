@@ -108,6 +108,28 @@ function requireAuth(req, res) {
   return session.user;
 }
 
+// A user has company-wide access iff they hold any UserBarSupportRole row.
+// Otherwise they're scoped to the specific menuqr location slug(s) attached to
+// their UserLocation rows.
+function isCompanyWide(user) {
+  if (!user || !user.roles) return false;
+  return Array.isArray(user.roles.supportRoles) && user.roles.supportRoles.length > 0;
+}
+
+// Returns the deduped list of menuqr location slugs a user is scoped to.
+// Skips entries we couldn't map to a known menuqr slug.
+function getUserLocationSlugs(user) {
+  const list = (user && user.roles && user.roles.locations) || [];
+  const slugs = list.map(l => l && l.slug).filter(Boolean);
+  return Array.from(new Set(slugs));
+}
+
+function canAccessLocation(user, slug) {
+  if (isCompanyWide(user)) return true;
+  if (!slug) return false;
+  return getUserLocationSlugs(user).includes(String(slug).toLowerCase());
+}
+
 // Bump the session expiration so an open admin tab keeps the session alive.
 // Returns true if a session was found and refreshed, false otherwise.
 function refreshSession(req, res) {
@@ -126,4 +148,14 @@ function refreshSession(req, res) {
   return true;
 }
 
-module.exports = { authenticate, createSession, destroySession, requireAuth, getSession, refreshSession };
+module.exports = {
+  authenticate,
+  createSession,
+  destroySession,
+  requireAuth,
+  getSession,
+  refreshSession,
+  isCompanyWide,
+  getUserLocationSlugs,
+  canAccessLocation,
+};

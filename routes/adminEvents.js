@@ -1,5 +1,5 @@
 const { sendHTML, parseBody, redirect, getFlashMsg, sendEmailViaGoogle } = require('../helpers');
-const { requireAuth } = require('../auth');
+const { requireAuth, isCompanyWide, getUserLocationSlugs, canAccessLocation } = require('../auth');
 const {
   eventsList,
   eventEditor,
@@ -243,16 +243,28 @@ async function handleAdminEvents(req, res, pathname, prisma) {
   if (!user) { redirect(res, '/admin/login'); return true; }
   if (!prisma) { sendHTML(res, 500, '<p>DB not available</p>'); return true; }
 
+  const userIsCompanyWide = isCompanyWide(user);
+  const userSlugs = userIsCompanyWide ? null : getUserLocationSlugs(user);
+
+  const locWhere = { isActive: true };
+  if (!userIsCompanyWide) {
+    locWhere.slug = { in: userSlugs.length > 0 ? userSlugs : ['__none__'] };
+  }
   const locations = await prisma.location.findMany({
-    where: { isActive: true },
+    where: locWhere,
     orderBy: { name: 'asc' },
     select: { id: true, slug: true, name: true },
   }).catch(() => []);
+  const allowedLocationIds = new Set(locations.map(l => l.id));
 
   // ─── List all events ───
   if (pathname === '/admin/events') {
     const flashMsg = getFlashMsg(req.url);
+    const eventWhere = userIsCompanyWide
+      ? {}
+      : { locationId: { in: Array.from(allowedLocationIds).length > 0 ? Array.from(allowedLocationIds) : ['__none__'] } };
     const events = await prisma.event.findMany({
+      where: eventWhere,
       orderBy: [{ startDate: 'desc' }],
       include: {
         location: { select: { slug: true, name: true } },
@@ -260,7 +272,7 @@ async function handleAdminEvents(req, res, pathname, prisma) {
       },
     }).catch(async (err) => {
       console.warn('Events list include failed, falling back:', err.message);
-      const rows = await prisma.event.findMany({ orderBy: [{ startDate: 'desc' }] }).catch(() => []);
+      const rows = await prisma.event.findMany({ where: eventWhere, orderBy: [{ startDate: 'desc' }] }).catch(() => []);
       for (const ev of rows) {
         const loc = locations.find(l => l.id === ev.locationId);
         ev.location = loc ? { slug: loc.slug, name: loc.name } : { slug: '', name: '' };
@@ -282,6 +294,10 @@ async function handleAdminEvents(req, res, pathname, prisma) {
       const locationId = normalizeText(body.locationId);
       if (!title) { redirect(res, flashError('Event name is required.')); return true; }
       if (!locationId) { redirect(res, flashError('Please pick a location.')); return true; }
+      if (!userIsCompanyWide && !allowedLocationIds.has(locationId)) {
+        redirect(res, flashError('You can only create events for your own location.'));
+        return true;
+      }
 
       const baseSlug = slugify(body.slug || title) || 'event';
       const uniqueSlug = await ensureUniqueSlug(prisma, locationId, baseSlug);
@@ -347,6 +363,10 @@ async function handleAdminEvents(req, res, pathname, prisma) {
       include: { location: { select: { slug: true, name: true } } },
     }).catch(() => null);
     if (!event) { sendHTML(res, 404, '<h1>Event not found</h1><p><a href="/admin/events">Back to events</a></p>'); return true; }
+    if (!userIsCompanyWide && !canAccessLocation(user, event.location?.slug)) {
+      redirect(res, '/admin/events');
+      return true;
+    }
 
     // Signups CSV export
     if (subpath === 'signups/export') {

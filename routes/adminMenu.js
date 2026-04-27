@@ -1,5 +1,5 @@
 const { sendHTML, parseBody, redirect, getFlashMsg } = require('../helpers');
-const { requireAuth } = require('../auth');
+const { requireAuth, isCompanyWide, getUserLocationSlugs, canAccessLocation } = require('../auth');
 const { menuLocationsList, menuLocationEditor } = require('../views/adminMenuViews');
 const { sanitizeImageSrc } = require('../views/imageUploadWidget');
 const { writeAudit } = require('../auditLog');
@@ -32,13 +32,20 @@ async function handleAdminMenu(req, res, pathname, prisma) {
   if (!user) { redirect(res, '/admin/login'); return true; }
   if (!prisma) { sendHTML(res, 500, '<p>DB not available</p>'); return true; }
 
+  const userIsCompanyWide = isCompanyWide(user);
+  const userSlugs = userIsCompanyWide ? null : getUserLocationSlugs(user);
+
   // ─── List locations ───
   if (pathname === '/admin/menu') {
     const flashMsg = getFlashMsg(req.url);
+    const where = { isActive: true };
+    if (!userIsCompanyWide) {
+      where.slug = { in: userSlugs.length > 0 ? userSlugs : ['__none__'] };
+    }
     let locations;
     try {
       locations = await prisma.location.findMany({
-        where: { isActive: true },
+        where,
         orderBy: { name: 'asc' },
         include: { _count: { select: { menuCategories: true } } },
       });
@@ -46,7 +53,7 @@ async function handleAdminMenu(req, res, pathname, prisma) {
       // Fall back: plain query + manual per-location counts
       console.warn('Admin menu _count include failed, falling back:', err.message);
       locations = await prisma.location.findMany({
-        where: { isActive: true },
+        where,
         orderBy: { name: 'asc' },
       }).catch(() => []);
       for (const loc of locations) {
@@ -63,6 +70,7 @@ async function handleAdminMenu(req, res, pathname, prisma) {
   const locMatch = pathname.match(/^\/admin\/menu\/([a-z0-9-]+)$/);
   if (locMatch) {
     const slug = locMatch[1];
+    if (!canAccessLocation(user, slug)) { redirect(res, '/admin/menu'); return true; }
     const location = await prisma.location.findUnique({ where: { slug } }).catch(() => null);
     if (!location) { sendHTML(res, 404, '<h1>Location not found</h1>'); return true; }
 

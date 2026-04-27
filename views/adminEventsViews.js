@@ -1338,97 +1338,98 @@ function eventSignupsView(event, signups, user, flashMsg) {
         return answers[q.id] == null ? '' : answers[q.id];
       }),
     ].join(' ').toLowerCase();
-    const customCells = customDefs.map(q => {
+    const customFields = customDefs.map(q => {
       const raw = answers[q.id];
-      if (raw == null || raw === '') return '<td><span style="color:#555">—</span></td>';
+      if (raw == null || raw === '') {
+        return `<div class="evs-field"><span>${escHTML(q.label)}</span><strong class="evs-muted">—</strong></div>`;
+      }
       // images-multi: stored as an array of data URLs. Render a row of
       // thumbnails, each clickable to open full-size in a new tab.
       if (q.type === 'images-multi' && Array.isArray(raw)) {
         const imgs = raw.filter(x => typeof x === 'string' && /^(data:image|https?:\/\/)/i.test(x));
-        if (imgs.length === 0) return '<td><span style="color:#555">—</span></td>';
-        return `<td><div style="display:flex; gap:4px; flex-wrap:wrap;">${imgs.map(src => `<a href="${escHTML(src)}" target="_blank" rel="noopener"><img src="${escHTML(src)}" alt="${escHTML(q.label)}" style="width:60px; height:60px; object-fit:cover; border-radius:6px; border:1px solid #333; display:block;" /></a>`).join('')}</div></td>`;
+        if (imgs.length === 0) return `<div class="evs-field"><span>${escHTML(q.label)}</span><strong class="evs-muted">—</strong></div>`;
+        return `<div class="evs-field evs-field-wide"><span>${escHTML(q.label)}</span><div class="evs-images">${imgs.map(src => `<a href="${escHTML(src)}" target="_blank" rel="noopener"><img src="${escHTML(src)}" alt="${escHTML(q.label)}" /></a>`).join('')}</div></div>`;
       }
       // Single-image questions
       if (q.type === 'image' && /^(data:image|https?:\/\/)/i.test(String(raw))) {
-        return `<td><a href="${escHTML(raw)}" target="_blank" rel="noopener"><img src="${escHTML(raw)}" alt="${escHTML(q.label)}" style="max-width:80px; max-height:80px; border-radius:6px; border:1px solid #333; display:block;" /></a></td>`;
+        return `<div class="evs-field evs-field-wide"><span>${escHTML(q.label)}</span><div class="evs-images"><a href="${escHTML(raw)}" target="_blank" rel="noopener"><img src="${escHTML(raw)}" alt="${escHTML(q.label)}" /></a></div></div>`;
       }
-      return `<td>${escHTML(String(raw))}</td>`;
+      return `<div class="evs-field"><span>${escHTML(q.label)}</span><strong>${escHTML(String(raw))}</strong></div>`;
     }).join('');
 
     // Vendor events get approve/reject controls instead of just a Remove button.
     // Pending rows show the decision buttons; already-decided rows show who + when + remove.
-    let actionCell;
+    let actionPanel;
     if (isVendor) {
       const status = String(s.status || 'pending');
       if (status === 'pending') {
-        actionCell = `
-          <td class="evs-action-cell">
-            <form method="POST" action="/admin/events/${escHTML(event.id)}/signups" style="margin:0 0 6px 0">
+        actionPanel = `
+          <div class="evs-actions evs-actions-pending">
+            <div class="evs-actions-title">Pending review</div>
+            <form method="POST" action="/admin/events/${escHTML(event.id)}/signups">
               <input type="hidden" name="_action" value="approveSignup" />
               <input type="hidden" name="signupId" value="${escHTML(s.id)}" />
-              <button type="submit" class="btn btn-success btn-sm">Approve</button>
+              <button type="submit" class="btn btn-success">Approve</button>
             </form>
-            <form method="POST" action="/admin/events/${escHTML(event.id)}/signups" style="margin:0" onsubmit="var r=prompt('Optional note to send to the vendor (leave blank to skip):'); if (r===null) return false; this.rejectionReason.value = r || ''; return confirm('Reject this application?');">
+            <form method="POST" action="/admin/events/${escHTML(event.id)}/signups" onsubmit="var r=prompt('Optional note to send to the vendor (leave blank to skip):'); if (r===null) return false; this.rejectionReason.value = r || ''; return confirm('Reject this application?');">
               <input type="hidden" name="_action" value="rejectSignup" />
               <input type="hidden" name="signupId" value="${escHTML(s.id)}" />
               <input type="hidden" name="rejectionReason" value="" />
-              <button type="submit" class="btn btn-danger btn-sm">Reject</button>
+              <button type="submit" class="btn btn-danger">Reject</button>
             </form>
-          </td>
+          </div>
         `;
       } else {
         const who = s.approvedBy ? `<div class="evs-who">${escHTML(s.approvedBy)}</div>` : '';
         const when = s.approvedAt ? `<div class="evs-when">${escHTML(formatFriendlyDate(s.approvedAt))}</div>` : '';
         const reason = s.rejectionReason ? `<div class="evs-reason" title="Rejection note">“${escHTML(s.rejectionReason)}”</div>` : '';
-        actionCell = `
-          <td class="evs-action-cell">
+        actionPanel = `
+          <div class="evs-actions">
+            <div class="evs-actions-title">${status === 'approved' ? 'Approved' : 'Rejected'}</div>
             ${who}${when}${reason}
-            <form method="POST" action="/admin/events/${escHTML(event.id)}/signups" onsubmit="return confirm('Remove this signup?')" style="margin:6px 0 0">
+            <form method="POST" action="/admin/events/${escHTML(event.id)}/signups" onsubmit="return confirm('Remove this signup?')">
               <input type="hidden" name="_action" value="deleteSignup" />
               <input type="hidden" name="signupId" value="${escHTML(s.id)}" />
               <button type="submit" class="btn btn-secondary btn-sm">Remove</button>
             </form>
-          </td>
+          </div>
         `;
       }
     } else {
-      actionCell = `
-        <td>
-          <form method="POST" action="/admin/events/${escHTML(event.id)}/signups" onsubmit="return confirm('Remove this signup?')" style="margin:0">
+      actionPanel = `
+        <div class="evs-actions">
+          <div class="evs-actions-title">Manage signup</div>
+          <form method="POST" action="/admin/events/${escHTML(event.id)}/signups" onsubmit="return confirm('Remove this signup?')">
             <input type="hidden" name="_action" value="deleteSignup" />
             <input type="hidden" name="signupId" value="${escHTML(s.id)}" />
             <button type="submit" class="btn btn-danger btn-sm">Remove</button>
           </form>
-        </td>
+        </div>
       `;
     }
 
     return `
-      <tr data-search="${escHTML(searchText)}" data-status="${escHTML(s.status || 'approved')}">
-        <td style="white-space:nowrap">${escHTML(formatFriendlyDate(s.createdAt))}</td>
-        ${isVendor ? `<td>${statusBadge(s.status)}</td>` : ''}
-        <td><strong>${escHTML(s.name || '')}</strong></td>
-        <td>${s.email ? `<a href="mailto:${escHTML(s.email)}">${escHTML(s.email)}</a>` : '<span style="color:#555">—</span>'}</td>
-        <td>${s.phone ? `<a href="tel:${escHTML(s.phone)}">${escHTML(s.phone)}</a>` : '<span style="color:#555">—</span>'}</td>
-        ${event.collectPartySize ? `<td>${s.partySize || '<span style="color:#555">—</span>'}</td>` : ''}
-        ${event.collectNotes ? `<td>${escHTML(s.notes || '')}</td>` : ''}
-        ${customCells}
-        ${actionCell}
-      </tr>
+      <article class="evs-card" data-search="${escHTML(searchText)}" data-status="${escHTML(s.status || 'approved')}">
+        <div class="evs-card-main">
+          <div class="evs-card-head">
+            <div>
+              <div class="evs-name">${escHTML(s.name || 'Unnamed signup')}</div>
+              <div class="evs-sub">Signed up ${escHTML(formatFriendlyDate(s.createdAt))}</div>
+            </div>
+            ${isVendor ? statusBadge(s.status) : ''}
+          </div>
+          <div class="evs-field-grid">
+            <div class="evs-field"><span>Email</span><strong>${s.email ? `<a href="mailto:${escHTML(s.email)}">${escHTML(s.email)}</a>` : '<span class="evs-muted">—</span>'}</strong></div>
+            <div class="evs-field"><span>Phone</span><strong>${s.phone ? `<a href="tel:${escHTML(s.phone)}">${escHTML(s.phone)}</a>` : '<span class="evs-muted">—</span>'}</strong></div>
+            ${event.collectPartySize ? `<div class="evs-field"><span>Party Size</span><strong>${s.partySize || '<span class="evs-muted">—</span>'}</strong></div>` : ''}
+            ${event.collectNotes ? `<div class="evs-field evs-field-wide"><span>Notes</span><strong>${s.notes ? escHTML(s.notes) : '<span class="evs-muted">—</span>'}</strong></div>` : ''}
+            ${customFields}
+          </div>
+        </div>
+        ${actionPanel}
+      </article>
     `;
   }).join('');
-
-  const headers = [
-    '<th>Signed Up</th>',
-    isVendor ? '<th>Status</th>' : '',
-    '<th>Name</th>',
-    '<th>Email</th>',
-    '<th>Phone</th>',
-    event.collectPartySize ? '<th>Party</th>' : '',
-    event.collectNotes ? '<th>Notes</th>' : '',
-    ...customDefs.map(q => `<th>${escHTML(q.label)}</th>`),
-    '<th></th>',
-  ].filter(Boolean).join('');
 
   // Count vendor signups by status for the stats row.
   const pendingCount = isVendor ? signups.filter(s => s.status === 'pending').length : 0;
@@ -1455,13 +1456,71 @@ function eventSignupsView(event, signups, user, flashMsg) {
         color:#eee;
       }
       .evs-filter-note { color:#888; font-size:0.82rem; }
-      .evs-table-wrap { background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); overflow-x:auto; }
-      .evs-table { width:100%; border-collapse:collapse; font-size:0.88rem; }
-      .evs-table th { background:rgba(255,255,255,0.03); color:var(--text-muted); text-align:left; padding:10px 14px; border-bottom:1px solid var(--line); font-size:0.72rem; text-transform:uppercase; letter-spacing:0.06em; font-weight:700; }
-      .evs-table td { padding:12px 14px; border-bottom:1px solid #1f1f1f; color:#ccc; vertical-align:top; }
-      .evs-table tr:last-child td { border-bottom:none; }
       .evs-empty { padding:40px; text-align:center; color:#666; }
       .evs-empty[hidden] { display:none; }
+      .evs-card-list { display:flex; flex-direction:column; gap:12px; }
+      .evs-card {
+        display:grid;
+        grid-template-columns:minmax(0, 1fr) 190px;
+        gap:16px;
+        align-items:start;
+        background:linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.015)), var(--surface);
+        border:1px solid var(--line);
+        border-radius:var(--radius);
+        padding:16px;
+      }
+      .evs-card[hidden] { display:none; }
+      .evs-card-main { min-width:0; }
+      .evs-card-head {
+        display:flex;
+        align-items:flex-start;
+        justify-content:space-between;
+        gap:12px;
+        padding-bottom:12px;
+        margin-bottom:12px;
+        border-bottom:1px solid rgba(255,255,255,0.07);
+      }
+      .evs-name { color:var(--text); font-size:1.06rem; font-weight:850; line-height:1.2; }
+      .evs-sub { color:var(--text-muted); font-size:0.8rem; margin-top:3px; }
+      .evs-field-grid {
+        display:grid;
+        grid-template-columns:repeat(2, minmax(0, 1fr));
+        gap:10px;
+      }
+      .evs-field {
+        min-width:0;
+        padding:10px 12px;
+        background:#121417;
+        border:1px solid rgba(255,255,255,0.06);
+        border-radius:8px;
+      }
+      .evs-field-wide { grid-column:1 / -1; }
+      .evs-field span {
+        display:block;
+        color:var(--text-soft);
+        font-size:0.68rem;
+        font-weight:850;
+        letter-spacing:0.07em;
+        text-transform:uppercase;
+        margin-bottom:4px;
+      }
+      .evs-field strong {
+        display:block;
+        color:#ded6ca;
+        font-size:0.88rem;
+        line-height:1.4;
+        overflow-wrap:anywhere;
+      }
+      .evs-muted { color:#68717d !important; font-weight:650; }
+      .evs-images { display:flex; gap:6px; flex-wrap:wrap; }
+      .evs-images img {
+        width:72px;
+        height:72px;
+        object-fit:cover;
+        border-radius:6px;
+        border:1px solid var(--line);
+        display:block;
+      }
       .evs-badge { display:inline-block; padding:4px 10px; border-radius:999px; font-size:0.7rem; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; white-space:nowrap; }
       .evs-badge-pending { background:rgba(251,191,36,0.12); color:#fcd34d; border:1px solid rgba(251,191,36,0.35); }
       .evs-badge-approved { background:rgba(138,168,122,0.14); color:#b9d1a8; border:1px solid rgba(138,168,122,0.4); }
@@ -1474,9 +1533,53 @@ function eventSignupsView(event, signups, user, flashMsg) {
       .evs-who { color:#aaa; font-size:0.75rem; }
       .evs-when { color:#666; font-size:0.72rem; }
       .evs-reason { color:#fca5a5; font-size:0.78rem; font-style:italic; margin-top:4px; max-width:220px; }
-      .evs-action-cell { min-width:150px; }
+      .evs-actions {
+        position:sticky;
+        top:88px;
+        display:flex;
+        flex-direction:column;
+        gap:8px;
+        padding:12px;
+        background:rgba(0,0,0,0.18);
+        border:1px solid rgba(255,255,255,0.08);
+        border-radius:var(--radius);
+      }
+      .evs-actions-title {
+        color:var(--text-muted);
+        font-size:0.72rem;
+        font-weight:850;
+        text-transform:uppercase;
+        letter-spacing:0.08em;
+      }
+      .evs-actions form { margin:0; }
+      .evs-actions .btn { width:100%; }
+      .evs-actions-pending {
+        border-color:rgba(251,191,36,0.28);
+        background:rgba(251,191,36,0.055);
+      }
       .btn-success { background:#567a46; color:#fff; border:1px solid #6b9057; }
       .btn-success:hover { background:#6b9057; }
+      @media (max-width: 840px) {
+        .evs-card { grid-template-columns:1fr; }
+        .evs-actions {
+          position:static;
+          order:-1;
+          display:grid;
+          grid-template-columns:1fr 1fr;
+          align-items:center;
+        }
+        .evs-actions-title { grid-column:1 / -1; }
+      }
+      @media (max-width: 560px) {
+        .evs-toolbar { align-items:stretch; flex-direction:column; }
+        .evs-search { min-width:0; max-width:none; }
+        .evs-card { padding:12px; }
+        .evs-card-head { flex-direction:column; }
+        .evs-field-grid { grid-template-columns:1fr; }
+        .evs-actions { grid-template-columns:1fr; }
+        .evs-filter-tabs { display:grid; grid-template-columns:1fr 1fr; }
+        .evs-filter-tab { width:100%; }
+      }
     </style>
 
     <div class="page-header">
@@ -1544,26 +1647,21 @@ function eventSignupsView(event, signups, user, flashMsg) {
     ` : ''}
 
     ${signups.length === 0 ? `
-      <div class="evs-table-wrap">
+      <div class="card">
         <div class="evs-empty">
           <p style="font-size:1rem; margin-bottom:6px">No signups yet</p>
           <p style="font-size:0.82rem">Share the event link to start collecting signups.</p>
         </div>
       </div>
     ` : `
-      <div class="evs-table-wrap">
-        <table class="evs-table">
-          <thead><tr>${headers}</tr></thead>
-          <tbody id="evs-rows">${rows}</tbody>
-        </table>
-      </div>
+      <div class="evs-card-list" id="evs-rows">${rows}</div>
     `}
     <script>
       (function() {
         var search = document.getElementById('evs-search');
         var note = document.getElementById('evs-filter-note');
         var tabs = Array.from(document.querySelectorAll('#evs-filter-tabs .evs-filter-tab'));
-        var rows = Array.from(document.querySelectorAll('#evs-rows tr'));
+        var rows = Array.from(document.querySelectorAll('#evs-rows .evs-card'));
         var noun = ${isVendor ? "'applications'" : "'signups'"};
         if (rows.length === 0) return;
         var currentFilter = 'all';

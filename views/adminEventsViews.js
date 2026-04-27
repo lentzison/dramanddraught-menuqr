@@ -1366,17 +1366,8 @@ function eventSignupsView(event, signups, user, flashMsg) {
         actionPanel = `
           <div class="evs-actions evs-actions-pending">
             <div class="evs-actions-title">Pending review</div>
-            <form method="POST" action="/admin/events/${escHTML(event.id)}/signups">
-              <input type="hidden" name="_action" value="approveSignup" />
-              <input type="hidden" name="signupId" value="${escHTML(s.id)}" />
-              <button type="submit" class="btn btn-success">Approve</button>
-            </form>
-            <form method="POST" action="/admin/events/${escHTML(event.id)}/signups" onsubmit="var r=prompt('Optional note to send to the vendor (leave blank to skip):'); if (r===null) return false; this.rejectionReason.value = r || ''; return confirm('Reject this application?');">
-              <input type="hidden" name="_action" value="rejectSignup" />
-              <input type="hidden" name="signupId" value="${escHTML(s.id)}" />
-              <input type="hidden" name="rejectionReason" value="" />
-              <button type="submit" class="btn btn-danger">Reject</button>
-            </form>
+            <a class="btn btn-success" href="/admin/events/${escHTML(event.id)}/signups?decision=approve&signupId=${encodeURIComponent(s.id)}">Approve</a>
+            <a class="btn btn-danger" href="/admin/events/${escHTML(event.id)}/signups?decision=reject&signupId=${encodeURIComponent(s.id)}">Reject</a>
           </div>
         `;
       } else {
@@ -1700,4 +1691,94 @@ function eventSignupsView(event, signups, user, flashMsg) {
   `, user, { pathname: `/admin/events/${event.id}/signups`, flashMsg });
 }
 
-module.exports = { eventsList, eventEditor, eventSignupsView };
+function eventSignupDecisionView(event, signup, decision, email, user, flashMsg) {
+  const isApprove = decision === 'approve';
+  const title = isApprove ? 'Approve Vendor Application' : 'Reject Vendor Application';
+  const actionLabel = isApprove ? 'Approve and Send Email' : 'Reject and Send Email';
+  const actionClass = isApprove ? 'btn-success' : 'btn-danger';
+  const reasonField = !isApprove ? `
+    <div class="decision-field">
+      <label for="rejectionReason">Saved rejection note</label>
+      <textarea id="rejectionReason" name="rejectionReason" rows="3" placeholder="Optional. This is saved on the application record.">${escHTML(signup.rejectionReason || '')}</textarea>
+    </div>
+  ` : '';
+  const applicantDetails = [
+    signup.email ? `<div><span>Email</span><strong><a href="mailto:${escHTML(signup.email)}">${escHTML(signup.email)}</a></strong></div>` : '',
+    signup.phone ? `<div><span>Phone</span><strong>${escHTML(signup.phone)}</strong></div>` : '',
+    signup.partySize ? `<div><span>Party Size</span><strong>${escHTML(signup.partySize)}</strong></div>` : '',
+    signup.notes ? `<div class="wide"><span>Notes</span><strong>${escHTML(signup.notes)}</strong></div>` : '',
+  ].filter(Boolean).join('');
+
+  return adminLayout(title, `
+    <style>
+      .decision-wrap { max-width:980px; margin:0 auto; }
+      .decision-back { color:#888; font-size:0.85rem; text-decoration:none; }
+      .decision-back:hover { color:#d4af37; }
+      .decision-card { background:#111; border:1px solid var(--line); border-radius:14px; padding:18px; margin-top:16px; }
+      .decision-grid { display:grid; grid-template-columns:0.9fr 1.4fr; gap:18px; align-items:start; }
+      .decision-summary { background:#17191d; border:1px solid #2a2d33; border-radius:12px; padding:14px; }
+      .decision-summary h2 { margin:0 0 6px; color:#fff; font-size:1.1rem; }
+      .decision-summary p { margin:0 0 14px; color:#9ca3af; line-height:1.45; font-size:0.9rem; }
+      .decision-facts { display:grid; gap:8px; }
+      .decision-facts div { background:#101114; border:1px solid #262a30; border-radius:8px; padding:9px; }
+      .decision-facts div.wide { grid-column:1 / -1; }
+      .decision-facts span, .decision-field label { display:block; color:#8b949e; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:5px; font-weight:700; }
+      .decision-facts strong { color:#e5e7eb; font-size:0.9rem; word-break:break-word; }
+      .decision-form { display:grid; gap:12px; }
+      .decision-field input, .decision-field textarea {
+        width:100%; background:#0d0f12; color:#f3f4f6; border:1px solid #30343b; border-radius:10px;
+        padding:11px 12px; font:inherit; line-height:1.45;
+      }
+      .decision-field textarea { resize:vertical; min-height:220px; }
+      #rejectionReason { min-height:90px; }
+      .decision-send-note { color:#9ca3af; font-size:0.84rem; line-height:1.45; margin:0; }
+      .decision-actions { display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:flex-end; }
+      @media(max-width:780px) {
+        .decision-grid { grid-template-columns:1fr; }
+        .decision-card { padding:14px; }
+        .decision-actions { justify-content:stretch; }
+        .decision-actions .btn { width:100%; text-align:center; }
+      }
+    </style>
+    <div class="decision-wrap">
+      <a class="decision-back" href="/admin/events/${escHTML(event.id)}/signups">&larr; Back to applications</a>
+      <div class="page-header">
+        <div>
+          <div class="admin-kicker">Vendor decision</div>
+          <h1>${escHTML(title)}</h1>
+          <p class="page-subtitle">Review and edit the email before the status changes. It will be sent from ${escHTML(user.email || 'the approving admin')} and CC lentz@dramanddraught.com.</p>
+        </div>
+      </div>
+      <div class="decision-card">
+        <div class="decision-grid">
+          <aside class="decision-summary">
+            <h2>${escHTML(signup.name || 'Unnamed applicant')}</h2>
+            <p>${escHTML(event.title)} at ${escHTML(event.location?.name || 'Dram & Draught')}</p>
+            <div class="decision-facts">${applicantDetails || '<div><span>Details</span><strong>No contact details provided.</strong></div>'}</div>
+          </aside>
+          <form class="decision-form" method="POST" action="/admin/events/${escHTML(event.id)}/signups">
+            <input type="hidden" name="_action" value="sendDecision" />
+            <input type="hidden" name="signupId" value="${escHTML(signup.id)}" />
+            <input type="hidden" name="decision" value="${escHTML(decision)}" />
+            <div class="decision-field">
+              <label for="emailSubject">Subject</label>
+              <input id="emailSubject" name="emailSubject" value="${escHTML(email.subject || '')}" required />
+            </div>
+            <div class="decision-field">
+              <label for="emailBody">Email body</label>
+              <textarea id="emailBody" name="emailBody" required>${escHTML(email.body || '')}</textarea>
+            </div>
+            ${reasonField}
+            <p class="decision-send-note">Nothing is approved or rejected until this email is sent. Add load-in notes, next steps, or any other instructions here.</p>
+            <div class="decision-actions">
+              <a class="btn btn-secondary" href="/admin/events/${escHTML(event.id)}/signups">Cancel</a>
+              <button type="submit" class="btn ${actionClass}">${actionLabel}</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  `, user, { pathname: `/admin/events/${event.id}/signups`, flashMsg });
+}
+
+module.exports = { eventsList, eventEditor, eventSignupsView, eventSignupDecisionView };

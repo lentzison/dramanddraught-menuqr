@@ -140,6 +140,34 @@ function adminLayout(title, content, user, options = {}) {
           white-space: nowrap;
           text-decoration: none;
         }
+        .admin-nav-toggle {
+          display: none;
+          align-items: center;
+          justify-content: center;
+          gap: 7px;
+          min-height: 40px;
+          padding: 8px 11px;
+          border: 1px solid var(--line);
+          border-radius: var(--radius);
+          background: rgba(255,255,255,0.055);
+          color: var(--text);
+          font: inherit;
+          font-size: 0.85rem;
+          font-weight: 800;
+          cursor: pointer;
+        }
+        .admin-nav-toggle-icon {
+          display: inline-flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .admin-nav-toggle-icon span {
+          display: block;
+          width: 16px;
+          height: 2px;
+          border-radius: 2px;
+          background: currentColor;
+        }
         .admin-nav-links {
           display: flex;
           align-items: center;
@@ -731,14 +759,33 @@ function adminLayout(title, content, user, options = {}) {
           .special-meta button.btn-sm { padding: 10px 12px; font-size: 0.85rem; min-height: 40px; }
           .edit-form-inline { margin-left: 0; padding: 16px 14px; }
           .admin-nav-inner {
-            align-items: stretch;
-            flex-direction: column;
-            gap: 10px;
+            align-items: center;
+            flex-direction: row;
+            flex-wrap: wrap;
+            gap: 8px;
             padding: 10px 14px;
           }
-          .admin-nav-links { width: 100%; padding-bottom: 2px; }
-          .admin-nav-actions { width: 100%; margin-left: 0; justify-content: space-between; }
-          .admin-nav a { padding: 8px 10px; font-size: 0.82rem; }
+          .admin-nav .brand { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+          .admin-nav-toggle { display: inline-flex; }
+          .admin-nav-links,
+          .admin-nav-actions {
+            display: none;
+            width: 100%;
+            margin-left: 0;
+            padding-top: 8px;
+            border-top: 1px solid rgba(255,255,255,0.08);
+          }
+          .admin-nav.is-open .admin-nav-links,
+          .admin-nav.is-open .admin-nav-actions { display: flex; }
+          .admin-nav-links {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 4px;
+            overflow: visible;
+          }
+          .admin-nav-actions { justify-content: space-between; }
+          .admin-nav a { padding: 10px 11px; font-size: 0.9rem; }
+          .admin-nav-links a { width: 100%; }
           .admin-content { padding: 22px 14px 38px; }
           .hours-row { grid-template-columns: 70px 1fr auto 1fr auto; gap: 4px; }
           .link-row { grid-template-columns: 1fr; }
@@ -753,7 +800,8 @@ function adminLayout(title, content, user, options = {}) {
         }
         @media (max-width: 480px) {
           .admin-nav-inner { padding: 8px 10px; }
-          .admin-nav .brand { font-size: 1rem; margin-right: 6px; }
+          .admin-nav .brand { font-size: 1rem; margin-right: 0; }
+          .admin-nav-toggle { padding: 8px 10px; }
           .admin-content { padding: 14px 10px; }
           .card { padding: 14px; }
           .hours-row { grid-template-columns: 1fr 1fr; }
@@ -764,10 +812,14 @@ function adminLayout(title, content, user, options = {}) {
     </head>
     <body>
       <a class="skip-link" href="#admin-main">Skip to admin content</a>
-      <nav class="admin-nav" aria-label="Admin navigation">
+      <nav class="admin-nav" aria-label="Admin navigation" id="admin-nav">
         <div class="admin-nav-inner">
           <a class="brand" href="/admin">${BRAND_NAME_SHORT}</a>
-          <div class="admin-nav-links">
+          <button type="button" class="admin-nav-toggle" id="admin-nav-toggle" aria-expanded="false" aria-controls="admin-nav-links">
+            <span class="admin-nav-toggle-icon" aria-hidden="true"><span></span><span></span><span></span></span>
+            Menu
+          </button>
+          <div class="admin-nav-links" id="admin-nav-links">
             <a href="/admin"${pathname === '/admin' || pathname === '/admin/dashboard' ? ' class="active"' : ''}>Dashboard</a>
             ${isCompanyWide(user) ? `<a href="/admin/locations"${navClass('/admin/locations')}>Locations</a>` : ''}
             <a href="/admin/specials"${navClass('/admin/specials')}>Specials</a>
@@ -799,6 +851,16 @@ function adminLayout(title, content, user, options = {}) {
         })();
       </script>` : ''}
       <script>
+        (function() {
+          var nav = document.getElementById('admin-nav');
+          var btn = document.getElementById('admin-nav-toggle');
+          if (!nav || !btn) return;
+          btn.addEventListener('click', function() {
+            var open = nav.classList.toggle('is-open');
+            btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+          });
+        })();
+
         // Session keepalive: ping every 5 minutes while the admin tab is open
         // so an active editor never silently times out mid-edit.
         (function() {

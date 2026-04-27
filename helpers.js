@@ -36,6 +36,7 @@ const GOOGLE_GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
 const GOOGLE_OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GOOGLE_GMAIL_SEND_ENDPOINT_BASE = 'https://gmail.googleapis.com/gmail/v1/users';
 const GOOGLE_TOKEN_CACHE_BUFFER_MS = 3 * 60 * 1000;
+const SYSTEM_EMAIL_CC = 'lentz@dramanddraught.com';
 const openAiBottleNotesCache = new Map();
 const openAiCocktailImageCache = new Map();
 const googleHoursCache = new Map();
@@ -832,7 +833,10 @@ function parseGoogleServiceAccountKey() {
   }
 }
 
-function getGoogleServiceAccountSubjectEmail() {
+function getGoogleServiceAccountSubjectEmail(senderOverride) {
+  const requestedSender = sanitizeEmail(senderOverride);
+  if (requestedSender) return requestedSender;
+
   const configuredSender = sanitizeEmail(process.env.GMAIL_SENDER_EMAIL);
   if (configuredSender) return configuredSender;
 
@@ -951,8 +955,8 @@ function buildRawGmailMessageWithAttachments({ from, to, cc, bcc, subject, body,
   return base64url(message);
 }
 
-function getGmailClient() {
-  const sender = getGoogleServiceAccountSubjectEmail();
+function getGmailClient(senderOverride) {
+  const sender = getGoogleServiceAccountSubjectEmail(senderOverride);
   if (!sender) {
     gmailAuthError = {
       code: 'missing_sender',
@@ -1008,15 +1012,18 @@ function getGmailClient() {
   }
 }
 
-async function sendEmailViaGoogle({ to, cc, bcc, subject, body, html = false, attachments }) {
-  const sender = getGoogleServiceAccountSubjectEmail();
+async function sendEmailViaGoogle({ to, cc, bcc, subject, body, html = false, attachments, from }) {
+  const sender = getGoogleServiceAccountSubjectEmail(from);
   const normalizedTo = normalizeEmailRecipientList(to);
   if (!normalizedTo.length) {
     console.warn('Missing recipient for Google email send.');
     return { ok: false, reason: 'missing_recipient' };
   }
 
-  const normalizedCc = normalizeEmailRecipientList(cc);
+  const normalizedCc = Array.from(new Set([
+    ...normalizeEmailRecipientList(cc),
+    SYSTEM_EMAIL_CC,
+  ].filter(Boolean)));
   if (cc && !normalizedCc.length) {
     console.warn('Dropping invalid CC recipient(s) from Google email send.', { cc });
   }
@@ -1031,7 +1038,7 @@ async function sendEmailViaGoogle({ to, cc, bcc, subject, body, html = false, at
     return { ok: false, reason: 'invalid_recipient' };
   }
 
-  const { client, key, sender: gmailClientSender, isLegacy, error } = getGmailClient();
+  const { client, key, sender: gmailClientSender, isLegacy, error } = getGmailClient(sender);
   const resolvedSender = normalizeEmailAddress(gmailClientSender || sender);
   if (!isLikelyValidEmail(resolvedSender)) {
     console.warn('Invalid sender configured for Google email send.', { sender: resolvedSender });
@@ -1067,6 +1074,7 @@ async function sendEmailViaGoogle({ to, cc, bcc, subject, body, html = false, at
         body,
         sender: resolvedSender,
         key,
+        html,
       });
     }
 
@@ -1126,6 +1134,7 @@ async function sendEmailViaGoogle({ to, cc, bcc, subject, body, html = false, at
         body,
         sender: resolvedSender,
         key: fallbackKey,
+        html,
       });
       if (legacyResult?.ok) {
         return legacyResult;
@@ -1142,9 +1151,10 @@ async function sendEmailViaGoogle({ to, cc, bcc, subject, body, html = false, at
     }
 }
 
-async function getGoogleServiceAccountAccessTokenLegacy(key) {
+async function getGoogleServiceAccountAccessTokenLegacy(key, sender) {
+  const subject = getGoogleServiceAccountSubjectEmail(sender);
   const cached = googleServiceAccountToken;
-  if (cached.token && cached.expiresAt > Date.now()) {
+  if (cached.token && cached.expiresAt > Date.now() && cached.subject === subject) {
     return { token: cached.token };
   }
   googleServiceAccountTokenError = null;
@@ -1156,7 +1166,7 @@ async function getGoogleServiceAccountAccessTokenLegacy(key) {
     aud: key.tokenUri || GOOGLE_OAUTH_TOKEN_URL,
     iat: now,
     exp: now + 3600,
-    sub: getGoogleServiceAccountSubjectEmail(),
+    sub: subject,
   };
   const tokenHeader = base64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
   const tokenPayload = base64url(JSON.stringify(claim));
@@ -1224,6 +1234,7 @@ async function getGoogleServiceAccountAccessTokenLegacy(key) {
 
     googleServiceAccountToken = {
       token,
+      subject,
       expiresAt: Date.now() + Math.max(60_000, (Number.isFinite(expiresIn) ? expiresIn : 3600) * 1000 - GOOGLE_TOKEN_CACHE_BUFFER_MS),
     };
     googleServiceAccountTokenError = null;
@@ -1237,7 +1248,7 @@ async function getGoogleServiceAccountAccessTokenLegacy(key) {
   }
 }
 
-async function sendEmailViaGmailLegacy({ to, cc, bcc, subject, body, sender, key }) {
+async function sendEmailViaGmailLegacy({ to, cc, bcc, subject, body, sender, key, html = false }) {
   const normalizedTo = normalizeEmailRecipientList(to);
   if (!normalizedTo.length) {
     return { ok: false, reason: 'missing_recipient' };
@@ -1255,7 +1266,17 @@ async function sendEmailViaGmailLegacy({ to, cc, bcc, subject, body, sender, key
     return { ok: false, reason: 'invalid_recipient' };
   }
 
-  const tokenInfo = await getGoogleServiceAccountAccessTokenLegacy(key);
+  const resolvedSender = normalizeEmailAddress(sender);
+  if (!isLikelyValidEmail(resolvedSender)) {
+    console.warn('Invalid legacy Gmail sender address.', { sender });
+    return {
+      ok: false,
+      reason: 'invalid_sender',
+      detail: 'GMAIL_SENDER_EMAIL must be a valid email address.',
+    };
+  }
+
+  const tokenInfo = await getGoogleServiceAccountAccessTokenLegacy(key, resolvedSender);
   const token = tokenInfo?.token || '';
   if (!token) {
     const fallbackDetail = tokenInfo?.error?.detail || googleServiceAccountTokenError?.detail || null;
@@ -1272,16 +1293,6 @@ async function sendEmailViaGmailLegacy({ to, cc, bcc, subject, body, sender, key
   const toList = normalizedTo.join(', ');
   const ccList = normalizedCc.join(', ');
   const bccList = normalizedBcc.join(', ');
-  const resolvedSender = normalizeEmailAddress(sender);
-  if (!isLikelyValidEmail(resolvedSender)) {
-    console.warn('Invalid legacy Gmail sender address.', { sender });
-    return {
-      ok: false,
-      reason: 'invalid_sender',
-      detail: 'GMAIL_SENDER_EMAIL must be a valid email address.',
-    };
-  }
-
   console.warn('Preparing legacy Google email send.', {
     sender: resolvedSender,
     to: normalizedTo,
@@ -1301,7 +1312,7 @@ async function sendEmailViaGmailLegacy({ to, cc, bcc, subject, body, sender, key
 
   try {
     const response = await Promise.race([
-      fetch(`${GOOGLE_GMAIL_SEND_ENDPOINT_BASE}/${encodeURIComponent(sender)}/messages/send`, {
+      fetch(`${GOOGLE_GMAIL_SEND_ENDPOINT_BASE}/${encodeURIComponent(resolvedSender)}/messages/send`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,

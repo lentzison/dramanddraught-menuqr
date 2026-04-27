@@ -4,6 +4,7 @@ const {
   eventsList,
   eventEditor,
   eventSignupsView,
+  eventSignupDecisionView,
 } = require('../views/adminEventsViews');
 const { sanitizeImageSrc } = require('../views/imageUploadWidget');
 const { writeAudit } = require('../auditLog');
@@ -21,6 +22,50 @@ function slugify(value) {
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '')
     .slice(0, 60);
+}
+
+function formatEventDateForEmail(event) {
+  return event?.startDate
+    ? new Date(event.startDate).toLocaleString('en-US', {
+        timeZone: 'America/New_York',
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      })
+    : '';
+}
+
+function buildVendorDecisionEmail(event, signup, decision, rejectionReason = '') {
+  const isApprove = decision === 'approve';
+  const dateStr = formatEventDateForEmail(event);
+  const subject = isApprove
+    ? `You're confirmed: ${event.title}`
+    : `Update on your application: ${event.title}`;
+  const bodyLines = isApprove
+    ? [
+        `Hi ${signup?.name || 'there'},`,
+        '',
+        `Great news — your application for "${event.title}" at ${event.location?.name || ''} has been approved.`,
+        dateStr ? `Event: ${dateStr}` : null,
+        '',
+        "We'll be in touch with load-in details closer to the date.",
+        '',
+        `— Dram & Draught ${event.location?.name || ''}`,
+      ].filter(Boolean)
+    : [
+        `Hi ${signup?.name || 'there'},`,
+        '',
+        `Thanks for applying to be a vendor at "${event.title}". Unfortunately we're not able to include you in this event.`,
+        rejectionReason ? '' : null,
+        rejectionReason ? `Notes from our team: ${rejectionReason}` : null,
+        '',
+        "We appreciate your interest and hope to work with you at a future event.",
+        '',
+        `— Dram & Draught ${event.location?.name || ''}`,
+      ].filter(Boolean);
+  return { subject, body: bodyLines.join('\n') };
 }
 
 // Look up the Eastern Time UTC offset (in minutes) for a given calendar date.
@@ -407,6 +452,22 @@ async function handleAdminEvents(req, res, pathname, prisma) {
     // Signups view
     if (subpath === 'signups') {
       const flashMsg = getFlashMsg(req.url);
+      const parsedDecisionUrl = new URL(req.url, 'http://admin.local');
+      const decision = String(parsedDecisionUrl.searchParams.get('decision') || '').toLowerCase();
+      const decisionSignupId = String(parsedDecisionUrl.searchParams.get('signupId') || '').trim();
+
+      if (req.method === 'GET' && (decision === 'approve' || decision === 'reject') && decisionSignupId) {
+        const signup = await prisma.eventSignup.findFirst({
+          where: { id: decisionSignupId, eventId },
+        }).catch(() => null);
+        if (!signup) {
+          redirect(res, `/admin/events/${eventId}/signups?msg=` + encodeURIComponent('error|Signup not found.'));
+          return true;
+        }
+        const email = buildVendorDecisionEmail(event, signup, decision);
+        sendHTML(res, 200, eventSignupDecisionView(event, signup, decision, email, user, flashMsg));
+        return true;
+      }
 
       // Handle signup actions: delete / approve / reject (approve + reject are
       // only surfaced in the UI for vendor events).
@@ -422,8 +483,41 @@ async function handleAdminEvents(req, res, pathname, prisma) {
         }
 
         if ((action === 'approveSignup' || action === 'rejectSignup') && signupId) {
-          const isApprove = action === 'approveSignup';
+          const decisionParam = action === 'approveSignup' ? 'approve' : 'reject';
+          redirect(res, `/admin/events/${eventId}/signups?decision=${decisionParam}&signupId=${encodeURIComponent(signupId)}`);
+          return true;
+        }
+
+        if (action === 'sendDecision' && signupId) {
+          const decisionValue = String(body.decision || '').toLowerCase();
+          const isApprove = decisionValue === 'approve';
+          if (!isApprove && decisionValue !== 'reject') {
+            redirect(res, `/admin/events/${eventId}/signups?msg=` + encodeURIComponent('error|Invalid decision.'));
+            return true;
+          }
           const reason = isApprove ? null : (String(body.rejectionReason || '').trim().slice(0, 500) || null);
+          const subject = String(body.emailSubject || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 200);
+          const emailBody = String(body.emailBody || '').replace(/\r\n/g, '\n').trim().slice(0, 5000);
+          if (!subject || !emailBody) {
+            const signup = await prisma.eventSignup.findFirst({ where: { id: signupId, eventId } }).catch(() => null);
+            if (!signup) {
+              redirect(res, `/admin/events/${eventId}/signups?msg=` + encodeURIComponent('error|Signup not found.'));
+              return true;
+            }
+            const fallback = buildVendorDecisionEmail(event, signup, decisionValue, reason || '');
+            sendHTML(res, 400, eventSignupDecisionView(event, signup, decisionValue, {
+              subject: subject || fallback.subject,
+              body: emailBody || fallback.body,
+            }, user, 'error|Subject and email body are required.'));
+            return true;
+          }
+
+          const targetSignup = await prisma.eventSignup.findFirst({ where: { id: signupId, eventId } }).catch(() => null);
+          if (!targetSignup) {
+            redirect(res, `/admin/events/${eventId}/signups?msg=` + encodeURIComponent('error|Signup not found.'));
+            return true;
+          }
+
           let updated = null;
           try {
             updated = await prisma.eventSignup.update({
@@ -447,48 +541,18 @@ async function handleAdminEvents(req, res, pathname, prisma) {
             resourceId: signupId,
             resourceLabel: `${updated?.name || ''} — ${event.title}`,
             locationSlug: event.location?.slug || null,
-            details: reason ? { reason } : null,
+            details: { ...(reason ? { reason } : {}), emailSubject: subject, emailFrom: user.email },
           });
 
-          // Best-effort email to the vendor with the decision.
+          // Best-effort email to the vendor with the decision, sent as the admin
+          // who made the call when domain-wide delegation allows it.
           if (updated && updated.email) {
             try {
-              const dateStr = event.startDate
-                ? new Date(event.startDate).toLocaleString('en-US', {
-                    timeZone: 'America/New_York',
-                    weekday: 'long', month: 'long', day: 'numeric',
-                    hour: 'numeric', minute: '2-digit',
-                  })
-                : '';
-              const subject = isApprove
-                ? `You're confirmed: ${event.title}`
-                : `Update on your application: ${event.title}`;
-              const bodyLines = isApprove
-                ? [
-                    `Hi ${updated.name || 'there'},`,
-                    '',
-                    `Great news — your application for "${event.title}" at ${event.location?.name || ''} has been approved.`,
-                    dateStr ? `Event: ${dateStr}` : null,
-                    '',
-                    "We'll be in touch with load-in details closer to the date.",
-                    '',
-                    `— Dram & Draught ${event.location?.name || ''}`,
-                  ].filter(Boolean)
-                : [
-                    `Hi ${updated.name || 'there'},`,
-                    '',
-                    `Thanks for applying to be a vendor at "${event.title}". Unfortunately we're not able to include you in this event.`,
-                    reason ? `` : null,
-                    reason ? `Notes from our team: ${reason}` : null,
-                    '',
-                    "We appreciate your interest and hope to work with you at a future event.",
-                    '',
-                    `— Dram & Draught ${event.location?.name || ''}`,
-                  ].filter(Boolean);
               await sendEmailViaGoogle({
                 to: updated.email,
                 subject,
-                body: bodyLines.join('\n'),
+                body: emailBody,
+                from: user.email,
               }).catch((err) => console.warn('Vendor decision email failed:', err.message));
             } catch (err) {
               console.warn('Vendor decision email error:', err.message);

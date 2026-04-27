@@ -857,11 +857,13 @@ function specialsDashboard(themes, user, flashMsg, opts = {}) {
   const grid = DAYS.map(day => {
     const theme = themeMap[day];
     return `
-      <a href="/admin/specials/day/${day}${locSegment}" class="day-card" style="text-decoration:none">
-        <div class="day-name">${DAY_LABELS[day]}</div>
-        <div class="theme-name">${theme ? escHTML(theme.name) : '<em style="color:#555">Not set</em>'}</div>
-        <div class="specials-count">${theme ? `${theme.specials.length} special${theme.specials.length !== 1 ? 's' : ''}` : ''}</div>
-        ${theme ? `<span class="tag ${theme.isActive ? 'tag-active' : 'tag-inactive'}">${theme.isActive ? 'Active' : 'Inactive'}</span>` : ''}
+      <a href="/admin/specials/day/${day}${locSegment}" class="admin-card-link">
+        <div class="admin-card-title">${DAY_LABELS[day]}</div>
+        <div class="admin-card-meta">${theme ? escHTML(theme.name) : 'No theme set yet'}</div>
+        <div class="admin-card-footer">
+          ${theme ? `<span class="tag ${theme.isActive ? 'tag-active' : 'tag-inactive'}">${theme.isActive ? 'Active' : 'Inactive'}</span>` : '<span class="tag tag-warning">Needs setup</span>'}
+          <span>${theme ? `${theme.specials.length} special${theme.specials.length !== 1 ? 's' : ''}` : 'Edit day'}</span>
+        </div>
       </a>
     `;
   }).join('');
@@ -881,12 +883,14 @@ function specialsDashboard(themes, user, flashMsg, opts = {}) {
   return adminLayout('Daily Specials', `
     <div class="page-header">
       <div>
+        <div class="admin-kicker">Weekly programming</div>
         <h1>${heading}</h1>
         <p class="page-subtitle">${intro}</p>
       </div>
     </div>
+    <div class="admin-help"><strong>How this works:</strong> The company default is the baseline. Location tabs override only the selected location when inventory, pricing, or promos differ.</div>
     ${locationTabs}
-    <div class="grid-7">${grid}</div>
+    <div class="admin-grid">${grid}</div>
   `, user, { pathname: '/admin/specials', flashMsg });
 }
 
@@ -981,6 +985,7 @@ function dayThemeEditor(day, theme, specials, locations, locationSlug, user, mes
   return adminLayout(`${DAY_LABELS[day]} Theme`, `
     <div class="page-header">
       <div>
+        <div class="admin-kicker">${isOverride && loc ? escHTML(loc.name) : 'Company default'}</div>
         <h1>${DAY_LABELS[day]}${isOverride && loc ? ` Specials for ${escHTML(loc.name)}` : ' Specials'}</h1>
         <p class="page-subtitle">${isOverride ? 'Location-specific programming and discounted spirit selection.' : 'Company default theme and specials for this day.'}</p>
       </div>
@@ -991,8 +996,14 @@ function dayThemeEditor(day, theme, specials, locations, locationSlug, user, mes
     ${message ? `<div class="alert ${message.type === 'error' ? 'alert-error' : 'alert-success'}">${message.text}</div>` : ''}
     ${overrideTabs}
 
-    <div class="card">
-      <h2>Theme Details</h2>
+    <section class="form-section">
+      <div class="form-section-head">
+        <div>
+          <h2>Theme Details</h2>
+          <p>This headline and copy appear at the top of the public daily specials page.</p>
+        </div>
+      </div>
+      <div class="form-section-body">
       <form method="POST" action="/admin/specials/day/${day}${isOverride ? `/location/${locationSlug}` : ''}" data-autosave="special-theme-${day}${isOverride ? '-' + escHTML(locationSlug) : '-default'}">
         <input type="hidden" name="_action" value="saveTheme" />
         <label>Theme Name</label>
@@ -1017,10 +1028,11 @@ function dayThemeEditor(day, theme, specials, locations, locationSlug, user, mes
           ` : ''}
         </div>
       </form>
-    </div>
+      </div>
+    </section>
 
     ${day === 'SUNDAY' && theme ? `
-    <div class="card" style="background:rgba(212,175,55,0.05); border:1px solid rgba(212,175,55,0.2)">
+    <div class="admin-help">
       <h2>Break Even Bottles</h2>
       <p style="color:#ccc; line-height:1.6; margin-bottom:12px">Sunday bottles are managed through the <strong>Bartender Dashboard</strong>, not here. To update this week's bottles:</p>
       <ol style="color:#aaa; line-height:1.8; padding-left:20px; margin-bottom:12px">
@@ -1034,7 +1046,7 @@ function dayThemeEditor(day, theme, specials, locations, locationSlug, user, mes
     ` : ''}
 
     ${!isOverride ? `
-    <div class="card" style="background:rgba(212,175,55,0.05); border:1px solid rgba(212,175,55,0.2)">
+    <div class="admin-help">
       <h2>Discounted Spirits</h2>
       <p style="color:#aaa">Configure a discounted spirit selection for this day (e.g. half-price whiskey). Selections are configured per location since inventory and pricing differ. Select a location tab above to configure.</p>
     </div>
@@ -1042,8 +1054,14 @@ function dayThemeEditor(day, theme, specials, locations, locationSlug, user, mes
     ${isOverride && (halfPriceTheme || theme) ? renderHalfPricePicker(day, halfPriceTheme || theme, actionUrl, spiritCatalog, spiritCategories) : ''}
 
     ${theme ? `
-    <div class="card">
-      <h2>Specials</h2>
+    <section class="form-section">
+      <div class="form-section-head">
+        <div>
+          <h2>Specials</h2>
+          <p>Add the public offers guests should see for ${DAY_LABELS[day]}. Drag to reorder, then save order.</p>
+        </div>
+      </div>
+      <div class="form-section-body">
 
       <div class="add-special-box">
         <h3 style="margin-top:0">Add Special</h3>
@@ -1117,7 +1135,8 @@ function dayThemeEditor(day, theme, specials, locations, locationSlug, user, mes
           ${specialsList}
         </div>
       ` : '<p class="empty-state">No specials yet. Add one above.</p>'}
-    </div>
+      </div>
+    </section>
     ` : ''}
 
     <script>
@@ -1288,9 +1307,14 @@ function flightsList(flights, locations, user, flashMsg) {
   }).join('');
 
   return adminLayout('Flights', `
-    <h1>Tasting Flights</h1>
-    <p style="color:#888; margin-bottom:16px">Set a company default for the month, then create location overrides only when a bar needs a different lineup.</p>
-    <a href="/admin/flights/new" class="btn btn-primary" style="margin-bottom:16px">New Flight</a>
+    <div class="page-header">
+      <div>
+        <div class="admin-kicker">Monthly flight builder</div>
+        <h1>Tasting Flights</h1>
+        <p class="page-subtitle">Set a company default for the month, then create location overrides only when a bar needs a different lineup.</p>
+      </div>
+      <a href="/admin/flights/new" class="btn btn-primary">New Flight</a>
+    </div>
     ${flights.length === 0 ? '<div class="empty-state">No flights yet. Create one to get started.</div>' : `
       <table>
         <thead><tr><th>Month</th><th>Company Default</th><th>Location Overrides</th><th></th></tr></thead>
@@ -1386,13 +1410,28 @@ function flightEditor(flight, isNew, user, message, flashMsg, options = {}) {
     : 'Delete this flight?';
 
   return adminLayout(isNew ? 'New Flight' : 'Edit Flight', `
-    <h1>${isNew ? 'Create Flight' : 'Edit Flight'}</h1>
+    <div class="page-header">
+      <div>
+        <div class="admin-kicker">${isOverride ? 'Location override' : 'Company default'}</div>
+        <h1>${isNew ? 'Create Flight' : 'Edit Flight'}</h1>
+        <p class="page-subtitle">${scopeSummary}</p>
+      </div>
+      <div class="page-actions">
+        <a href="/admin/flights" class="btn btn-secondary">All Flights</a>
+      </div>
+    </div>
     ${message ? `<div class="alert ${message.type === 'error' ? 'alert-error' : 'alert-success'}">${message.text}</div>` : ''}
     ${tabs}
     ${copyNote}
     <form method="POST" action="/admin/flights/${isNew ? 'new' : flight.id}">
-      <div class="card">
-        <h2>Flight Details</h2>
+      <section class="form-section">
+        <div class="form-section-head">
+          <div>
+            <h2>Flight Details</h2>
+            <p>Choose where this flight applies, the public theme, month, year, and price.</p>
+          </div>
+        </div>
+        <div class="form-section-body">
         ${scopeField}
         <label>Theme</label>
         <input type="text" name="theme" value="${escHTML(flight ? flight.theme : '')}" required placeholder="e.g. American Single Malts" />
@@ -1416,10 +1455,16 @@ function flightEditor(flight, isNew, user, message, flashMsg, options = {}) {
           <input type="checkbox" name="isActive" ${!flight || flight.isActive ? 'checked' : ''} style="width:auto" />
           <span>Active</span>
         </label>
+        </div>
+      </section>
+      <div class="section-head">
+        <div>
+          <h2>Pours</h2>
+          <p>Add up to three pours. The first pour is required.</p>
+        </div>
       </div>
-      <h2>Pours</h2>
       ${pourFields}
-      <div class="form-actions">
+      <div class="sticky-actions">
         <button type="submit" class="btn btn-primary">${isNew ? 'Create Flight' : 'Save Changes'}</button>
         ${!isNew ? `<button type="submit" name="_action" value="delete" class="btn btn-danger" onclick="return confirm('${deleteConfirm}')">${deleteLabel}</button>` : ''}
         <a href="/admin/flights" class="btn btn-secondary">Cancel</a>
@@ -1443,9 +1488,14 @@ function bottlesList(bottles, user, flashMsg) {
   `).join('');
 
   return adminLayout('Sunday Bottles', `
-    <h1>Sunday Break Even Bottles</h1>
-    <p style="color:#888; margin-bottom:16px">Featured bottles sold at cost on Sundays.</p>
-    <a href="/admin/bottles/new" class="btn btn-primary" style="margin-bottom:16px">New Bottle</a>
+    <div class="page-header">
+      <div>
+        <div class="admin-kicker">Sunday specials</div>
+        <h1>Sunday Break Even Bottles</h1>
+        <p class="page-subtitle">Featured bottles sold at cost on Sundays.</p>
+      </div>
+      <a href="/admin/bottles/new" class="btn btn-primary">New Bottle</a>
+    </div>
     ${bottles.length === 0 ? '<div class="empty-state">No bottles yet. Add one to get started.</div>' : `
       <table>
         <thead><tr><th>Name</th><th>Month</th><th>Category</th><th>Cost Price</th><th>Regular</th><th>Status</th><th></th></tr></thead>
@@ -1472,10 +1522,24 @@ function bottleEditor(bottle, isNew, user, message, flashMsg) {
   ).join('');
 
   return adminLayout(isNew ? 'New Bottle' : 'Edit Bottle', `
-    <h1>${isNew ? 'Add Bottle' : 'Edit Bottle'}</h1>
+    <div class="page-header">
+      <div>
+        <div class="admin-kicker">Break even bottle</div>
+        <h1>${isNew ? 'Add Bottle' : 'Edit Bottle'}</h1>
+        <p class="page-subtitle">Set the bottle, cost price, month, and publishing status.</p>
+      </div>
+      <div class="page-actions"><a href="/admin/bottles" class="btn btn-secondary">All Bottles</a></div>
+    </div>
     ${message ? `<div class="alert ${message.type === 'error' ? 'alert-error' : 'alert-success'}">${message.text}</div>` : ''}
     <form method="POST" action="/admin/bottles/${isNew ? 'new' : bottle.id}">
-      <div class="card">
+      <section class="form-section">
+        <div class="form-section-head">
+          <div>
+            <h2>Bottle Details</h2>
+            <p>Guests see active bottles for the selected month on the Sunday specials page.</p>
+          </div>
+        </div>
+        <div class="form-section-body">
         <label>Bottle Name</label>
         <input type="text" name="name" value="${escHTML(bottle ? bottle.name : '')}" required placeholder="e.g. Buffalo Trace Bourbon" />
         <label>Description</label>
@@ -1514,8 +1578,9 @@ function bottleEditor(bottle, isNew, user, message, flashMsg) {
           <input type="checkbox" name="isActive" ${!bottle || bottle.isActive ? 'checked' : ''} style="width:auto" />
           <span>Active</span>
         </label>
-      </div>
-      <div class="form-actions">
+        </div>
+      </section>
+      <div class="sticky-actions">
         <button type="submit" class="btn btn-primary">${isNew ? 'Add Bottle' : 'Save Changes'}</button>
         ${!isNew ? `<button type="submit" name="_action" value="delete" class="btn btn-danger" onclick="return confirm('Delete this bottle?')">Delete</button>` : ''}
         <a href="/admin/bottles" class="btn btn-secondary">Cancel</a>

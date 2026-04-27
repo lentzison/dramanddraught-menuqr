@@ -255,14 +255,14 @@ function renderFeedbackDashboard(rows) {
   const maxStarCount = Math.max(...starCounts, 1);
 
   function statCard(label, value, color) {
-    return `<div style="background:#1a1a1d;border:1px solid #333;border-radius:12px;padding:16px;text-align:center;min-width:100px;">
-      <div style="font-size:1.6rem;font-weight:800;color:${color || '#d4af37'};">${escapeHtml(String(value))}</div>
-      <div style="font-size:0.76rem;color:#999;margin-top:4px;">${escapeHtml(label)}</div>
+    return `<div class="admin-stat">
+      <strong style="color:${color || 'var(--gold-strong)'}">${escapeHtml(String(value))}</strong>
+      <span>${escapeHtml(label)}</span>
     </div>`;
   }
 
   const summaryCards = `
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:12px;margin-bottom:20px;">
+    <div class="admin-stat-grid">
       ${statCard('Total Reviews', total, '#d4af37')}
       ${statCard('Avg Rating', avgRating, '#d4af37')}
       ${statCard('With Email', withEmail, '#7ecf8a')}
@@ -271,8 +271,8 @@ function renderFeedbackDashboard(rows) {
     </div>`;
 
   const starDist = `
-    <div style="background:#111;border:1px solid #333;border-radius:12px;padding:16px;margin-bottom:20px;">
-      <h3 style="color:#d4af37;font-size:0.82rem;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:12px;">Rating Distribution</h3>
+    <div class="card">
+      <h2 style="margin-top:0">Rating Distribution</h2>
       ${[5,4,3,2,1].map(star => `
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
           <span style="min-width:50px;font-size:0.85rem;color:#d4af37;text-align:right;">${star} ★</span>
@@ -285,7 +285,7 @@ function renderFeedbackDashboard(rows) {
     </div>`;
 
   if (!rows.length) {
-    return summaryCards + '<p style="color:#666;text-align:center;padding:40px;">No feedback yet.</p>';
+    return summaryCards + '<div class="empty-state"><strong>No feedback yet</strong>Guest feedback and opt-ins will appear here as submissions arrive.</div>';
   }
 
   const feedbackCards = rows.map(entry => {
@@ -299,7 +299,7 @@ function renderFeedbackDashboard(rows) {
     ].filter(Boolean).join(' ');
 
     return `
-      <div style="background:#111;border:1px solid #333;border-radius:12px;padding:16px;margin-bottom:10px;">
+      <div class="card" style="margin-bottom:10px;">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px;margin-bottom:8px;">
           <div>
             <span style="font-weight:700;color:#eee;">${escapeHtml(name)}</span>
@@ -618,16 +618,16 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       const locationOptions = locations.map((loc) => `<option value="${escapeHtml(loc.slug)}"${locationSlug === loc.slug ? ' selected' : ''}>${escapeHtml(loc.name)}</option>`).join('');
 
       const filterControls = `
-        <form method="GET" action="/admin/feedback" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:20px;">
-          <select name="location" style="padding:8px 12px;background:#1a1a1d;color:#ccc;border:1px solid #333;border-radius:8px;font-size:0.88rem;">
+        <form method="GET" action="/admin/feedback" class="admin-filter-bar">
+          <select name="location">
             <option value="">All Locations</option>${locationOptions}
           </select>
-          <div style="display:flex;gap:4px;">
-            <a href="/admin/feedback${locationSlug ? '?location=' + escapeHtml(locationSlug) : ''}" style="padding:8px 14px;background:${!includeOptInOnly ? '#d4af37' : '#333'};color:${!includeOptInOnly ? '#0e0d0b' : '#ccc'};border-radius:8px;text-decoration:none;font-size:0.82rem;font-weight:700;">All</a>
-            <a href="/admin/feedback?newsletter=1${locationSlug ? '&location=' + escapeHtml(locationSlug) : ''}" style="padding:8px 14px;background:${includeOptInOnly ? '#d4af37' : '#333'};color:${includeOptInOnly ? '#0e0d0b' : '#ccc'};border-radius:8px;text-decoration:none;font-size:0.82rem;font-weight:700;">Newsletter</a>
+          <div class="segmented">
+            <a href="/admin/feedback${locationSlug ? '?location=' + escapeHtml(locationSlug) : ''}" class="${!includeOptInOnly ? 'active' : ''}">All</a>
+            <a href="/admin/feedback?newsletter=1${locationSlug ? '&location=' + escapeHtml(locationSlug) : ''}" class="${includeOptInOnly ? 'active' : ''}">Newsletter</a>
           </div>
-          <button type="submit" style="padding:8px 16px;background:#d4af37;color:#0e0d0b;border:none;border-radius:8px;font-weight:700;cursor:pointer;">Filter</button>
-          <a href="${buildFeedbackExportUrl({ includeOptInOnly, locationSlug })}" style="padding:8px 16px;background:#333;color:#ccc;border-radius:8px;text-decoration:none;font-size:0.82rem;">Export CSV</a>
+          <button type="submit" class="btn btn-primary btn-sm">Filter</button>
+          <a href="${buildFeedbackExportUrl({ includeOptInOnly, locationSlug })}" class="btn btn-secondary btn-sm">Export CSV</a>
           <span style="color:#666;font-size:0.82rem;">Showing ${rows.length} entries${filterLabel}</span>
         </form>`;
 
@@ -636,7 +636,13 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
         200,
         adminLayout(
           'Guest Feedback',
-          `<h1>Guest Feedback</h1>${filterControls}${renderFeedbackDashboard(rows)}`,
+          `<div class="page-header">
+            <div>
+              <div class="admin-kicker">Guest responses</div>
+              <h1>Guest Feedback</h1>
+              <p class="page-subtitle">Review ratings, comments, gift card entries, and newsletter opt-ins.</p>
+            </div>
+          </div>${filterControls}${renderFeedbackDashboard(rows)}`,
           user,
           { pathname: '/admin/feedback' },
         ),
@@ -1521,23 +1527,23 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
         .join('');
 
       const filterForm = `
-        <form id="analytics-filter" method="GET" action="/admin/analytics" style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;align-items:center;">
-          <select name="location" onchange="this.form.submit()" style="padding:8px 12px;background:#1a1a1d;color:#ccc;border:1px solid #333;border-radius:8px;font-size:0.88rem;">
+        <form id="analytics-filter" method="GET" action="/admin/analytics" class="admin-filter-bar">
+          <select name="location" onchange="this.form.submit()">
             <option value="">All Locations</option>${locationOptions}
           </select>
-          <select name="source" onchange="this.form.submit()" style="padding:8px 12px;background:#1a1a1d;color:#ccc;border:1px solid #333;border-radius:8px;font-size:0.88rem;">
+          <select name="source" onchange="this.form.submit()">
             <option value="">All Sources</option>${sourceOptions}
           </select>
-          <select name="range" id="range-select" onchange="handleRangeChange(this)" style="padding:8px 12px;background:#1a1a1d;color:#ccc;border:1px solid #333;border-radius:8px;font-size:0.88rem;">
+          <select name="range" id="range-select" onchange="handleRangeChange(this)">
             ${rangeOptions}
           </select>
           <span id="custom-dates" style="display:${filterRange === 'custom' ? 'flex' : 'none'};gap:8px;align-items:center;">
-            <input type="date" name="startDate" value="${esc(customStart)}" style="padding:6px 8px;background:#1a1a1d;color:#ccc;border:1px solid #333;border-radius:6px;font-size:0.82rem;" />
+            <input type="date" name="startDate" value="${esc(customStart)}" />
             <span style="color:#666;">to</span>
-            <input type="date" name="endDate" value="${esc(customEnd)}" style="padding:6px 8px;background:#1a1a1d;color:#ccc;border:1px solid #333;border-radius:6px;font-size:0.82rem;" />
-            <button type="submit" style="padding:6px 14px;background:#d4af37;color:#0e0d0b;border:none;border-radius:6px;font-weight:700;cursor:pointer;font-size:0.82rem;">Go</button>
+            <input type="date" name="endDate" value="${esc(customEnd)}" />
+            <button type="submit" class="btn btn-primary btn-sm">Go</button>
           </span>
-          <a href="/admin/analytics/export?location=${esc(filterSlug)}&range=${esc(filterRange)}&source=${esc(filterSource)}" style="margin-left:auto;padding:8px 14px;background:#222;color:#aaa;border-radius:8px;text-decoration:none;font-size:0.82rem;">Export CSV</a>
+          <a href="/admin/analytics/export?location=${esc(filterSlug)}&range=${esc(filterRange)}&source=${esc(filterSource)}" class="btn btn-secondary btn-sm">Export CSV</a>
         </form>`;
 
       // ── Live banner ──
@@ -1926,7 +1932,13 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
             .a-grid-stats { grid-template-columns:repeat(2,1fr); }
           }
         </style>
-        <h1>Analytics</h1>
+        <div class="page-header">
+          <div>
+            <div class="admin-kicker">QR traffic</div>
+            <h1>Analytics</h1>
+            <p class="page-subtitle">Track visits, QR scans, source-tagged links, location performance, and recent sessions.</p>
+          </div>
+        </div>
         ${filterForm}
         ${liveBanner}
 

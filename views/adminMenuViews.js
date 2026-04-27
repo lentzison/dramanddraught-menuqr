@@ -22,39 +22,27 @@ function menuLocationsList(locations, user, flashMsg) {
   const cards = locations.map(loc => {
     const count = loc._count?.menuCategories || 0;
     return `
-      <a href="/admin/menu/${escHTML(loc.slug)}" class="menu-loc-card">
-        <div class="menu-loc-name">${escHTML(loc.name)}</div>
-        <div class="menu-loc-city">${escHTML(loc.city || '')}</div>
-        <div class="menu-loc-count">${count} categor${count === 1 ? 'y' : 'ies'}</div>
+      <a href="/admin/menu/${escHTML(loc.slug)}" class="admin-card-link">
+        <div class="admin-card-title">${escHTML(loc.name)}</div>
+        <div class="admin-card-meta">${escHTML(loc.city || '') || 'Location'} food menu</div>
+        <div class="admin-card-footer">
+          <span class="tag ${count > 0 ? 'tag-active' : 'tag-warning'}">${count} categor${count === 1 ? 'y' : 'ies'}</span>
+          <span>Edit menu</span>
+        </div>
       </a>
     `;
   }).join('');
 
   return adminLayout('Food Menu', `
-    <style>
-      .menu-loc-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:14px; margin-top:20px; }
-      .menu-loc-card {
-        display:block;
-        background:linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015)), var(--surface);
-        border:1px solid var(--line);
-        border-radius:var(--radius);
-        padding:20px;
-        text-decoration:none;
-        color:inherit;
-        transition:all 0.2s;
-      }
-      .menu-loc-card:hover { border-color:var(--gold); transform:translateY(-2px); text-decoration:none; }
-      .menu-loc-name { font-size:1.05rem; font-weight:800; color:var(--text); margin-bottom:3px; }
-      .menu-loc-city { font-size:0.82rem; color:var(--text-muted); margin-bottom:10px; }
-      .menu-loc-count { font-size:0.78rem; color:var(--gold-strong); font-weight:800; text-transform:uppercase; letter-spacing:0.08em; }
-    </style>
     <div class="page-header">
       <div>
+        <div class="admin-kicker">Public food menus</div>
         <h1>Food Menu</h1>
         <p class="page-subtitle">Choose a location to edit categories, menu items, prices, featured items, and availability.</p>
       </div>
     </div>
-    <div class="menu-loc-grid">${cards || '<p style="color:#666">No active locations found.</p>'}</div>
+    <div class="admin-help"><strong>Tip:</strong> Categories and items save immediately when submitted. Use availability to hide a sold-out item without deleting it.</div>
+    <div class="admin-grid">${cards || '<div class="empty-state"><strong>No active locations</strong>Activate a location before building a food menu.</div>'}</div>
   `, user, { pathname: '/admin/menu', flashMsg });
 }
 
@@ -208,24 +196,20 @@ function menuLocationEditor(location, categories, user, flashMsg) {
 
   return adminLayout(`${location.name} Menu`, `
     <style>
-      .menu-summary { display:flex; gap:12px; flex-wrap:wrap; margin:0 0 20px; }
-      .menu-stat { background:rgba(255,255,255,0.045); border:1px solid var(--line); border-radius:var(--radius); padding:12px 18px; min-width:132px; }
-      .menu-stat-num { font-size:1.4rem; font-weight:850; color:var(--gold-strong); }
-      .menu-stat-lbl { font-size:0.72rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.08em; margin-top:2px; font-weight:800; }
-
       .mc-add-cat {
-        background:#141414;
-        border:2px dashed rgba(212,175,55,0.3);
-        border-radius:12px;
-        padding:18px;
+        background:rgba(214,173,75,0.045);
+        border:1px dashed rgba(214,173,75,0.34);
+        border-radius:var(--radius);
+        padding:20px;
         margin-bottom:20px;
       }
-      .mc-add-cat h3 { margin:0 0 10px; color:#d4af37; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.1em; }
+      .mc-add-cat h3 { margin:0 0 4px; color:var(--text); font-size:1rem; }
+      .mc-add-cat p { color:var(--text-muted); font-size:0.86rem; margin-bottom:12px; }
 
       .mc-card {
-        background:#1a1a1a;
-        border:1px solid #2a2a2a;
-        border-radius:12px;
+        background:linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.015)), var(--surface);
+        border:1px solid var(--line);
+        border-radius:var(--radius);
         padding:18px;
         margin-bottom:16px;
       }
@@ -239,14 +223,14 @@ function menuLocationEditor(location, categories, user, flashMsg) {
         margin-bottom:8px;
       }
       .mc-title { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-      .mc-name { font-size:1.15rem; font-weight:700; color:#fff; }
-      .mc-meta { color:#888; font-size:0.82rem; }
+      .mc-name { font-size:1.15rem; font-weight:850; color:var(--text); }
+      .mc-meta { color:var(--text-muted); font-size:0.82rem; }
       .mc-header-actions { display:flex; gap:6px; flex-wrap:wrap; }
       .mc-desc { color:#888; font-size:0.85rem; margin-bottom:12px; }
 
-      .mc-edit { background:#111; border-left:3px solid #d4af37; border-radius:0 8px 8px 0; padding:14px; margin:10px 0; }
+      .mc-edit { background:#121417; border-left:3px solid var(--gold); border-radius:0 8px 8px 0; padding:14px; margin:10px 0; }
       .mc-items { display:flex; flex-direction:column; gap:8px; margin:12px 0; }
-      .mc-empty { color:#555; font-style:italic; font-size:0.85rem; padding:12px; text-align:center; border:1px dashed #2a2a2a; border-radius:8px; }
+      .mc-empty { color:var(--text-soft); font-size:0.85rem; padding:16px; text-align:center; border:1px dashed var(--line); border-radius:8px; }
 
       .mi-row {
         display:grid;
@@ -254,18 +238,18 @@ function menuLocationEditor(location, categories, user, flashMsg) {
         gap:12px;
         align-items:center;
         padding:10px 12px;
-        background:#111;
-        border:1px solid #222;
+        background:#121417;
+        border:1px solid rgba(255,255,255,0.06);
         border-radius:8px;
       }
       .mi-row.mi-unavailable { opacity:0.55; }
       .mi-main { display:flex; align-items:center; gap:12px; min-width:0; }
-      .mi-thumb { width:44px; height:44px; border-radius:6px; object-fit:cover; border:1px solid #333; flex-shrink:0; }
-      .mi-thumb-empty { background:#0d0d0d; color:#444; display:flex; align-items:center; justify-content:center; font-size:1.1rem; }
+      .mi-thumb { width:44px; height:44px; border-radius:6px; object-fit:cover; border:1px solid var(--line); flex-shrink:0; }
+      .mi-thumb-empty { background:#0d0f12; color:#68717d; display:flex; align-items:center; justify-content:center; font-size:1.1rem; }
       .mi-info { min-width:0; }
       .mi-name-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-      .mi-name { font-weight:600; color:#fff; }
-      .mi-price { color:#d4af37; font-weight:700; font-size:0.92rem; }
+      .mi-name { font-weight:750; color:var(--text); }
+      .mi-price { color:var(--gold-strong); font-weight:800; font-size:0.92rem; }
       .mi-badge { display:inline-block; padding:2px 7px; border-radius:10px; font-size:0.68rem; font-weight:700; letter-spacing:0.02em; }
       .mi-badge-featured { background:rgba(212,175,55,0.18); color:#d4af37; }
       .mi-badge-off { background:rgba(239,68,68,0.15); color:#f87171; }
@@ -274,24 +258,24 @@ function menuLocationEditor(location, categories, user, flashMsg) {
       .mi-inline { display:inline-flex; gap:4px; margin:0; }
       .mi-check { display:flex; align-items:center; gap:6px; color:#ccc; font-size:0.88rem; margin:0; }
       .mi-check input[type="checkbox"] { width:auto; margin:0; }
-      .mi-edit { grid-column:1 / -1; background:#0d0d0d; border-radius:8px; padding:14px; margin-top:4px; border-left:3px solid #d4af37; }
+      .mi-edit { grid-column:1 / -1; background:#0d0f12; border-radius:8px; padding:14px; margin-top:4px; border-left:3px solid var(--gold); }
 
       .mc-add { margin-top:12px; }
       .mc-add summary {
         cursor:pointer;
-        color:#888;
+        color:var(--text-muted);
         font-size:0.82rem;
         padding:8px 12px;
-        background:#141414;
-        border:1px dashed #333;
+        background:#121417;
+        border:1px dashed var(--line);
         border-radius:8px;
         list-style:none;
         user-select:none;
       }
       .mc-add summary::-webkit-details-marker { display:none; }
-      .mc-add summary:hover { color:#d4af37; border-color:rgba(212,175,55,0.4); }
-      .mc-add[open] summary { color:#d4af37; border-color:#d4af37; border-style:solid; }
-      .mc-add-form { background:#0d0d0d; border:1px solid #222; border-top:none; border-radius:0 0 8px 8px; padding:14px; margin-top:-1px; }
+      .mc-add summary:hover { color:var(--gold-strong); border-color:rgba(214,173,75,0.4); }
+      .mc-add[open] summary { color:var(--gold-strong); border-color:var(--gold); border-style:solid; }
+      .mc-add-form { background:#0d0f12; border:1px solid var(--line); border-top:none; border-radius:0 0 8px 8px; padding:14px; margin-top:-1px; }
 
       @media (max-width: 768px) {
         .mi-row { grid-template-columns:1fr; }
@@ -301,6 +285,7 @@ function menuLocationEditor(location, categories, user, flashMsg) {
 
     <div class="page-header">
       <div>
+        <div class="admin-kicker">Menu builder</div>
         <h1>${escHTML(location.name)} Menu</h1>
         <p class="page-subtitle">Edit what guests see on this location’s public food menu.</p>
       </div>
@@ -310,19 +295,20 @@ function menuLocationEditor(location, categories, user, flashMsg) {
       </div>
     </div>
 
-    <div class="menu-summary">
-      <div class="menu-stat">
-        <div class="menu-stat-num">${categoryCount}</div>
-        <div class="menu-stat-lbl">Categor${categoryCount === 1 ? 'y' : 'ies'}</div>
+    <div class="admin-stat-grid">
+      <div class="admin-stat">
+        <strong>${categoryCount}</strong>
+        <span>Categor${categoryCount === 1 ? 'y' : 'ies'}</span>
       </div>
-      <div class="menu-stat">
-        <div class="menu-stat-num">${totalItems}</div>
-        <div class="menu-stat-lbl">Total Items</div>
+      <div class="admin-stat">
+        <strong>${totalItems}</strong>
+        <span>Total Items</span>
       </div>
     </div>
 
     <div class="mc-add-cat">
       <h3>Add New Category</h3>
+      <p>Create broad groups like Snacks, Small Plates, Sandwiches, or Desserts. Items are added inside each category.</p>
       <form method="POST" action="${actionUrl}">
         <input type="hidden" name="_action" value="addCategory" />
         <div class="form-row">
@@ -339,7 +325,13 @@ function menuLocationEditor(location, categories, user, flashMsg) {
       </form>
     </div>
 
-    ${categoryBlocks || '<div class="card" style="text-align:center; padding:40px; color:#666">No menu categories yet. Add one above to get started.</div>'}
+    <div class="section-head">
+      <div>
+        <h2>Menu Categories</h2>
+        <p>Use the arrow buttons to change public display order. Hide unavailable categories instead of deleting them when possible.</p>
+      </div>
+    </div>
+    ${categoryBlocks || '<div class="empty-state"><strong>No menu categories yet</strong>Add your first category above, then add menu items inside it.</div>'}
 
     <style>${imageUploadWidgetCss()}</style>
     <script>

@@ -55,15 +55,17 @@ function adminActivityView(entries, filters, locations, user, flashMsg) {
     const resLabel = RESOURCE_LABELS[e.resourceType] || e.resourceType;
     const userLabel = e.userName || e.userEmail || '<span style="color:#666">unknown</span>';
     return `
-      <div class="act-row">
-        <div class="act-time" title="${escHTML(formatTimeAbsolute(e.createdAt))}">${escHTML(formatTime(e.createdAt))}</div>
-        <div class="act-badges">
-          <span class="act-badge" style="background:${colors.bg}; color:${colors.fg}">${escHTML(e.action)}</span>
-          <span class="act-resource">${escHTML(resLabel)}</span>
+      <div class="admin-row act-row">
+        <div class="admin-row-main">
+          <div class="admin-row-title">${e.resourceLabel ? escHTML(e.resourceLabel) : '<span style="color:#666">Untitled change</span>'}</div>
+          <div class="admin-row-meta">
+            <span class="act-badge" style="background:${colors.bg}; color:${colors.fg}">${escHTML(e.action)}</span>
+            <span>${escHTML(resLabel)}</span>
+            <span>${e.locationSlug ? escHTML(e.locationSlug) : 'No location'}</span>
+            <span>by ${userLabel}</span>
+          </div>
         </div>
-        <div class="act-label">${e.resourceLabel ? escHTML(e.resourceLabel) : '<span style="color:#666">—</span>'}</div>
-        <div class="act-loc">${e.locationSlug ? escHTML(e.locationSlug) : '<span style="color:#666">—</span>'}</div>
-        <div class="act-user">${userLabel}</div>
+        <div class="act-time" title="${escHTML(formatTimeAbsolute(e.createdAt))}">${escHTML(formatTime(e.createdAt))}</div>
       </div>
     `;
   }).join('');
@@ -74,40 +76,8 @@ function adminActivityView(entries, filters, locations, user, flashMsg) {
 
   return adminLayout('Activity', `
     <style>
-      .act-filters {
-        display: flex;
-        gap: 10px;
-        flex-wrap: wrap;
-        margin-bottom: 18px;
-      }
-      .act-filters select {
-        padding: 8px 12px;
-        background: #12110f;
-        color: var(--text);
-        border: 1px solid var(--line);
-        border-radius: var(--radius);
-        font-size: 0.88rem;
-      }
-
-      .act-list {
-        background: var(--surface);
-        border: 1px solid var(--line);
-        border-radius: var(--radius);
-        overflow: hidden;
-      }
-      .act-row {
-        display: grid;
-        grid-template-columns: 80px 220px 1fr 130px 160px;
-        gap: 14px;
-        align-items: center;
-        padding: 12px 16px;
-        border-bottom: 1px solid rgba(255,255,255,0.06);
-        font-size: 0.88rem;
-      }
-      .act-row:last-child { border-bottom: none; }
       .act-row:hover { background: rgba(255,255,255,0.035); }
       .act-time { color: var(--text-muted); font-size: 0.82rem; white-space: nowrap; }
-      .act-badges { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
       .act-badge {
         display: inline-block;
         padding: 3px 9px;
@@ -117,10 +87,6 @@ function adminActivityView(entries, filters, locations, user, flashMsg) {
         text-transform: uppercase;
         letter-spacing: 0.04em;
       }
-      .act-resource { color: var(--text-muted); font-size: 0.78rem; }
-      .act-label { color: var(--text); font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-      .act-loc { color: #d8cfc2; font-size: 0.82rem; text-transform: capitalize; }
-      .act-user { color: var(--text-muted); font-size: 0.82rem; }
       .act-empty { padding: 50px 20px; text-align: center; color: var(--text-soft); }
 
       @media (max-width: 768px) {
@@ -135,12 +101,13 @@ function adminActivityView(entries, filters, locations, user, flashMsg) {
 
     <div class="page-header">
       <div>
+        <div class="admin-kicker">Audit trail</div>
         <h1>Activity</h1>
         <p class="page-subtitle">Recent admin changes across all locations, including who changed what and when.</p>
       </div>
     </div>
 
-    <form method="GET" action="/admin/activity" class="act-filters">
+    <form method="GET" action="/admin/activity" class="admin-filter-bar">
       <select name="location" onchange="this.form.submit()">
         <option value="">All Locations</option>${locationOptions}
       </select>
@@ -162,7 +129,7 @@ function adminActivityView(entries, filters, locations, user, flashMsg) {
       </select>
     </form>
 
-    <div class="act-list">
+    <div class="admin-list">
       ${rows || '<div class="act-empty"><p style="font-size:1rem; margin-bottom:6px">No activity yet</p><p style="font-size:0.85rem">Changes will show up here as you and your team work in the admin.</p></div>'}
     </div>
   `, user, { pathname: '/admin/activity', flashMsg });

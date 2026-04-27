@@ -39,23 +39,26 @@ function to24h(timeStr) {
 // ─── Locations List ───
 function locationsList(locations, user, flashMsg) {
   const cards = locations.map(loc => `
-    <a href="/admin/locations/${escHTML(loc.slug)}" class="day-card" style="text-decoration:none">
-      <div class="day-name">${escHTML(loc.name)}</div>
-      <div class="theme-name">${escHTML(loc.city)}, ${escHTML(loc.state)}</div>
-      <div class="specials-count">${escHTML(loc.address || '')}</div>
-      <span class="tag ${loc.isActive ? 'tag-active' : 'tag-inactive'}">${loc.isActive ? 'Active' : 'Inactive'}</span>
+    <a href="/admin/locations/${escHTML(loc.slug)}" class="admin-card-link">
+      <div class="admin-card-title">${escHTML(loc.name)}</div>
+      <div class="admin-card-meta">${escHTML(loc.city)}, ${escHTML(loc.state)}${loc.address ? `<br>${escHTML(loc.address)}` : ''}</div>
+      <div class="admin-card-footer">
+        <span class="tag ${loc.isActive ? 'tag-active' : 'tag-inactive'}">${loc.isActive ? 'Active' : 'Inactive'}</span>
+        <span>Edit details</span>
+      </div>
     </a>
   `).join('');
 
   return adminLayout('Locations', `
     <div class="page-header">
       <div>
+        <div class="admin-kicker">Public location pages</div>
         <h1>Locations</h1>
         <p class="page-subtitle">Manage public location details, hours, contact information, and link buttons.</p>
       </div>
     </div>
-    ${locations.length === 0 ? '<div class="empty-state">No locations yet. <a href="/admin/seed">Seed default locations</a></div>' : `
-      <div class="grid-7">${cards}</div>
+    ${locations.length === 0 ? '<div class="empty-state"><strong>No locations yet</strong><a href="/admin/seed">Seed default locations</a></div>' : `
+      <div class="admin-grid">${cards}</div>
     `}
   `, user, { pathname: '/admin/locations', flashMsg });
 }
@@ -104,81 +107,104 @@ function locationEditor(location, user, flashMsg) {
     </div>
 
     <form method="POST" action="/admin/locations/${escHTML(loc.slug)}" data-autosave="location-${escHTML(loc.slug)}">
-      <div class="card">
-        <h2>Basic Info</h2>
-        <div class="form-row">
+      <section class="form-section">
+        <div class="form-section-head">
           <div>
-            <label>Name</label>
-            <input type="text" name="name" value="${escHTML(loc.name)}" required />
-          </div>
-          <div>
-            <label>Slug</label>
-            <input type="text" name="slug" value="${escHTML(loc.slug)}" disabled />
+            <h2>Basics</h2>
+            <p>Name, address, and contact details shown on the public page.</p>
           </div>
         </div>
-        <label>Address</label>
-        <input type="text" name="address" value="${escHTML(loc.address)}" />
-        <div class="form-row">
-          <div>
-            <label>City</label>
-            <input type="text" name="city" value="${escHTML(loc.city)}" required />
+        <div class="form-section-body">
+          <div class="form-row">
+            <div>
+              <label>Name</label>
+              <input type="text" name="name" value="${escHTML(loc.name)}" required />
+            </div>
+            <div>
+              <label>Slug</label>
+              <input type="text" name="slug" value="${escHTML(loc.slug)}" disabled />
+              <div class="field-help">The slug controls the public URL and is locked here.</div>
+            </div>
           </div>
-          <div>
-            <label>State</label>
-            <input type="text" name="state" value="${escHTML(loc.state)}" required />
+          <label>Address</label>
+          <input type="text" name="address" value="${escHTML(loc.address)}" />
+          <div class="form-row">
+            <div>
+              <label>City</label>
+              <input type="text" name="city" value="${escHTML(loc.city)}" required />
+            </div>
+            <div>
+              <label>State</label>
+              <input type="text" name="state" value="${escHTML(loc.state)}" required />
+            </div>
+            <div>
+              <label>Zip</label>
+              <input type="text" name="zipCode" value="${escHTML(loc.zipCode)}" />
+            </div>
           </div>
+          <div class="form-row">
+            <div>
+              <label>Phone</label>
+              <input type="tel" name="phone" value="${escHTML(loc.phone)}" />
+            </div>
+            <div>
+              <label>Email</label>
+              <input type="email" name="email" value="${escHTML(loc.email)}" />
+            </div>
+          </div>
+          <label>Special Text</label>
+          <input type="text" name="specialText" value="${escHTML(loc.specialText)}" placeholder="e.g. 300+ Whiskeys | Craft Cocktails" />
+          <label>Menu URL</label>
+          <input type="url" name="menuUrl" value="${escHTML(loc.menuUrl)}" placeholder="https://..." />
+        </div>
+      </section>
+
+      <section class="form-section">
+        <div class="form-section-head">
           <div>
-            <label>Zip</label>
-            <input type="text" name="zipCode" value="${escHTML(loc.zipCode)}" />
+            <h2>Hours</h2>
+            <p>Set open and close times for each day, or mark the day closed.</p>
           </div>
         </div>
-        <div class="form-row">
+        <div class="form-section-body">${hoursRows}</div>
+      </section>
+
+      <section class="form-section">
+        <div class="form-section-head">
           <div>
-            <label>Phone</label>
-            <input type="tel" name="phone" value="${escHTML(loc.phone)}" />
-          </div>
-          <div>
-            <label>Email</label>
-            <input type="email" name="email" value="${escHTML(loc.email)}" />
+            <h2>Link Buttons</h2>
+            <p>Buttons shown on the public location page for menus, reservations, ordering, or promos.</p>
           </div>
         </div>
-        <label>Special Text</label>
-        <input type="text" name="specialText" value="${escHTML(loc.specialText)}" placeholder="e.g. 300+ Whiskeys | Craft Cocktails" />
-        <label>Menu URL</label>
-        <input type="url" name="menuUrl" value="${escHTML(loc.menuUrl)}" placeholder="https://..." />
-      </div>
-
-      <div class="card">
-        <h2>Hours</h2>
-        <p style="color:#888; font-size:0.85rem; margin-bottom:12px">Set open and close times for each day, or mark as Closed.</p>
-        ${hoursRows}
-      </div>
-
-      <div class="card">
-        <h2>Link Buttons</h2>
-        <p style="color:#888; font-size:0.85rem; margin-bottom:12px">Linktree-style buttons shown on the location page.</p>
-        <div id="linksContainer">
-          ${linkRows}
+        <div class="form-section-body">
+          <div id="linksContainer">
+            ${linkRows || '<div class="empty-state"><strong>No custom links</strong>Add a link when this location needs an extra public button.</div>'}
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="addLinkRow()">Add Link</button>
         </div>
-        <button type="button" class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="addLinkRow()">+ Add Link</button>
-      </div>
+      </section>
 
-      <div class="card">
-        <h2>Features</h2>
-        <label>Features (comma-separated)</label>
-        <input type="text" name="features" value="${escHTML((loc.features || []).join(', '))}" placeholder="e.g. 300+ Whiskeys, Craft Cocktails, NC Draft Beer" />
-      </div>
+      <section class="form-section">
+        <div class="form-section-head">
+          <div>
+            <h2>Features & Publishing</h2>
+            <p>Short feature bullets and whether this location should appear publicly.</p>
+          </div>
+        </div>
+        <div class="form-section-body">
+          <label>Features (comma-separated)</label>
+          <input type="text" name="features" value="${escHTML((loc.features || []).join(', '))}" placeholder="e.g. 300+ Whiskeys, Craft Cocktails, NC Draft Beer" />
 
-      <div style="margin-top:12px">
-        <label style="display:flex; align-items:center; gap:8px">
-          <input type="checkbox" name="isActive" ${loc.isActive ? 'checked' : ''} style="width:auto" />
-          <span>Active</span>
-        </label>
-      </div>
+          <label class="checkbox-card" style="margin-top:16px">
+            <input type="checkbox" name="isActive" ${loc.isActive ? 'checked' : ''} style="width:auto" />
+            <span><strong style="display:block;color:var(--text)">Active</strong><span class="field-help" style="display:block;margin:2px 0 0">Show this location on public QR pages and admin workflows.</span></span>
+          </label>
+        </div>
+      </section>
 
       <input type="hidden" name="linkCount" id="linkCountField" value="${links.length}" />
 
-      <div class="form-actions">
+      <div class="sticky-actions">
         <button type="submit" class="btn btn-primary">Save Location</button>
         <a href="/admin/locations" class="btn btn-secondary">Cancel</a>
       </div>

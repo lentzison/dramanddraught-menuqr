@@ -285,6 +285,14 @@ function eventStatusBadge(event) {
 
 // ─── Events list ───
 function eventsList(events, user, flashMsg) {
+  const counts = events.reduce((acc, ev) => {
+    if (ev.isCancelled) acc.cancelled += 1;
+    else if (!ev.isActive) acc.hidden += 1;
+    else if (ev.startDate && new Date(ev.startDate) < new Date()) acc.past += 1;
+    else acc.live += 1;
+    acc.signups += ev._count?.signups || 0;
+    return acc;
+  }, { live: 0, hidden: 0, past: 0, cancelled: 0, signups: 0 });
   const rows = events.map(ev => {
     const signupCount = ev._count?.signups || 0;
     const capacityText = ev.capacity ? `${signupCount} / ${ev.capacity}` : `${signupCount}`;
@@ -292,32 +300,28 @@ function eventsList(events, user, flashMsg) {
     const locSlug = ev.location?.slug || '';
     const publicPath = locSlug && ev.slug ? `/${locSlug}/events/${ev.slug}` : '';
     return `
-      <div class="ev-row">
-        <div class="ev-row-main">
-          <div class="ev-row-title">
-            <a href="/admin/events/${escHTML(ev.id)}" class="ev-row-link">${escHTML(ev.title)}</a>
+      <div class="admin-row ev-row">
+        <div class="admin-row-main">
+          <div class="admin-row-title">
+            <a href="/admin/events/${escHTML(ev.id)}">${escHTML(ev.title)}</a>
             ${eventStatusBadge(ev)}
           </div>
-          <div class="ev-row-meta">
+          <div class="admin-row-meta">
             <span>${escHTML(locName)}</span>
             <span>•</span>
             <span>${escHTML(formatFriendlyDate(ev.startDate))}</span>
+            <span>•</span>
+            <span>${capacityText} signup${signupCount === 1 ? '' : 's'}</span>
           </div>
         </div>
-        <div class="ev-row-stats">
-          <div class="ev-signup-count">
-            <span class="ev-signup-num">${capacityText}</span>
-            <span class="ev-signup-lbl">signups</span>
-          </div>
-          <div class="ev-row-actions">
+        <div class="admin-row-actions">
             <a href="/admin/events/${escHTML(ev.id)}/signups" class="btn btn-secondary btn-sm">View Signups</a>
             <a href="/admin/events/${escHTML(ev.id)}" class="btn btn-secondary btn-sm">Edit</a>
             <form method="POST" action="/admin/events/${escHTML(ev.id)}" style="display:inline; margin:0;">
               <input type="hidden" name="_action" value="duplicate" />
               <button type="submit" class="btn btn-secondary btn-sm" title="Make a copy of this event">Copy</button>
             </form>
-            ${publicPath ? `<a href="${escHTML(publicPath)}" class="btn btn-secondary btn-sm" target="_blank">View ↗</a>` : ''}
-          </div>
+            ${publicPath ? `<a href="${escHTML(publicPath)}" class="btn btn-secondary btn-sm" target="_blank">Public Page</a>` : ''}
         </div>
       </div>
     `;
@@ -325,35 +329,9 @@ function eventsList(events, user, flashMsg) {
 
   return adminLayout('Events', `
     <style>
-      .ev-header-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; flex-wrap:wrap; gap:12px; }
       .ev-empty { text-align:center; padding:60px 20px; color:#666; }
       .ev-empty-icon { font-size:2.5rem; opacity:0.3; margin-bottom:8px; }
-
-      .ev-row {
-        display:flex;
-        justify-content:space-between;
-        align-items:center;
-        gap:16px;
-        padding:16px 18px;
-        background:linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.015)), var(--surface);
-        border:1px solid var(--line);
-        border-radius:var(--radius);
-        margin-bottom:10px;
-        flex-wrap:wrap;
-      }
       .ev-row:hover { border-color:rgba(214,173,75,0.38); }
-      .ev-row-main { flex:1; min-width:240px; }
-      .ev-row-title { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:4px; }
-      .ev-row-link { font-size:1.05rem; font-weight:800; color:var(--text); text-decoration:none; }
-      .ev-row-link:hover { color:var(--gold-strong); text-decoration:none; }
-      .ev-row-meta { color:var(--text-muted); font-size:0.85rem; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-      .ev-row-meta span { white-space:nowrap; }
-
-      .ev-row-stats { display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
-      .ev-signup-count { text-align:right; min-width:80px; }
-      .ev-signup-num { display:block; font-size:1.4rem; font-weight:850; color:var(--gold-strong); line-height:1; }
-      .ev-signup-lbl { display:block; font-size:0.68rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.08em; margin-top:3px; }
-      .ev-row-actions { display:flex; gap:6px; flex-wrap:wrap; }
 
       .ev-badge { display:inline-block; padding:3px 9px; border-radius:10px; font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; }
       .ev-badge-live { background:rgba(34,197,94,0.18); color:#4ade80; }
@@ -366,10 +344,18 @@ function eventsList(events, user, flashMsg) {
 
     <div class="page-header">
       <div>
+        <div class="admin-kicker">Event pages</div>
         <h1>Events</h1>
         <p class="page-subtitle">Create public signup pages, manage RSVPs, and build event landing pages.</p>
       </div>
       <a href="/admin/events/new" class="btn btn-primary">+ New Event</a>
+    </div>
+
+    <div class="admin-stat-grid">
+      <div class="admin-stat"><strong>${counts.live}</strong><span>Live / Upcoming</span></div>
+      <div class="admin-stat"><strong>${counts.signups}</strong><span>Total Signups</span></div>
+      <div class="admin-stat"><strong>${counts.hidden}</strong><span>Hidden</span></div>
+      <div class="admin-stat"><strong>${counts.past}</strong><span>Past</span></div>
     </div>
 
     ${events.length === 0 ? `
@@ -378,7 +364,7 @@ function eventsList(events, user, flashMsg) {
         <p style="font-size:1rem; color:#888; margin-bottom:4px">No events yet</p>
         <p style="font-size:0.85rem">Click &ldquo;New Event&rdquo; above to create your first one.</p>
       </div>
-    ` : rows}
+    ` : `<div class="admin-list">${rows}</div>`}
   `, user, { pathname: '/admin/events', flashMsg });
 }
 
@@ -792,14 +778,14 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
         display:flex;
         flex-direction:column;
         gap:10px;
-        padding:14px 18px;
-        margin-bottom:14px;
-        background:#141414;
-        border:1px solid #262626;
-        border-radius:12px;
+        padding:16px 18px;
+        margin-bottom:16px;
+        background:linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.015)), var(--surface);
+        border:1px solid var(--line);
+        border-radius:var(--radius);
       }
-      .ev-editor-head .ev-back { color:#888; font-size:0.8rem; text-decoration:none; }
-      .ev-editor-head .ev-back:hover { color:#d4af37; }
+      .ev-editor-head .ev-back { color:var(--text-muted); font-size:0.8rem; text-decoration:none; }
+      .ev-editor-head .ev-back:hover { color:var(--gold-strong); }
       .ev-editor-head h1 { margin:2px 0 0; font-size:1.3rem; }
       .ev-header-row {
         display:flex;
@@ -810,7 +796,7 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
       .ev-header-row-top { justify-content:space-between; }
       .ev-header-row-meta {
         padding-top:10px;
-        border-top:1px solid #222;
+        border-top:1px solid rgba(255,255,255,0.07);
         font-size:0.85rem;
         color:#bbb;
       }
@@ -820,9 +806,9 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
         align-items:center;
         gap:6px;
         padding:7px 12px;
-        border:1px solid #2a2a2a;
+        border:1px solid var(--line);
         border-radius:999px;
-        background:#0f0f0f;
+        background:#121417;
         font-size:0.78rem;
         font-weight:700;
         color:#999;
@@ -864,8 +850,8 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
         top:0;
         z-index:20;
         padding:10px 0;
-        background:#0a0a0a;
-        border-bottom:1px solid #1a1a1a;
+        background:rgba(16,17,19,0.92);
+        border-bottom:1px solid var(--line-soft);
       }
       .ev-jump-nav a {
         display:inline-flex;
@@ -873,15 +859,15 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
         min-height:34px;
         padding:0 12px;
         border-radius:999px;
-        border:1px solid #2a2a2a;
-        color:#bbb;
+        border:1px solid var(--line);
+        color:var(--text-muted);
         text-decoration:none;
         font-size:0.78rem;
         font-weight:700;
         letter-spacing:0.04em;
-        background:#141414;
+        background:#121417;
       }
-      .ev-jump-nav a:hover { color:#d4af37; border-color:rgba(212,175,55,0.35); }
+      .ev-jump-nav a:hover { color:var(--gold-strong); border-color:rgba(214,173,75,0.35); }
 
       .ev-public-url {
         background:rgba(96,165,250,0.08);
@@ -893,7 +879,7 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
       .ev-public-url[hidden] { display:none; }
       .ev-public-url-label { font-size:0.72rem; color:#93c5fd; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:8px; }
       .ev-public-url-row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-      .ev-public-url-row input { flex:1; min-width:260px; background:#0d0d0d; color:#d4af37; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:0.85rem; }
+      .ev-public-url-row input { flex:1; min-width:260px; background:#0d0f12; color:var(--gold-strong); font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:0.85rem; }
       .ev-public-url-hint { color:#888; font-size:0.78rem; margin-top:10px; }
       .ev-share-buttons { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
       .ev-share-btn {
@@ -913,22 +899,20 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
       .ev-share-status { color:#4ade80; font-size:0.8rem; margin-top:8px; min-height:1.2em; }
 
       .ev-section {
-        background:#1a1a1a;
-        border:1px solid #2a2a2a;
-        border-radius:12px;
-        padding:20px 22px;
+        background:linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.015)), var(--surface);
+        border:1px solid var(--line);
+        border-radius:var(--radius);
+        padding:20px;
         margin-bottom:16px;
       }
       .ev-section h2 {
-        color:#d4af37;
-        font-size:0.78rem;
-        text-transform:uppercase;
-        letter-spacing:0.1em;
+        color:var(--text);
+        font-size:1.02rem;
         margin:0 0 4px;
-        font-weight:700;
+        font-weight:850;
       }
       .ev-section .ev-section-hint {
-        color:#888;
+        color:var(--text-muted);
         font-size:0.82rem;
         margin-bottom:14px;
       }
@@ -946,16 +930,16 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
         display:grid;
         grid-template-columns:1fr 1fr;
         gap:4px 20px;
-        background:#111;
+        background:#121417;
         padding:12px 16px;
         border-radius:8px;
-        border:1px solid #222;
+        border:1px solid rgba(255,255,255,0.07);
       }
 
       .cq-list { margin-bottom:14px; }
       .cq-row {
-        background:#111;
-        border:1px solid #222;
+        background:#121417;
+        border:1px solid rgba(255,255,255,0.07);
         border-radius:8px;
         padding:14px;
         margin-bottom:10px;
@@ -983,8 +967,8 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
 
       /* Reusable image upload widget — used by banner and section images */
       .sec-img-upload {
-        background:#0d0d0d;
-        border:1px solid #222;
+        background:#0d0f12;
+        border:1px solid var(--line);
         border-radius:8px;
         padding:14px;
         margin-bottom:8px;
@@ -1029,7 +1013,7 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
       <!-- ─── Basics ─── -->
       <div class="ev-section" id="event-details">
         <h2>Event Details</h2>
-        <p class="ev-section-hint">What is the event called and where is it happening?</p>
+        <p class="ev-section-hint">What guests see first: title, location, URL slug, description, and banner image.</p>
 
         <label for="ev-title">Event Name <span style="color:#f87171">*</span></label>
         <input type="text" id="ev-title" name="title" required value="${escHTML(event?.title || '')}" placeholder="e.g. Lubrication Cup 2026" />
@@ -1071,7 +1055,7 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
       <!-- ─── Dates ─── -->
       <div class="ev-section" id="event-when">
         <h2>When</h2>
-        <p class="ev-section-hint">When does the event happen and when should the signup page be visible?</p>
+        <p class="ev-section-hint">Set the event time and the promotion/signup window.</p>
 
         <div class="ev-field-grid">
           <div>
@@ -1099,9 +1083,9 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
       <!-- ─── Signups (form + settings combined) ─── -->
       <div class="ev-section" id="event-signups">
         <h2>Signups</h2>
-        <p class="ev-section-hint">Configure the form, limits, and confirmation message. Turn the form off for info-only events.</p>
+        <p class="ev-section-hint">Configure the form, limits, questions, and confirmation message. Turn the form off for info-only events.</p>
 
-        <label class="ev-check" style="border:1px solid #2a2a2a; background:#111; padding:12px 14px; border-radius:8px; margin-bottom:14px">
+        <label class="ev-check checkbox-card" style="margin-bottom:14px">
           <input type="checkbox" name="signupsEnabled" ${!event || event.signupsEnabled !== false ? 'checked' : ''} />
           <strong>Show signup form on the public page</strong>
         </label>
@@ -1457,28 +1441,23 @@ function eventSignupsView(event, signups, user, flashMsg) {
 
   return adminLayout(`${event.title} Signups`, `
     <style>
-      .evs-head { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:center; margin-bottom:18px; }
       .evs-back { color:#888; font-size:0.85rem; text-decoration:none; }
       .evs-back:hover { color:#d4af37; }
-      .evs-stats { display:flex; gap:20px; margin-bottom:20px; flex-wrap:wrap; }
-      .evs-stat { background:#1a1a1a; border:1px solid #2a2a2a; border-radius:10px; padding:14px 20px; }
-      .evs-stat-num { font-size:1.6rem; font-weight:800; color:#d4af37; line-height:1; }
-      .evs-stat-lbl { font-size:0.72rem; color:#888; text-transform:uppercase; letter-spacing:0.08em; margin-top:6px; }
       .evs-toolbar { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:16px; }
       .evs-search {
         min-width:260px;
         max-width:420px;
         width:100%;
-        background:#111;
-        border:1px solid #2a2a2a;
+        background:#121417;
+        border:1px solid var(--line);
         border-radius:10px;
         padding:12px 14px;
         color:#eee;
       }
       .evs-filter-note { color:#888; font-size:0.82rem; }
-      .evs-table-wrap { background:#1a1a1a; border:1px solid #2a2a2a; border-radius:12px; overflow-x:auto; }
+      .evs-table-wrap { background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); overflow-x:auto; }
       .evs-table { width:100%; border-collapse:collapse; font-size:0.88rem; }
-      .evs-table th { background:#111; color:#888; text-align:left; padding:10px 14px; border-bottom:1px solid #2a2a2a; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.06em; font-weight:700; }
+      .evs-table th { background:rgba(255,255,255,0.03); color:var(--text-muted); text-align:left; padding:10px 14px; border-bottom:1px solid var(--line); font-size:0.72rem; text-transform:uppercase; letter-spacing:0.06em; font-weight:700; }
       .evs-table td { padding:12px 14px; border-bottom:1px solid #1f1f1f; color:#ccc; vertical-align:top; }
       .evs-table tr:last-child td { border-bottom:none; }
       .evs-empty { padding:40px; text-align:center; color:#666; }
@@ -1488,8 +1467,8 @@ function eventSignupsView(event, signups, user, flashMsg) {
       .evs-badge-approved { background:rgba(138,168,122,0.14); color:#b9d1a8; border:1px solid rgba(138,168,122,0.4); }
       .evs-badge-rejected { background:rgba(239,68,68,0.1); color:#fca5a5; border:1px solid rgba(239,68,68,0.3); }
       .evs-filter-tabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px; }
-      .evs-filter-tab { background:#111; border:1px solid #2a2a2a; color:#aaa; padding:8px 14px; border-radius:999px; font-size:0.8rem; font-weight:700; cursor:pointer; letter-spacing:0.04em; }
-      .evs-filter-tab.active { background:#d4af37; color:#111; border-color:#d4af37; }
+      .evs-filter-tab { background:#121417; border:1px solid var(--line); color:var(--text-muted); padding:8px 14px; border-radius:999px; font-size:0.8rem; font-weight:700; cursor:pointer; letter-spacing:0.04em; }
+      .evs-filter-tab.active { background:var(--gold-strong); color:#111; border-color:var(--gold-strong); }
       .evs-filter-tab:hover { color:#eee; }
       .evs-filter-tab.active:hover { color:#111; }
       .evs-who { color:#aaa; font-size:0.75rem; }
@@ -1500,11 +1479,12 @@ function eventSignupsView(event, signups, user, flashMsg) {
       .btn-success:hover { background:#6b9057; }
     </style>
 
-    <div class="evs-head">
+    <div class="page-header">
       <div>
         <a href="/admin/events" class="evs-back">← All events</a>
+        <div class="admin-kicker" style="margin-top:8px">Signups</div>
         <h1 style="margin:4px 0 0">${escHTML(event.title)}</h1>
-        <p style="color:#888; margin:4px 0 0; font-size:0.85rem">
+        <p class="page-subtitle">
           ${escHTML(event.location?.name || '')} &middot; ${escHTML(formatFriendlyDate(event.startDate))}
         </p>
       </div>
@@ -1514,35 +1494,35 @@ function eventSignupsView(event, signups, user, flashMsg) {
       </div>
     </div>
 
-    <div class="evs-stats">
-      <div class="evs-stat">
-        <div class="evs-stat-num">${signups.length}${escHTML(capacityText)}</div>
-        <div class="evs-stat-lbl">${isVendor ? 'Total Applications' : 'Total Signups'}</div>
+    <div class="admin-stat-grid">
+      <div class="admin-stat">
+        <strong>${signups.length}${escHTML(capacityText)}</strong>
+        <span>${isVendor ? 'Total Applications' : 'Total Signups'}</span>
       </div>
       ${isVendor ? `
-        <div class="evs-stat">
-          <div class="evs-stat-num" style="color:#fcd34d">${pendingCount}</div>
-          <div class="evs-stat-lbl">Pending Review</div>
+        <div class="admin-stat">
+          <strong style="color:#fcd34d">${pendingCount}</strong>
+          <span>Pending Review</span>
         </div>
-        <div class="evs-stat">
-          <div class="evs-stat-num" style="color:#b9d1a8">${approvedCount}</div>
-          <div class="evs-stat-lbl">Approved</div>
+        <div class="admin-stat">
+          <strong style="color:#b9d1a8">${approvedCount}</strong>
+          <span>Approved</span>
         </div>
-        <div class="evs-stat">
-          <div class="evs-stat-num" style="color:#fca5a5">${rejectedCount}</div>
-          <div class="evs-stat-lbl">Rejected</div>
+        <div class="admin-stat">
+          <strong style="color:#fca5a5">${rejectedCount}</strong>
+          <span>Rejected</span>
         </div>
       ` : ''}
       ${totalGuests != null ? `
-        <div class="evs-stat">
-          <div class="evs-stat-num">${totalGuests}</div>
-          <div class="evs-stat-lbl">Total Guests</div>
+        <div class="admin-stat">
+          <strong>${totalGuests}</strong>
+          <span>Total Guests</span>
         </div>
       ` : ''}
       ${remainingSpots != null ? `
-        <div class="evs-stat">
-          <div class="evs-stat-num">${remainingSpots}</div>
-          <div class="evs-stat-lbl">${remainingSpots === 0 ? 'Event Full' : 'Spots Remaining'}</div>
+        <div class="admin-stat">
+          <strong>${remainingSpots}</strong>
+          <span>${remainingSpots === 0 ? 'Event Full' : 'Spots Remaining'}</span>
         </div>
       ` : ''}
     </div>

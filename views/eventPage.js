@@ -518,17 +518,7 @@ function generateEventPage(location, event, signupCount, options = {}) {
       <p class="ev-side-copy">${escHTML(sideCopy)}</p>
       ${signupForm}
     </aside>
-  ` : status.key === 'no-signups' ? `
-    <aside class="ev-side-card" id="apply">
-      <div class="ev-side-kicker">Event Details</div>
-      <h2 class="ev-side-title">No signup required</h2>
-      <p class="ev-side-copy">This page is informational only. Check the event details and come by at the listed time.</p>
-      <div class="ev-side-actions">
-        <a href="${escHTML(eventsPath)}" class="ev-side-link">Browse all events</a>
-        <a href="/${escHTML(location.slug)}" class="ev-side-link ev-side-link-muted">Back to ${escHTML(location.name)}</a>
-      </div>
-    </aside>
-  ` : `
+  ` : status.key === 'no-signups' ? '' : `
     <aside class="ev-side-card" id="apply">
       ${renderStatusBanner(status, event)}
       <div class="ev-side-actions">
@@ -1320,6 +1310,9 @@ function generateEventPage(location, event, signupCount, options = {}) {
           gap: 22px;
           align-items: start;
           margin-bottom: 28px;
+        }
+        .ev-main-grid-full {
+          grid-template-columns: minmax(0, 1fr);
         }
         .ev-main-col,
         .ev-side-col { min-width: 0; }
@@ -2312,7 +2305,7 @@ function generateEventPage(location, event, signupCount, options = {}) {
             </div>
           </div>
         </div>` : ''}
-        <div class="ev-main-grid">
+        <div class="ev-main-grid${sideCard ? '' : ' ev-main-grid-full'}">
           <div class="ev-main-col">
             ${event.image ? `<img src="${escHTML(event.image)}" alt="${escHTML(event.title)}" class="ev-banner-img" />` : ''}
 
@@ -2328,16 +2321,13 @@ function generateEventPage(location, event, signupCount, options = {}) {
                 </div>
               </div>
               ${descriptionHtml ? `<div class="ev-description">${descriptionHtml}</div>` : ''}
-              <div class="ev-detail-chips">
-                ${event.signupsEnabled === false ? '<span class="ev-detail-chip">Info only</span>' : ''}
-              </div>
             </div>
 
             ${renderSections(event.sections)}
           </div>
-          <div class="ev-side-col">
+          ${sideCard ? `<div class="ev-side-col">
             ${sideCard}
-          </div>
+          </div>` : ''}
         </div>
       </div>
       <script>

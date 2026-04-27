@@ -23,7 +23,7 @@ function locationEventMeta(event) {
       ? { label: 'Applications Closed', tone: 'closed', cta: 'View Event' }
       : { label: 'Signups Closed', tone: 'closed', cta: 'View Details' };
   }
-  if (status.key === 'no-signups') return { label: 'Info Only', tone: 'info', cta: 'View Event' };
+  if (status.key === 'no-signups') return { label: '', tone: 'neutral', cta: 'View Event' };
   return { label: 'Event', tone: 'neutral', cta: 'View Event' };
 }
 
@@ -37,7 +37,7 @@ function renderUpcomingEvents(location, upcomingEvents) {
         ${event.image ? `<a href="${escHTML(href)}" class="loc-event-image-link"><img src="${escHTML(event.image)}" alt="${escHTML(event.title)}" class="loc-event-image" loading="lazy" /></a>` : ''}
         <div class="loc-event-body">
           <div class="loc-event-top">
-            <span class="loc-event-badge loc-event-badge-${escHTML(meta.tone)}">${escHTML(meta.label)}</span>
+            ${meta.label ? `<span class="loc-event-badge loc-event-badge-${escHTML(meta.tone)}">${escHTML(meta.label)}</span>` : ''}
             <span class="loc-event-date">${escHTML(formatEventDate(event.startDate))}</span>
           </div>
           <h3 class="loc-event-title"><a href="${escHTML(href)}">${escHTML(event.title)}</a></h3>

@@ -34,7 +34,7 @@ function eventCardMeta(event) {
       : { label: 'Signups Closed', tone: 'closed', cta: 'View Details' };
   }
   if (status.key === 'cancelled') return { label: 'Cancelled', tone: 'cancelled', cta: 'View Details' };
-  if (status.key === 'no-signups') return { label: 'Info Only', tone: 'info', cta: 'View Event' };
+  if (status.key === 'no-signups') return { label: '', tone: 'neutral', cta: 'View Event' };
   return { label: 'Event', tone: 'neutral', cta: 'View Event' };
 }
 
@@ -53,14 +53,13 @@ function renderEventCard(location, event) {
       ` : ''}
       <div class="evx-card-body">
         <div class="evx-card-top">
-          <span class="evx-badge evx-badge-${escHTML(meta.tone)}">${escHTML(meta.label)}</span>
+          ${meta.label ? `<span class="evx-badge evx-badge-${escHTML(meta.tone)}">${escHTML(meta.label)}</span>` : ''}
           <div class="evx-card-time">${escHTML(formatEventDate(event.startDate))} at ${escHTML(formatEventTime(event.startDate))}</div>
         </div>
         <h2 class="evx-card-title"><a href="${escHTML(publicPath)}">${escHTML(event.title)}</a></h2>
         ${blurb ? `<p class="evx-card-copy">${escHTML(blurb)}</p>` : ''}
         <div class="evx-card-meta">
           ${event.endDate ? `<span>Ends ${escHTML(formatEventTime(event.endDate))}</span>` : ''}
-          ${event.signupsEnabled === false ? '<span>No signup form</span>' : ''}
         </div>
         <div class="evx-card-actions">
           <a href="${escHTML(publicPath)}" class="evx-card-link">${escHTML(meta.cta)}</a>

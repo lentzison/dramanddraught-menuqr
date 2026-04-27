@@ -11,7 +11,7 @@ const FLASH_LABELS = {
 // Brand name is configurable via the BRAND_NAME env var so a future
 // rebrand or white-label deployment doesn't require code changes.
 const BRAND_NAME = process.env.BRAND_NAME || 'Dram & Draught';
-const BRAND_NAME_SHORT = process.env.BRAND_NAME_SHORT || 'D&D';
+const BRAND_NAME_SHORT = process.env.BRAND_NAME_SHORT || 'D&D QR Manager';
 
 function escFlash(value) {
   return String(value || '')
@@ -139,14 +139,6 @@ function adminLayout(title, content, user, options = {}) {
           margin-right: 4px;
           white-space: nowrap;
           text-decoration: none;
-        }
-        .admin-nav .brand:before {
-          content: "";
-          width: 30px;
-          height: 30px;
-          border-radius: 8px;
-          background: linear-gradient(135deg, var(--gold-strong), var(--copper));
-          box-shadow: 0 8px 22px rgba(214,173,75,0.18);
         }
         .admin-nav-links {
           display: flex;
@@ -762,7 +754,6 @@ function adminLayout(title, content, user, options = {}) {
         @media (max-width: 480px) {
           .admin-nav-inner { padding: 8px 10px; }
           .admin-nav .brand { font-size: 1rem; margin-right: 6px; }
-          .admin-nav .brand:before { width: 26px; height: 26px; }
           .admin-content { padding: 14px 10px; }
           .card { padding: 14px; }
           .hours-row { grid-template-columns: 1fr 1fr; }
@@ -775,7 +766,7 @@ function adminLayout(title, content, user, options = {}) {
       <a class="skip-link" href="#admin-main">Skip to admin content</a>
       <nav class="admin-nav" aria-label="Admin navigation">
         <div class="admin-nav-inner">
-          <a class="brand" href="/admin">${BRAND_NAME_SHORT} Admin</a>
+          <a class="brand" href="/admin">${BRAND_NAME_SHORT}</a>
           <div class="admin-nav-links">
             <a href="/admin"${pathname === '/admin' || pathname === '/admin/dashboard' ? ' class="active"' : ''}>Dashboard</a>
             ${isCompanyWide(user) ? `<a href="/admin/locations"${navClass('/admin/locations')}>Locations</a>` : ''}

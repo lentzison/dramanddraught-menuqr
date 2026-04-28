@@ -77,6 +77,11 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
   const buttons = [...quickLinks, ...dynamicLinks].filter((link, index, arr) =>
     arr.findIndex((entry) => entry.url === link.url && entry.label === link.label) === index
   );
+  const actionButtonClass = (link) => {
+    const label = String(link && link.label ? link.label : '').toLowerCase();
+    if (label.includes('special') || label.includes('draft')) return 'link-btn link-btn-primary';
+    return 'link-btn';
+  };
   const reviewEmail = String(location.email || 'cheers@dramanddraught.com').trim();
   const nearbyLocationCandidates = Array.isArray(allLocations)
     ? allLocations
@@ -267,10 +272,22 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
         }
         .rl-card p { position: relative; margin: 0.45rem 0; font-size: 1rem; }
         .rl-strong { color: var(--gold); font-weight: 800; }
-        .linktree {
+        .qr-actions {
           max-width: 760px;
           margin: 0 auto;
-          padding-top: 10px;
+          padding-top: 18px;
+          padding-bottom: 12px;
+        }
+        .qr-actions-kicker {
+          color: var(--gold);
+          font-size: 0.72rem;
+          font-weight: 800;
+          letter-spacing: 0.18em;
+          text-transform: uppercase;
+          text-align: center;
+          margin-bottom: 12px;
+        }
+        .linktree {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
           gap: 12px;
@@ -295,6 +312,10 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
           text-transform: uppercase;
           letter-spacing: 0.06em;
           line-height: 1.35;
+        }
+        .link-btn-primary {
+          min-height: 86px;
+          font-size: 0.96rem;
         }
         .link-btn:hover { transform: translateY(-2px) scale(1.01); filter: saturate(1.08); box-shadow: 0 12px 28px rgba(0,0,0,0.6); }
         .link-btn:focus-visible { outline: 2px solid #f8e7a8; outline-offset: 2px; }
@@ -445,9 +466,9 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
           display: flex;
           flex-direction: column;
         }
-        .loc-events { order: 1; }
+        .qr-actions { order: 1; }
+        .loc-events { order: 3; }
         .loc-menu-stack { order: 2; }
-        .linktree { order: 3; }
         .review-cta { order: 4; }
         .loc-events {
           max-width: 980px;
@@ -707,39 +728,78 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
         }
         @media (max-width: 720px) {
           .hero {
-            padding: 30px 16px 28px;
+            padding: 22px 14px 16px;
             border-radius: 0 0 24px 24px;
           }
           .hero-title {
-            width: min(90vw, 540px);
+            width: min(78vw, 430px);
+            margin-bottom: 10px;
           }
           .hero-subtitle {
-            letter-spacing: 0.18em;
+            font-size: 0.92rem;
+            letter-spacing: 0.16em;
+          }
+          .divider {
+            width: 112px;
+            margin: 10px auto 10px;
+          }
+          .status-line {
+            padding: 7px 10px;
+            font-size: 0.72rem;
+            letter-spacing: 0.06em;
+            line-height: 1.25;
+          }
+          .hero-details {
+            margin-top: 10px;
+          }
+          .badge {
+            padding: 7px 11px;
+            font-size: 0.62rem;
+            letter-spacing: 0.12em;
           }
           .container {
-            padding: 22px 2px 26px;
+            padding: 18px 10px 22px;
           }
           .rl-card {
             padding: 20px 18px 18px;
           }
+          .qr-actions {
+            order: 1;
+            padding-top: 14px;
+            padding-bottom: 10px;
+          }
+          .qr-actions-kicker {
+            text-align: left;
+            margin-bottom: 10px;
+            padding-left: 2px;
+          }
           .linktree {
-            grid-template-columns: 1fr;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
           }
           .link-btn {
-            min-height: 68px;
+            min-height: 64px;
+            padding: 13px 10px;
+            border-radius: 14px;
+            font-size: 0.78rem;
+            line-height: 1.25;
           }
-          .loc-events { order: 3; padding-top: 4px; padding-bottom: 8px; }
-          .loc-menu-stack { order: 1; }
-          .linktree { order: 2; }
+          .link-btn-primary {
+            grid-column: 1 / -1;
+            min-height: 76px;
+            font-size: 0.93rem;
+          }
+          .loc-menu-stack { order: 2; }
+          .loc-events { order: 3; padding-top: 6px; padding-bottom: 10px; }
           .loc-events-head {
             align-items: start;
-            margin-bottom: 8px;
+            margin-bottom: 10px;
             padding: 0 10px;
           }
           .loc-events-view-all {
-            min-height: 36px;
-            padding: 0 12px;
-            font-size: 0.74rem;
+            min-height: 44px;
+            padding: 0 15px;
+            font-size: 0.8rem;
           }
           .loc-events-grid {
             grid-template-columns: 1fr;
@@ -819,9 +879,12 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
           `).join('')}
         </div>
         `).join('')}</div>` : ''}
-        <div class="container linktree">
-          ${buttons.map((l, i) => `<a class="link-btn stagger" href="${l.url}"${l.url.startsWith('/') ? '' : ' target="_blank" rel="noopener noreferrer"'} style="animation-delay:${Math.min(i * 0.04, 0.2)}s;"><span>${l.label}</span></a>`).join('')}
-        </div>
+        <section class="qr-actions container" aria-label="Quick actions">
+          <div class="qr-actions-kicker">Start Here</div>
+          <div class="linktree">
+            ${buttons.map((l, i) => `<a class="${actionButtonClass(l)} stagger" href="${l.url}"${l.url.startsWith('/') ? '' : ' target="_blank" rel="noopener noreferrer"'} style="animation-delay:${Math.min(i * 0.04, 0.2)}s;"><span>${l.label}</span></a>`).join('')}
+          </div>
+        </section>
         <div class="review-cta">
         <h3>Rate your visit</h3>
         <p class="review-copy">

@@ -723,8 +723,8 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
             border-radius: 0 0 24px 24px;
           }
           .hero-title {
-            width: min(78vw, 430px);
-            margin-bottom: 10px;
+            width: min(64vw, 320px);
+            margin-bottom: 8px;
           }
           .hero-subtitle {
             font-size: 0.92rem;

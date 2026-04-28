@@ -441,6 +441,14 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
         .review-success {
           color: #86efac;
         }
+        .loc-content-flow {
+          display: flex;
+          flex-direction: column;
+        }
+        .loc-events { order: 1; }
+        .loc-menu-stack { order: 2; }
+        .linktree { order: 3; }
+        .review-cta { order: 4; }
         .loc-events {
           max-width: 980px;
           padding-top: 16px;
@@ -720,11 +728,59 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
           .link-btn {
             min-height: 68px;
           }
+          .loc-events { order: 3; padding-top: 4px; padding-bottom: 8px; }
+          .loc-menu-stack { order: 1; }
+          .linktree { order: 2; }
           .loc-events-head {
             align-items: start;
+            margin-bottom: 8px;
+            padding: 0 10px;
           }
-          .loc-event-image {
-            height: 160px;
+          .loc-events-view-all {
+            min-height: 36px;
+            padding: 0 12px;
+            font-size: 0.74rem;
+          }
+          .loc-events-grid {
+            grid-template-columns: 1fr;
+            gap: 8px;
+            padding: 0 10px;
+          }
+          .loc-event-card {
+            border-radius: 12px;
+            box-shadow: none;
+          }
+          .loc-event-card:nth-child(n+3) {
+            display: none;
+          }
+          .loc-event-image-link {
+            display: none;
+          }
+          .loc-event-body {
+            padding: 12px;
+          }
+          .loc-event-top {
+            margin-bottom: 5px;
+            gap: 6px;
+          }
+          .loc-event-badge {
+            min-height: 24px;
+            padding: 0 8px;
+            font-size: 0.62rem;
+          }
+          .loc-event-date {
+            font-size: 0.72rem;
+          }
+          .loc-event-title {
+            font-size: 1rem;
+            margin-bottom: 4px;
+          }
+          .loc-event-time {
+            font-size: 0.78rem;
+            margin-bottom: 0;
+          }
+          .loc-event-copy {
+            display: none;
           }
         }
       </style>
@@ -747,25 +803,26 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
           </div>
         </details>
       </div>
-      ${renderUpcomingEvents(location, upcomingEvents)}
-      ${menuCategories.length > 0 ? menuCategories.map(cat => `
-      <div class="menu-section">
-        <div class="menu-section-hdr">${escHTML(cat.name)}</div>
-        ${(cat.items || []).map(item => `
-        <div class="menu-item">
-          <div class="menu-item-top">
-            <span class="menu-item-name">${escHTML(item.name)}</span>
-            ${item.price ? `<span class="menu-item-price">$${Number(item.price).toFixed(0)}</span>` : ''}
+      <main class="loc-content-flow">
+        ${renderUpcomingEvents(location, upcomingEvents)}
+        ${menuCategories.length > 0 ? `<div class="loc-menu-stack">${menuCategories.map(cat => `
+        <div class="menu-section">
+          <div class="menu-section-hdr">${escHTML(cat.name)}</div>
+          ${(cat.items || []).map(item => `
+          <div class="menu-item">
+            <div class="menu-item-top">
+              <span class="menu-item-name">${escHTML(item.name)}</span>
+              ${item.price ? `<span class="menu-item-price">$${Number(item.price).toFixed(0)}</span>` : ''}
+            </div>
+            ${item.description ? `<div class="menu-item-desc">${escHTML(item.description)}</div>` : ''}
           </div>
-          ${item.description ? `<div class="menu-item-desc">${escHTML(item.description)}</div>` : ''}
+          `).join('')}
         </div>
-        `).join('')}
-      </div>
-      `).join('') : ''}
-      <div class="container linktree">
-        ${buttons.map((l, i) => `<a class="link-btn stagger" href="${l.url}"${l.url.startsWith('/') ? '' : ' target="_blank" rel="noopener noreferrer"'} style="animation-delay:${Math.min(i * 0.04, 0.2)}s;"><span>${l.label}</span></a>`).join('')}
-      </div>
-      <div class="review-cta">
+        `).join('')}</div>` : ''}
+        <div class="container linktree">
+          ${buttons.map((l, i) => `<a class="link-btn stagger" href="${l.url}"${l.url.startsWith('/') ? '' : ' target="_blank" rel="noopener noreferrer"'} style="animation-delay:${Math.min(i * 0.04, 0.2)}s;"><span>${l.label}</span></a>`).join('')}
+        </div>
+        <div class="review-cta">
         <h3>Rate your visit</h3>
         <p class="review-copy">
           Tap a star for a chance to win a <strong>$100 gift card</strong> (drawn monthly).
@@ -799,6 +856,7 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
         </form>
         <p id="review-hint" class="review-hint">Tap a star to share feedback.</p>
       </div>
+      </main>
       <script>
         (function() {
           const config = ${JSON.stringify(reviewConfig)};

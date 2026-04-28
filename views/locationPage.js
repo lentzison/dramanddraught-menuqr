@@ -278,15 +278,6 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
           padding-top: 18px;
           padding-bottom: 12px;
         }
-        .qr-actions-kicker {
-          color: var(--gold);
-          font-size: 0.72rem;
-          font-weight: 800;
-          letter-spacing: 0.18em;
-          text-transform: uppercase;
-          text-align: center;
-          margin-bottom: 12px;
-        }
         .linktree {
           display: grid;
           grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -768,11 +759,6 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
             padding-top: 14px;
             padding-bottom: 10px;
           }
-          .qr-actions-kicker {
-            text-align: left;
-            margin-bottom: 10px;
-            padding-left: 2px;
-          }
           .linktree {
             grid-template-columns: 1fr 1fr;
             gap: 10px;
@@ -880,7 +866,6 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
         </div>
         `).join('')}</div>` : ''}
         <section class="qr-actions container" aria-label="Quick actions">
-          <div class="qr-actions-kicker">Start Here</div>
           <div class="linktree">
             ${buttons.map((l, i) => `<a class="${actionButtonClass(l)} stagger" href="${l.url}"${l.url.startsWith('/') ? '' : ' target="_blank" rel="noopener noreferrer"'} style="animation-delay:${Math.min(i * 0.04, 0.2)}s;"><span>${l.label}</span></a>`).join('')}
           </div>

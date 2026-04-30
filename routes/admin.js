@@ -172,7 +172,7 @@ async function handleAdmin(req, res, pathname, prisma) {
         return true;
       }
       createSession(res, result.user);
-      redirect(res, isCompanyWide(result.user) ? '/admin/locations' : '/admin');
+      redirect(res, '/admin');
       return true;
     }
     sendHTML(res, 200, loginPage());

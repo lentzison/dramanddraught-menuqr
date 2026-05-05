@@ -241,7 +241,8 @@ async function getSpiritFlight(locationSlug) {
         NULLIF(TRIM(p.description), '') AS "pourDescription",
         COALESCE(NULLIF(TRIM(p."tastingNotes"), ''), NULLIF(TRIM(sd."tastingNotes"), ''), NULLIF(TRIM(sd.description), '')) AS "tastingNotes",
         COALESCE(p."pourSizeOz", 1) AS "pourSizeOz",
-        slp."oneOzPrice"
+        slp."oneOzPrice",
+        COALESCE(sd."is86ed", false) AS "is86ed"
       FROM "SpiritFlight" f
       JOIN "SpiritFlightPour" p ON p."flightId" = f.id
       JOIN "SpiritLocationPrice" slp ON slp."locationProductId" = p."locationProductId"
@@ -312,6 +313,7 @@ async function getSpiritFlight(locationSlug) {
           tastingNotes: row.tastingNotes || null,
           guestNotes: enhancedPours[index]?.guestNotes || null,
           displayOrder: row.displayOrder,
+          is86ed: row.is86ed === true,
         })),
       });
     }
@@ -700,7 +702,8 @@ async function getFeaturedFlights(locationSlug) {
         NULLIF(TRIM(p.description), '') AS "pourDescription",
         COALESCE(NULLIF(TRIM(p."tastingNotes"), ''), NULLIF(TRIM(sd."tastingNotes"), ''), NULLIF(TRIM(sd.description), '')) AS "tastingNotes",
         COALESCE(p."pourSizeOz", 1) AS "pourSizeOz",
-        slp."oneOzPrice"
+        slp."oneOzPrice",
+        COALESCE(sd."is86ed", false) AS "is86ed"
       FROM "SpiritFlight" f
       JOIN "SpiritFlightPour" p ON p."flightId" = f.id
       JOIN "SpiritLocationPrice" slp ON slp."locationProductId" = p."locationProductId"
@@ -784,6 +787,7 @@ async function getFeaturedFlights(locationSlug) {
           tastingNotes: row.tastingNotes || null,
           guestNotes: enhancedPours[index]?.guestNotes || null,
           displayOrder: row.pourDisplayOrder,
+          is86ed: row.is86ed === true,
         })),
       });
     }

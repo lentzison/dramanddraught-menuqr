@@ -147,6 +147,23 @@ function generateFlightsPage(location, flights) {
         .pour .bottle-note-item { font-size: 0.76rem; gap: 7px; }
         .pour .bottle-note-label { min-width: 54px; }
         .pour-size { color: #8d9299; font-size: 0.75rem; margin-top: 2px; }
+        .pour-subbed .pour-name { text-decoration: line-through; opacity: 0.7; }
+        .pour-subbed-badge {
+          display: inline-block;
+          margin-left: 6px;
+          padding: 1px 6px;
+          border-radius: 4px;
+          background: rgba(255, 200, 90, 0.18);
+          color: var(--gold);
+          font-size: 0.65rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          vertical-align: middle;
+          text-decoration: none;
+        }
+        .pour-subbed-note { color: var(--gold); font-size: 0.78rem; margin-top: 4px; font-style: italic; }
+        .pour-subbed-inline { text-decoration: line-through; opacity: 0.75; }
         .flight-detail { display: none; }
         .flight-detail.flight-open { display: block; }
         .flight-expand-btn {
@@ -213,7 +230,11 @@ function generateFlightsPage(location, flights) {
       <div class="container">
         ${flights.length > 0 ? flights.map((flight, fi) => {
           const sortedPours = (flight.pours || []).sort((a, b) => a.displayOrder - b.displayOrder);
-          const pourNames = sortedPours.map((p) => escHTML(p.spiritName)).join(' &bull; ');
+          const pourNames = sortedPours
+            .map((p) => p.is86ed
+              ? `<span class="pour-subbed-inline">${escHTML(p.spiritName)} &mdash; subbed</span>`
+              : escHTML(p.spiritName))
+            .join(' &bull; ');
           const detailId = `flight-detail-${fi}`;
           return `
           <div class="section">
@@ -230,10 +251,11 @@ function generateFlightsPage(location, flights) {
               <div class="flight-detail" id="${detailId}">
                 <div class="pours">
                   ${sortedPours.map((p, i) => `
-                    <div class="pour">
+                    <div class="pour${p.is86ed ? ' pour-subbed' : ''}">
                       <div class="pour-number">${i + 1}</div>
                       <div class="pour-info">
-                        <div class="pour-name">${escHTML(p.spiritName)}</div>
+                        <div class="pour-name">${escHTML(p.spiritName)}${p.is86ed ? ' <span class="pour-subbed-badge">Subbed out</span>' : ''}</div>
+                        ${p.is86ed ? '<div class="pour-subbed-note">Ask your bartender what we&rsquo;re pouring in its place.</div>' : ''}
                         ${p.description ? `<div class="pour-origin">${escHTML(p.description)}</div>` : ''}
                         ${renderTastingNotes(p)}
                         ${p.pourSize ? `<div class="pour-size">${escHTML(p.pourSize)}</div>` : ''}

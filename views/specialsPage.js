@@ -281,15 +281,16 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
               ${discountNote}
             </div>
           ` : ''}
-          <div class="flight-pour-names">${(f.pours || []).sort((a,b) => a.displayOrder - b.displayOrder).map((p) => escHTML(p.spiritName)).join(' &bull; ')}</div>
+          <div class="flight-pour-names">${(f.pours || []).sort((a,b) => a.displayOrder - b.displayOrder).map((p) => p.is86ed ? `<span class="pour-subbed-inline">${escHTML(p.spiritName)} &mdash; subbed</span>` : escHTML(p.spiritName)).join(' &bull; ')}</div>
           <button class="flight-expand-btn" onclick="var el=document.getElementById('${noteBlockId}');var open=el.classList.toggle('flight-notes-open');this.textContent=open?'Hide tasting notes':'See tasting notes';">See tasting notes</button>
           <div class="flight-notes-detail" id="${noteBlockId}">
             <div class="pours">
               ${(f.pours || []).sort((a,b) => a.displayOrder - b.displayOrder).map((p, i) => `
-                <div class="pour">
+                <div class="pour${p.is86ed ? ' pour-subbed' : ''}">
                   <div class="pour-number">${i + 1}</div>
                   <div class="pour-info">
-                    <div class="pour-name">${escHTML(p.spiritName)}</div>
+                    <div class="pour-name">${escHTML(p.spiritName)}${p.is86ed ? ' <span class="pour-subbed-badge">Subbed out</span>' : ''}</div>
+                    ${p.is86ed ? '<div class="pour-subbed-note">Ask your bartender what we&rsquo;re pouring in its place.</div>' : ''}
                     ${p.description ? `<div class="pour-origin">${escHTML(p.description)}</div>` : ''}
                     ${p.guestNotes || p.tastingNotes
                       ? renderBottleTastingNotes({
@@ -866,6 +867,23 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         .pour-info { flex: 1; min-width: 0; }
         .pour-name { font-weight: 700; color: var(--cream); }
         .pour-origin { color: var(--gold); font-size: 0.82rem; }
+        .pour-subbed .pour-name { text-decoration: line-through; opacity: 0.7; }
+        .pour-subbed-badge {
+          display: inline-block;
+          margin-left: 6px;
+          padding: 1px 6px;
+          border-radius: 4px;
+          background: rgba(255, 200, 90, 0.18);
+          color: var(--gold);
+          font-size: 0.65rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+          vertical-align: middle;
+          text-decoration: none;
+        }
+        .pour-subbed-note { color: var(--gold); font-size: 0.78rem; margin-top: 4px; font-style: italic; }
+        .pour-subbed-inline { text-decoration: line-through; opacity: 0.75; }
         .pour .bottle-note-block {
           margin-top: 8px;
           padding-top: 8px;

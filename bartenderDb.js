@@ -482,6 +482,7 @@ async function getSpiritCatalog(locationSlug, filters = {}) {
       'sp."isActive" = true',
       'slp."isActive" = true',
       'slp."locationExternalId" = $1',
+      'COALESCE(sd."is86ed", false) = false',
     ];
     const params = [extLocId];
     let paramIdx = 2;
@@ -571,6 +572,7 @@ async function getSpiritList(locationSlug) {
       WHERE slp."locationExternalId" = $1
         AND sp."isActive" = true
         AND slp."isActive" = true
+        AND COALESCE(sd."is86ed", false) = false
       ORDER BY sp."primaryCategory" ASC, sp.name ASC
     `, [extLocId]);
 
@@ -615,6 +617,7 @@ async function getHalfPriceSpirits(locationSlug, config) {
       'sp."isActive" = true',
       'slp."isActive" = true',
       'slp."locationExternalId" = $1',
+      'COALESCE(sd."is86ed", false) = false',
     ];
     const params = [extLocId];
     let paramIdx = 2;

@@ -121,7 +121,7 @@ const SLUG_TO_LOCATION_NAME = {
   'greensboro': 'Greensboro',
   'raleigh': 'Raleigh',
   'durham': 'Durham',
-  'winston-salem': 'Winston-Salem',
+  'winston-salem': 'Winston',
   'cary': 'Cary',
   'charlotte': 'Charlotte',
   'wilmington': 'Wilmington',

@@ -240,10 +240,13 @@ function cloneSection(section) {
 }
 
 function parseCustomQuestions(body) {
-  // Expect arrays: custom_label[], custom_type[], custom_required[]
+  // Expect arrays: custom_label[], custom_type[], custom_required[], custom_id[].
+  // custom_id is preserved from existing questions so saved EventSignup
+  // customAnswers (keyed by question id) keep matching after edits. New rows
+  // submit an empty custom_id and we generate one.
   const labels = Array.isArray(body['custom_label']) ? body['custom_label'] : (body['custom_label'] ? [body['custom_label']] : []);
   const types = Array.isArray(body['custom_type']) ? body['custom_type'] : (body['custom_type'] ? [body['custom_type']] : []);
-  // Required is tricky with checkboxes — use individual indexed names
+  const ids = Array.isArray(body['custom_id']) ? body['custom_id'] : (body['custom_id'] != null ? [body['custom_id']] : []);
   const questions = [];
   for (let i = 0; i < labels.length; i++) {
     const label = normalizeText(labels[i]);
@@ -251,8 +254,9 @@ function parseCustomQuestions(body) {
     const type = (types[i] || 'text').toLowerCase();
     const validType = ['text', 'textarea', 'number', 'yesno', 'image'].includes(type) ? type : 'text';
     const required = body[`custom_required_${i}`] === 'on';
+    const existingId = String(ids[i] || '').trim();
     questions.push({
-      id: 'q_' + i + '_' + Math.random().toString(36).slice(2, 8),
+      id: existingId || ('q_' + i + '_' + Math.random().toString(36).slice(2, 8)),
       label,
       type: validType,
       required,

@@ -704,6 +704,7 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
   const customQuestions = (!isNew && Array.isArray(event.customQuestions)) ? event.customQuestions : [];
   const customQuestionRows = customQuestions.map((q, i) => `
     <div class="cq-row" data-cq-idx="${i}">
+      <input type="hidden" name="custom_id" value="${escHTML(q.id || '')}" />
       <div class="cq-row-grid">
         <div>
           <label>Question</label>
@@ -1275,6 +1276,7 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
           row.className = 'cq-row';
           row.setAttribute('data-cq-idx', i);
           row.innerHTML =
+            '<input type="hidden" name="custom_id" value="" />' +
             '<div class="cq-row-grid">' +
               '<div><label>Question</label><input type="text" name="custom_label" placeholder="e.g. T-shirt size" /></div>' +
               '<div><label>Type</label><select name="custom_type">' +
@@ -1450,19 +1452,30 @@ function eventSignupsView(event, signups, user, flashMsg) {
 
   const rows = signups.map(s => {
     const answers = s.customAnswers || {};
+    // Fallback lookup by position. Question IDs follow the pattern
+    // q_<index>_<random>; saved answer IDs may be stale (predating an event
+    // edit that regenerated the random suffixes), but the index segment still
+    // identifies the slot so we can rescue old signups for display.
+    const answersByIndex = {};
+    for (const [key, value] of Object.entries(answers)) {
+      const m = String(key).match(/^q_(\d+)_/);
+      if (m) answersByIndex[Number(m[1])] = value;
+    }
+    const lookup = (q, i) => (answers[q.id] !== undefined ? answers[q.id] : answersByIndex[i]);
     const searchText = [
       s.name || '',
       s.email || '',
       s.phone || '',
       s.notes || '',
       s.status || '',
-      ...customDefs.map(q => {
+      ...customDefs.map((q, i) => {
         if (q.type === 'image') return '';
-        return answers[q.id] == null ? '' : answers[q.id];
+        const v = lookup(q, i);
+        return v == null ? '' : v;
       }),
     ].join(' ').toLowerCase();
-    const customFields = customDefs.map(q => {
-      const raw = answers[q.id];
+    const customFields = customDefs.map((q, i) => {
+      const raw = lookup(q, i);
       if (raw == null || raw === '') {
         return `<div class="evs-field"><span>${escHTML(q.label)}</span><strong class="evs-muted">—</strong></div>`;
       }

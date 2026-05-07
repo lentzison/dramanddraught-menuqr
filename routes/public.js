@@ -1726,6 +1726,10 @@ async function handlePublic(req, res, pathname, prisma) {
           if (Array.isArray(v)) {
             // Don't dump base64 blobs in email bodies — summarize.
             bodyLines.push(`${q.label}: ${v.length} image${v.length === 1 ? '' : 's'} attached (view in admin)`);
+          } else if (q.type === 'image' || /^(data:image\/|https?:\/\/)/i.test(String(v))) {
+            // Single-image question: same summary treatment so we don't paste a
+            // multi-megabyte data URL into the email body.
+            bodyLines.push(`${q.label}: 1 image attached (view in admin)`);
           } else {
             bodyLines.push(`${q.label}: ${v}`);
           }

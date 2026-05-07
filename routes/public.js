@@ -1731,7 +1731,7 @@ async function handlePublic(req, res, pathname, prisma) {
           }
         }
         if (isVendorEvent) {
-          bodyLines.push('', 'Review & approve: https://menuqr.dramanddraught.com/admin/events/' + event.id + '/signups');
+          bodyLines.push('', 'Review & approve: https://menuqr.apps.dramanddraught.com/admin/events/' + event.id + '/signups');
         } else {
           bodyLines.push('', `Total signups: ${signupCount + 1}${event.capacity ? ' / ' + event.capacity : ''}`);
         }

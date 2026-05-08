@@ -39,6 +39,10 @@ model Location {
   // Status
   isActive    Boolean  @default(true)
 
+  // Hiring flag — controls the public "We're Hiring" badge on /{slug} and
+  // whether /{slug}/apply accepts new applications. Default off.
+  isHiring    Boolean  @default(false)
+
   // Timestamps
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -51,6 +55,8 @@ model Location {
   featuredBottles  FeaturedBottle[]
   guestFeedbacks   GuestFeedback[]
   visitorSessions  VisitorSession[]
+  jobApplications  JobApplication[]
+  interviews       Interview[]
 
   @@index([slug])
 }
@@ -297,6 +303,98 @@ model EventSignup {
   @@index([eventId, status])
   @@index([visitorId])
   @@index([source])
+}
+
+model JobApplication {
+  id              String   @id @default(uuid())
+  locationId      String
+
+  // Applicant identity
+  name            String
+  email           String
+  phone           String?
+
+  // Position + eligibility
+  position        String   // "Bartender" | "Barback" | "Server" | "Host" | "Floor Manager" | "Other"
+  positionOther   String?  // free text when position == "Other"
+  age21           Boolean  @default(false)
+  earliestStart   DateTime?
+
+  // Availability stored as JSON: { mon: ["day","evening","late"], tue: [...], ... }
+  availability    Json?
+
+  // Experience + narrative
+  yearsExperience Int?
+  priorEmployers  String?
+  certifications  String?  // TIPS, ServSafe, ABC, etc. (free text)
+  spiritKnowledge String?
+  whyDD           String?
+  referredBy      String?
+
+  // Resume: base64 data URL (PDF/DOC/DOCX/JPG/PNG, capped 5MB) + filename for the
+  // download link in the admin view. We never include this in notification emails.
+  resumeData      String?  @db.Text
+  resumeFileName  String?
+  resumeMimeType  String?
+
+  // Pipeline
+  status          String   @default("new")
+                  // "new" | "reviewing" | "interview_scheduled" | "interviewed"
+                  // | "offer_extended" | "hired" | "rejected" | "withdrawn"
+  decisionBy      String?
+  decisionAt      DateTime?
+  decisionNote    String?
+  internalNotes   String?  // GM-only
+
+  // Tracking
+  ipAddress       String?
+  visitorId       String?
+  sessionId       String?
+  source          String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  location   Location    @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  interviews Interview[]
+
+  @@index([locationId, status])
+  @@index([locationId, createdAt])
+  @@index([email])
+  @@index([visitorId])
+}
+
+model Interview {
+  id                  String   @id @default(uuid())
+  applicationId       String
+  locationId          String
+
+  scheduledAt         DateTime
+  durationMinutes     Int      @default(30)
+  type                String   @default("in_person") // "in_person" | "phone" | "video"
+  locationDetail      String?  // address, phone number, or meeting URL
+  interviewerEmail    String?
+  candidateNote       String?  // shown to applicant in confirmation email
+  internalNotes       String?
+
+  status              String   @default("scheduled")
+                      // "scheduled" | "completed" | "cancelled" | "no_show"
+  cancelledAt         DateTime?
+  cancellationReason  String?
+
+  // Reminder bookkeeping (separate flags so 24h fires before 1h)
+  reminderSent24h     Boolean  @default(false)
+  reminderSent1h      Boolean  @default(false)
+  confirmationSentAt  DateTime?
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  application JobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  location    Location       @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
+  @@index([scheduledAt, status])
+  @@index([locationId, status, scheduledAt])
 }
 
 model BottleNotesCache {

@@ -212,6 +212,29 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
           user-select: none;
           transition: transform 0.18s ease, border-color 0.18s ease;
         }
+        .hiring-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          margin: 10px auto 0;
+          padding: 6px 14px;
+          border-radius: 999px;
+          border: 1px solid rgba(212, 175, 55, 0.55);
+          color: var(--gold);
+          background: rgba(212, 175, 55, 0.08);
+          font-size: 0.72rem;
+          font-weight: 700;
+          letter-spacing: 0.14em;
+          text-transform: uppercase;
+          text-decoration: none;
+          transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+        }
+        .hiring-pill:hover {
+          transform: translateY(-1px);
+          background: rgba(212, 175, 55, 0.16);
+          border-color: rgba(212, 175, 55, 0.85);
+        }
+        .hiring-pill .hiring-arrow { font-size: 0.85rem; line-height: 1; }
         .badge:hover {
           transform: translateY(-1px);
           border-color: rgba(255, 255, 255, 0.22);
@@ -841,6 +864,11 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
           ${openState.status}${openState.todayHours ? ` · ${openState.todayHours}` : ''}
         </div>
         `}
+        ${location.isHiring ? `
+        <div>
+          <a class="hiring-pill" href="/${escHTML(location.slug)}/apply">We&rsquo;re Hiring <span class="hiring-arrow">&rarr;</span></a>
+        </div>
+        ` : ''}
         <details class="hero-details">
           <summary class="badge">REGISTERED LUBRICATION</summary>
           <div class="rl-card">

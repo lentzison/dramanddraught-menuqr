@@ -199,6 +199,11 @@ function locationEditor(location, user, flashMsg) {
             <input type="checkbox" name="isActive" ${loc.isActive ? 'checked' : ''} style="width:auto" />
             <span><strong style="display:block;color:var(--text)">Active</strong><span class="field-help" style="display:block;margin:2px 0 0">Show this location on public QR pages and admin workflows.</span></span>
           </label>
+
+          <label class="checkbox-card" style="margin-top:12px">
+            <input type="checkbox" name="isHiring" ${loc.isHiring ? 'checked' : ''} style="width:auto" />
+            <span><strong style="display:block;color:var(--text)">Currently hiring</strong><span class="field-help" style="display:block;margin:2px 0 0">Shows a "We're Hiring" badge on the public location page and accepts applications at /${escHTML(loc.slug || '')}/apply.</span></span>
+          </label>
         </div>
       </section>
 

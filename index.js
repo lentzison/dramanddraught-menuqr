@@ -10,6 +10,8 @@ const { handleAdmin } = require('./routes/admin');
 const { handleAdminSpecials } = require('./routes/adminSpecials');
 const { handleAdminMenu } = require('./routes/adminMenu');
 const { handleAdminEvents } = require('./routes/adminEvents');
+const { handleAdminApplicants } = require('./routes/adminApplicants');
+const { scheduleInterviewReminders } = require('./interviewReminders');
 const { generateNotFoundPage } = require('./views/notFoundPage');
 
 const PORT = parseInt(process.env.PORT || '80', 10);
@@ -45,6 +47,11 @@ const handler = async (req, res) => {
     // Admin events routes: /admin/events, /admin/events/new, /admin/events/:id, /admin/events/:id/signups
     if (pathname.startsWith('/admin/events')) {
       if (await handleAdminEvents(req, res, pathname, prisma)) return;
+    }
+
+    // Admin applicants routes: /admin/applicants, /admin/applicants/:id, status changes, interviews
+    if (pathname.startsWith('/admin/applicants')) {
+      if (await handleAdminApplicants(req, res, pathname, prisma)) return;
     }
 
     // Admin routes: /admin/login, /admin/logout, /admin, /admin/seed, /admin/location/*
@@ -204,4 +211,5 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`Dram & Draught server running on port ${PORT}`);
   console.log('Ready to serve location pages!');
   scheduleGiftCardDrawing();
+  scheduleInterviewReminders(prisma);
 });

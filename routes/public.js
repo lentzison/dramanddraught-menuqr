@@ -40,6 +40,7 @@ const { generateMenuPage } = require('../views/menuPage');
 const { generateSpiritsPage } = require('../views/spiritsPage');
 const { generateEventPage, generateEventConfirmationPage, generateEventTermsPage, eventStatus } = require('../views/eventPage');
 const { generateEventsIndexPage } = require('../views/eventsIndexPage');
+const { generateApplyPage, generateApplyClosedPage, generateApplySuccessPage, POSITIONS, DAYS, SHIFTS } = require('../views/applyPage');
 const { generateNotFoundPage } = require('../views/notFoundPage');
 const {
   trackPageView,
@@ -1193,6 +1194,242 @@ async function handleSpirits(req, res, prisma, locationSlug) {
   return true;
 }
 
+const APPLY_POSITIONS_SET = new Set(['Bartender', 'Barback', 'Server', 'Host', 'Floor Manager', 'Other']);
+const APPLY_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+const APPLY_SHIFTS = ['day', 'evening', 'late'];
+const APPLY_RESUME_MAX_BYTES = 5 * 1024 * 1024;
+const APPLY_RESUME_ALLOWED_MIMES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'image/jpeg',
+  'image/png',
+]);
+
+function trimField(v, max) {
+  return String(v == null ? '' : v).trim().slice(0, max);
+}
+
+function parseAvailability(body) {
+  const out = {};
+  for (const day of APPLY_DAYS) {
+    const raw = body[`avail_${day}`];
+    const arr = Array.isArray(raw) ? raw : (raw ? [raw] : []);
+    const filtered = arr.map((v) => String(v)).filter((v) => APPLY_SHIFTS.includes(v));
+    if (filtered.length) out[day] = filtered;
+  }
+  return out;
+}
+
+function parseResume(body) {
+  const data = String(body.resume_data || '').trim();
+  if (!data) return null;
+  // Accept "data:<mime>;base64,<payload>" only.
+  const m = data.match(/^data:([^;]+);base64,([A-Za-z0-9+/=]+)$/);
+  if (!m) return { error: 'Resume could not be read. Please re-attach the file.' };
+  const mime = m[1].toLowerCase();
+  if (!APPLY_RESUME_ALLOWED_MIMES.has(mime)) {
+    return { error: 'Resume must be a PDF, Word document, or image (JPG/PNG).' };
+  }
+  // Base64 inflates ~33%; data URL length includes the prefix.
+  if (data.length > APPLY_RESUME_MAX_BYTES * 1.4) {
+    return { error: 'Resume is over 5 MB.' };
+  }
+  return {
+    data,
+    mime,
+    fileName: trimField(body.resume_filename, 200) || 'resume',
+  };
+}
+
+async function handleApply(req, res, prisma, locationSlug) {
+  const locs = await getLocations(prisma);
+  const location = locs.find((l) => l.slug === locationSlug);
+  if (!location || !prisma) {
+    await send404(req, res, prisma);
+    return true;
+  }
+
+  const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/apply`, getQueryString(req));
+
+  if (req.method !== 'POST') {
+    if (!location.isHiring) {
+      sendHTML(res, 200, injectTracking(generateApplyClosedPage(location), sid));
+      return true;
+    }
+    sendHTML(res, 200, injectTracking(generateApplyPage(location), sid));
+    return true;
+  }
+
+  // Submission. Even if hiring is currently off we'll redirect them to the
+  // closed page rather than silently store an application.
+  if (!location.isHiring) {
+    sendHTML(res, 200, injectTracking(generateApplyClosedPage(location), sid));
+    return true;
+  }
+
+  let body;
+  try {
+    body = await parseBody(req, { maxBytes: 10 * 1024 * 1024 });
+  } catch (err) {
+    sendHTML(res, 400, injectTracking(generateApplyPage(location, {
+      errorMessage: 'Submission was too large. Please use a smaller resume file (max 5 MB).',
+    }), sid));
+    return true;
+  }
+
+  const name = trimField(body.name, 200);
+  const email = trimField(body.email, 200).toLowerCase();
+  const phone = trimField(body.phone, 50);
+  const position = trimField(body.position, 60);
+  const positionOther = position === 'Other' ? trimField(body.positionOther, 100) : null;
+  const age21Raw = trimField(body.age21, 10).toLowerCase();
+  const age21 = age21Raw === 'yes';
+  const earliestStartRaw = trimField(body.earliestStart, 20);
+  const yearsRaw = trimField(body.yearsExperience, 10);
+  const yearsExperience = /^\d{1,2}$/.test(yearsRaw) ? Math.min(parseInt(yearsRaw, 10), 60) : null;
+  const priorEmployers = trimField(body.priorEmployers, 4000);
+  const certifications = trimField(body.certifications, 500);
+  const spiritKnowledge = trimField(body.spiritKnowledge, 4000);
+  const whyDD = trimField(body.whyDD, 4000);
+  const referredBy = trimField(body.referredBy, 200);
+  const availability = parseAvailability(body);
+
+  const errors = [];
+  if (!name) errors.push('Name is required.');
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.push('A valid email is required.');
+  if (!phone) errors.push('Phone is required.');
+  if (!position || !APPLY_POSITIONS_SET.has(position)) errors.push('Please select a position.');
+  if (position === 'Other' && !positionOther) errors.push('Please tell us which "Other" role.');
+  if (!age21Raw) errors.push('Please tell us if you are 21 or older.');
+
+  let earliestStart = null;
+  if (earliestStartRaw) {
+    const d = new Date(earliestStartRaw + 'T00:00:00');
+    if (!Number.isNaN(d.valueOf())) earliestStart = d;
+  }
+
+  const resumeParsed = parseResume(body);
+  if (resumeParsed && resumeParsed.error) errors.push(resumeParsed.error);
+
+  if (errors.length) {
+    sendHTML(res, 400, injectTracking(generateApplyPage(location, {
+      errorMessage: errors.join(' '),
+      prev: {
+        name, email, phone, position, positionOther,
+        age21: age21Raw, earliestStart: earliestStartRaw,
+        yearsExperience: yearsRaw, priorEmployers, certifications,
+        spiritKnowledge, whyDD, referredBy, availability,
+      },
+    }), sid));
+    return true;
+  }
+
+  const fwd = req.headers['x-forwarded-for'];
+  const ip = fwd ? String(fwd).split(',')[0].trim() : (req.socket?.remoteAddress || null);
+  const visitorId = getVisitorId(req);
+  const currentSession = visitorId && prisma?.visitorSession
+    ? await prisma.visitorSession.findFirst({ where: { visitorId }, orderBy: { updatedAt: 'desc' } }).catch(() => null)
+    : null;
+
+  let application;
+  try {
+    application = await prisma.jobApplication.create({
+      data: {
+        locationId: location.id,
+        name,
+        email,
+        phone: phone || null,
+        position,
+        positionOther: positionOther || null,
+        age21,
+        earliestStart,
+        availability: Object.keys(availability).length ? availability : null,
+        yearsExperience,
+        priorEmployers: priorEmployers || null,
+        certifications: certifications || null,
+        spiritKnowledge: spiritKnowledge || null,
+        whyDD: whyDD || null,
+        referredBy: referredBy || null,
+        resumeData: resumeParsed && !resumeParsed.error ? resumeParsed.data : null,
+        resumeFileName: resumeParsed && !resumeParsed.error ? resumeParsed.fileName : null,
+        resumeMimeType: resumeParsed && !resumeParsed.error ? resumeParsed.mime : null,
+        ipAddress: ip,
+        visitorId: visitorId || null,
+        sessionId: currentSession?.id || null,
+        source: currentSession?.source || null,
+      },
+    });
+  } catch (err) {
+    console.error('[apply] create failed:', err.message);
+    sendHTML(res, 500, injectTracking(generateApplyPage(location, {
+      errorMessage: 'Something went wrong saving your application. Please try again.',
+    }), sid));
+    return true;
+  }
+
+  // Fire-and-forget notifications.
+  notifyApplicationSubmitted(location, application).catch((err) => console.warn('[apply] notify failed:', err.message));
+
+  sendHTML(res, 200, injectTracking(generateApplySuccessPage(location, application), sid));
+  return true;
+}
+
+async function notifyApplicationSubmitted(location, application) {
+  // Email applicant a confirmation.
+  const applicantBody = [
+    `Hi ${application.name.split(' ')[0] || 'there'},`,
+    '',
+    `Thanks for applying to Dram & Draught – ${location.name}. We've received your application for the ${application.position}${application.positionOther ? ` (${application.positionOther})` : ''} role and our team will be in touch.`,
+    '',
+    `Reference: ${application.id}`,
+    '',
+    'Cheers,',
+    'Dram & Draught',
+  ].join('\n');
+  const applicantEmail = application.email
+    ? sendEmailViaGoogle({
+        to: application.email,
+        subject: `We received your application — Dram & Draught ${location.name}`,
+        body: applicantBody,
+      }).catch((err) => console.warn('[apply] applicant email failed:', err.message))
+    : Promise.resolve();
+
+  // Email GMs / HR for this location so it lands in someone's inbox.
+  const gmEmails = await getBarSupportEmailsForLocation(location.slug).catch(() => []);
+  const recipients = Array.from(new Set(gmEmails.filter(Boolean)));
+  let teamEmail = Promise.resolve();
+  if (recipients.length) {
+    const adminUrl = `https://menuqr.apps.dramanddraught.com/admin/applicants/${application.id}`;
+    const lines = [
+      `New application at ${location.name}`,
+      `Position: ${application.position}${application.positionOther ? ` (${application.positionOther})` : ''}`,
+      '',
+      `Name: ${application.name}`,
+      `Email: ${application.email}`,
+      application.phone ? `Phone: ${application.phone}` : null,
+      application.referredBy ? `Referred by: ${application.referredBy}` : null,
+      application.age21 ? '21+: yes' : '21+: no',
+      application.earliestStart ? `Earliest start: ${new Date(application.earliestStart).toISOString().slice(0, 10)}` : null,
+      application.yearsExperience != null ? `Years experience: ${application.yearsExperience}` : null,
+      application.certifications ? `Certifications: ${application.certifications}` : null,
+      application.priorEmployers ? `Prior employers:\n${application.priorEmployers}` : null,
+      application.spiritKnowledge ? `Spirit knowledge:\n${application.spiritKnowledge}` : null,
+      application.whyDD ? `Why D&D:\n${application.whyDD}` : null,
+      application.resumeFileName ? `Resume attached: ${application.resumeFileName} (view in admin)` : 'No resume attached',
+      '',
+      `Review: ${adminUrl}`,
+    ].filter(Boolean);
+    teamEmail = sendEmailViaGoogle({
+      to: recipients,
+      subject: `New application: ${application.name} — ${location.name}`,
+      body: lines.join('\n'),
+    }).catch((err) => console.warn('[apply] team email failed:', err.message));
+  }
+
+  await Promise.all([applicantEmail, teamEmail]);
+}
+
 const LUBRICATION_CUP_RECIPIENTS = [
   'jax.Daugherty@rndc-usa.com',
   'anna@dramanddraught.com',
@@ -1494,6 +1731,12 @@ async function handlePublic(req, res, pathname, prisma) {
   if (spiritsMatch) {
     const slug = spiritsMatch[1];
     return handleSpirits(req, res, prisma, slug);
+  }
+
+  // Employment application page: GET shows form, POST submits.
+  const applyMatch = pathname.match(/^\/([a-z0-9-]+)\/apply$/);
+  if (applyMatch) {
+    return handleApply(req, res, prisma, applyMatch[1]);
   }
 
   // Flights page: /{slug}/flights

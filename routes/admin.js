@@ -323,6 +323,7 @@ async function handleAdmin(req, res, pathname, prisma) {
           hours,
           links,
           isActive: body.isActive === 'on',
+          isHiring: body.isHiring === 'on',
         }
       });
       redirect(res, `/admin/locations/${slug}?msg=saved`);

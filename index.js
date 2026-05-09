@@ -11,6 +11,7 @@ const { handleAdminSpecials } = require('./routes/adminSpecials');
 const { handleAdminMenu } = require('./routes/adminMenu');
 const { handleAdminEvents } = require('./routes/adminEvents');
 const { handleAdminApplicants } = require('./routes/adminApplicants');
+const { handleAdminLtos } = require('./routes/adminLtos');
 const { scheduleInterviewReminders } = require('./interviewReminders');
 const { generateNotFoundPage } = require('./views/notFoundPage');
 
@@ -52,6 +53,11 @@ const handler = async (req, res) => {
     // Admin applicants routes: /admin/applicants, /admin/applicants/:id, status changes, interviews
     if (pathname.startsWith('/admin/applicants')) {
       if (await handleAdminApplicants(req, res, pathname, prisma)) return;
+    }
+
+    // Admin LTO routes: /admin/ltos, /admin/ltos/new, /admin/ltos/:id
+    if (pathname.startsWith('/admin/ltos')) {
+      if (await handleAdminLtos(req, res, pathname, prisma)) return;
     }
 
     // Admin routes: /admin/login, /admin/logout, /admin, /admin/seed, /admin/location/*

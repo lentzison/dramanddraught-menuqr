@@ -57,6 +57,7 @@ model Location {
   visitorSessions  VisitorSession[]
   jobApplications  JobApplication[]
   interviews       Interview[]
+  ltos             LimitedTimeOffer[]
 
   @@index([slug])
 }
@@ -153,6 +154,32 @@ model FlightPour {
   flight       Flight  @relation(fields: [flightId], references: [id], onDelete: Cascade)
 
   @@index([flightId])
+}
+
+// A Limited-Time Offer that lays a separate small menu (image + drinks list)
+// on top of a location's normal day specials. Multiple LTOs per location are
+// allowed; each runs on a chosen set of weekdays and optionally within a
+// start/end date window.
+model LimitedTimeOffer {
+  id          String     @id @default(uuid())
+  locationId  String
+  title       String
+  description String?
+  // Base64 data URL or external https URL (handled the same way as event
+  // images by sanitizeImageSrc). Capped client-side at ~750 KB.
+  image       String?    @db.Text
+  // Drinks: [{name, description?, price?, displayOrder?}]
+  drinks      Json?
+  daysOfWeek  DayOfWeek[]
+  startDate   DateTime?
+  endDate     DateTime?
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  location    Location   @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@index([locationId, isActive])
 }
 
 model FeaturedBottle {

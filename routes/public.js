@@ -734,6 +734,31 @@ async function handleSpecials(req, res, prisma, parsedUrl, location) {
     warnings.specials = true;
   }
 
+  // Active LTOs for the day being viewed. Filter on the day-of-week and any
+  // optional date window. We pull all active LTOs for the location and filter
+  // in code because Postgres array-contains via Prisma needs the enum value.
+  let ltos = [];
+  if (prisma?.limitedTimeOffer) {
+    try {
+      const all = await prisma.limitedTimeOffer.findMany({
+        where: { locationId: loc.id, isActive: true },
+        orderBy: { updatedAt: 'desc' },
+      });
+      // Compare against today (Eastern) for the date window check; the day-of-
+      // week match uses the day the user is currently viewing.
+      const todayEastern = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+      todayEastern.setHours(0, 0, 0, 0);
+      ltos = all.filter((lto) => {
+        if (!Array.isArray(lto.daysOfWeek) || !lto.daysOfWeek.includes(viewingDay)) return false;
+        if (lto.startDate && new Date(lto.startDate) > todayEastern) return false;
+        if (lto.endDate && new Date(lto.endDate) < todayEastern) return false;
+        return true;
+      });
+    } catch (err) {
+      console.warn('DB error loading LTOs:', err.message);
+    }
+  }
+
   const qs = parsedUrl.search || '';
   const sid = await trackPageView(req, res, prisma, loc.slug, loc.id, `/${loc.slug}/specials`, qs);
   sendHTML(
@@ -744,6 +769,7 @@ async function handleSpecials(req, res, prisma, parsedUrl, location) {
       warnings,
       halfPriceSpirits,
       fridayFlights,
+      ltos,
     }), sid),
   );
   return true;

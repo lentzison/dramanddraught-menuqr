@@ -887,8 +887,11 @@ function specialsDashboard(themes, user, flashMsg, opts = {}) {
         <h1>${heading}</h1>
         <p class="page-subtitle">${intro}</p>
       </div>
+      <div>
+        <a href="/admin/ltos${locationSlug ? `?location=${escHTML(locationSlug)}` : ''}" class="btn btn-secondary">Manage LTOs</a>
+      </div>
     </div>
-    <div class="admin-help"><strong>How this works:</strong> The company default is the baseline. Location tabs override only the selected location when inventory, pricing, or promos differ.</div>
+    <div class="admin-help"><strong>How this works:</strong> The company default is the baseline. Location tabs override only the selected location when inventory, pricing, or promos differ. Use <strong>LTOs</strong> for one-off menus (image + drink list) that layer on top of any day's specials.</div>
     ${locationTabs}
     <div class="admin-grid">${grid}</div>
   `, user, { pathname: '/admin/specials', flashMsg });

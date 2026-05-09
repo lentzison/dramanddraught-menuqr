@@ -137,6 +137,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
   const warnings = options.warnings || {};
   const halfPriceSpirits = options.halfPriceSpirits || [];
   const fridayFlights = options.fridayFlights || (flight ? [flight] : []);
+  const ltos = Array.isArray(options.ltos) ? options.ltos : [];
   const halfPriceConfig = (theme && theme.halfPriceConfig) || null;
   const hasHalfPrice = halfPriceConfig && halfPriceSpirits.length > 0;
   const halfPriceDiscount = (halfPriceConfig && typeof halfPriceConfig.discount === 'number' && halfPriceConfig.discount > 0 && halfPriceConfig.discount < 100)
@@ -410,6 +411,37 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
       <a href="/${location.slug}/specials?day=FRIDAY" class="teaser-link">See Friday's lineup →</a>
     </div>
   ` : '';
+
+  // Limited-time offer cards (one per active LTO for this day). Rendered
+  // above the regular specials with a distinct gold-bordered treatment so
+  // guests immediately read them as separate from the day's lineup.
+  const ltoSection = ltos.length === 0 ? '' : ltos.map((lto) => {
+    const drinks = Array.isArray(lto.drinks) ? lto.drinks : [];
+    const drinksHtml = drinks.length === 0 ? '' : `
+      <div class="lto-drinks">
+        ${drinks.map((d) => `
+          <div class="lto-drink">
+            <div class="lto-drink-row">
+              <span class="lto-drink-name">${escHTML(d.name || '')}</span>
+              ${d.price ? `<span class="lto-drink-price">${escHTML(String(d.price).startsWith('$') ? d.price : `$${d.price}`)}</span>` : ''}
+            </div>
+            ${d.description ? `<div class="lto-drink-desc">${escHTML(sanitizeGuestCopy(d.description))}</div>` : ''}
+          </div>
+        `).join('')}
+      </div>
+    `;
+    return `
+      <div class="lto-card">
+        <div class="lto-badge">Limited Time</div>
+        ${lto.image ? `<div class="lto-image-wrap"><img class="lto-image" src="${escHTML(lto.image)}" alt="" /></div>` : ''}
+        <div class="lto-body">
+          <h2 class="lto-title">${escHTML(lto.title)}</h2>
+          ${lto.description ? `<p class="lto-desc">${escHTML(sanitizeGuestCopy(lto.description))}</p>` : ''}
+          ${drinksHtml}
+        </div>
+      </div>
+    `;
+  }).join('');
 
   const noSpecialsMessage = !theme ? `
     <div class="section">
@@ -910,6 +942,55 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           text-align: center;
           box-shadow: inset 0 0 16px rgba(0,0,0,0.18);
         }
+        .lto-card {
+          position: relative;
+          background: linear-gradient(180deg, rgba(28, 22, 12, 0.92), rgba(15, 12, 8, 0.95));
+          border: 1.5px solid rgba(212, 175, 55, 0.55);
+          border-radius: 18px;
+          margin: 0 0 22px;
+          overflow: hidden;
+          box-shadow: 0 14px 30px rgba(0,0,0,0.36), inset 0 0 22px rgba(212,175,55,0.06);
+        }
+        .lto-badge {
+          position: absolute;
+          top: 12px;
+          right: 12px;
+          background: var(--gold);
+          color: #1a1410;
+          font-size: 0.66rem;
+          font-weight: 800;
+          letter-spacing: 0.18em;
+          text-transform: uppercase;
+          padding: 5px 11px;
+          border-radius: 999px;
+          box-shadow: 0 4px 12px rgba(212,175,55,0.32);
+          z-index: 2;
+        }
+        .lto-image-wrap { width: 100%; max-height: 260px; overflow: hidden; background: #0a0a0a; }
+        .lto-image { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .lto-body { padding: 18px 18px 20px; }
+        .lto-title {
+          font-family: var(--brand-serif, 'Cormorant Garamond', serif);
+          color: var(--gold);
+          font-size: 1.55rem;
+          margin: 0 0 6px;
+          line-height: 1.15;
+          letter-spacing: 0.01em;
+        }
+        .lto-desc { color: #d6d2c5; font-size: 0.92rem; line-height: 1.5; margin: 0 0 14px; }
+        .lto-drinks { display: flex; flex-direction: column; gap: 12px; }
+        .lto-drink {
+          padding: 10px 14px;
+          background: rgba(255,255,255,0.025);
+          border: 1px solid rgba(212,175,55,0.18);
+          border-radius: 10px;
+        }
+        .lto-drink-row {
+          display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+        }
+        .lto-drink-name { color: var(--cream); font-weight: 600; font-size: 0.98rem; }
+        .lto-drink-price { color: var(--gold); font-weight: 700; font-size: 0.95rem; white-space: nowrap; }
+        .lto-drink-desc { color: #a8acb3; font-size: 0.82rem; margin-top: 4px; line-height: 1.4; }
         .teaser-label {
           font-size: 0.72rem;
           text-transform: uppercase;
@@ -1127,6 +1208,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
       ` : ''}
 
       <div class="container">
+        ${ltoSection}
         ${searchSectionUI}
         ${specialsHTML}
         ${emptyThemeMessage}

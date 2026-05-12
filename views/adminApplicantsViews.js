@@ -362,6 +362,7 @@ function applicantsList({ applications, locations, filters, counts, user, flashM
         <h1>Applicants</h1>
         <p class="page-subtitle">Review applications, schedule interviews, and move candidates through the pipeline.</p>
       </div>
+      <a href="/admin/applicants/hiring-config" class="btn btn-secondary">Screening config &amp; KB</a>
     </div>
     ${flash}
 
@@ -586,10 +587,106 @@ function applicantDetail({ application, interviews, user, flashMsg }) {
   `, user);
 }
 
+function hiringConfigPage({ user }) {
+  const kb = require('../hiring/knowledgeBase');
+  const ai = require('../hiring/aiEvaluation');
+
+  const versionRows = [
+    ['Model', ai.MODEL],
+    ['Knowledge base version', kb.KNOWLEDGE_BASE_VERSION],
+    ['Prompt version', kb.PROMPT_VERSION],
+    ['Questionnaire version', kb.QUESTIONNAIRE_VERSION],
+    ['Rubric version', kb.RUBRIC_VERSION],
+  ].map(([label, value]) => `
+    <tr>
+      <td style="padding:8px 14px; color:var(--muted); width:220px;">${escHTML(label)}</td>
+      <td style="padding:8px 14px; color:var(--text); font-family: 'SF Mono', Menlo, monospace; font-size:0.85rem;">${escHTML(value)}</td>
+    </tr>`).join('');
+
+  const roleColumns = ['bartender', 'barback', 'server', 'door', 'lead_shift_lead', 'other'];
+  const weightHeader = `<th style="padding:8px 14px; text-align:left; color:var(--accent);">Category</th>` +
+    roleColumns.map((r) => `<th style="padding:8px 14px; text-align:center; color:var(--accent);">${escHTML(kb.ROLE_LABELS[r] || r)}</th>`).join('');
+  const weightRows = kb.CATEGORIES.map((cat) => {
+    const cells = roleColumns.map((r) => {
+      const w = kb.weightsForRole(r)[cat] || 0;
+      return `<td style="padding:8px 14px; text-align:center; color:var(--text);">${w}</td>`;
+    }).join('');
+    return `<tr><td style="padding:8px 14px; color:var(--muted);">${escHTML(kb.CATEGORY_LABELS[cat] || cat)}</td>${cells}</tr>`;
+  }).join('');
+
+  const questionRows = kb.QUESTIONS.map((q) => `
+    <tr>
+      <td style="padding:8px 12px; text-align:center; color:var(--muted); width:40px;">${q.order}</td>
+      <td style="padding:8px 12px; color:var(--text); font-size:0.92rem;">${escHTML(q.text)}</td>
+      <td style="padding:8px 12px; color:var(--muted); font-size:0.78rem;">${q.scoringCategories.map((c) => escHTML(kb.CATEGORY_LABELS[c] || c)).join(', ')}</td>
+    </tr>`).join('');
+
+  return adminLayout('Hiring config', `
+    <div class="page-header">
+      <div>
+        <div class="admin-kicker">Hiring</div>
+        <h1>Screening configuration</h1>
+        <p class="page-subtitle">Read-only view of the knowledge base, role weights, and questionnaire that drive AI recommendations. Edits live in <code>hiring/knowledgeBase.js</code>; bump the version stamps when you change anything.</p>
+      </div>
+      <a href="/admin/applicants" class="btn btn-secondary">&larr; Back to applicants</a>
+    </div>
+
+    <div class="app-section">
+      <h2>Versions</h2>
+      <table style="width:100%; border-collapse:collapse;">${versionRows}</table>
+    </div>
+
+    <div class="app-section">
+      <h2>Role weights</h2>
+      <p class="app-meta" style="margin-bottom:10px;">Each row sums to 100. These are code-authoritative; the AI's claimed weights are ignored when recomputing the weighted score.</p>
+      <div style="overflow-x:auto;">
+        <table style="width:100%; border-collapse:collapse; font-size:0.9rem;">
+          <thead><tr>${weightHeader}</tr></thead>
+          <tbody>${weightRows}</tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="app-section">
+      <h2>Callback thresholds</h2>
+      <ul style="line-height:1.7; color:var(--text); padding-left:20px; margin:0;">
+        <li><strong style="color:#4ade80;">Strong callback</strong> — weighted &ge; 4.2 and every category &ge; 3.5</li>
+        <li><strong style="color:#5eead4;">Callback</strong> — weighted 3.7&ndash;4.19, no category below 3.0</li>
+        <li><strong style="color:#fcd34d;">Maybe</strong> — weighted 3.2&ndash;3.69; needs interview follow-up</li>
+        <li><strong style="color:#aaa;">Hold</strong> — weighted &lt; 3.2, any category &lt; 2.5, AI flags a hold, or availability incompatible</li>
+      </ul>
+      <p class="app-meta" style="margin-top:10px;">Managers always make the final call. The system never auto-rejects an applicant.</p>
+    </div>
+
+    <div class="app-section">
+      <h2>20-question questionnaire</h2>
+      <div style="overflow-x:auto;">
+        <table style="width:100%; border-collapse:collapse; font-size:0.88rem;">
+          <thead>
+            <tr>
+              <th style="padding:8px 12px; text-align:center; color:var(--accent);">#</th>
+              <th style="padding:8px 12px; text-align:left; color:var(--accent);">Question</th>
+              <th style="padding:8px 12px; text-align:left; color:var(--accent);">Scoring categories</th>
+            </tr>
+          </thead>
+          <tbody>${questionRows}</tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="app-section">
+      <h2>Knowledge base text</h2>
+      <p class="app-meta" style="margin-bottom:10px;">This is the full text passed to Claude in every evaluation's system prompt (prompt-cached for cost).</p>
+      <pre style="white-space:pre-wrap; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:8px; padding:14px 16px; font-size:0.85rem; line-height:1.55; color:var(--text); max-height:520px; overflow-y:auto;">${escHTML(kb.KNOWLEDGE_BASE)}</pre>
+    </div>
+  `, user);
+}
+
 module.exports = {
   STATUS_LABELS,
   PIPELINE_ORDER,
   TERMINAL_STATUSES,
   applicantsList,
   applicantDetail,
+  hiringConfigPage,
 };

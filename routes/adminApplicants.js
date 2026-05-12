@@ -78,6 +78,13 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
     ? {}
     : { locationId: { in: locations.map(l => l.id).length ? locations.map(l => l.id) : ['__none__'] } };
 
+  // ─── Hiring config (read-only): /admin/applicants/hiring-config ───
+  if (pathname === '/admin/applicants/hiring-config') {
+    const { hiringConfigPage } = require('../views/adminApplicantsViews');
+    sendHTML(res, 200, hiringConfigPage({ user }));
+    return true;
+  }
+
   // ─── Resume download: /admin/applicants/:id/resume ───
   const resumeMatch = pathname.match(/^\/admin\/applicants\/([0-9a-f-]{8,})\/resume$/i);
   if (resumeMatch) {

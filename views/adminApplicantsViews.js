@@ -123,8 +123,169 @@ function applicantStyles() {
       .app-flash { padding:10px 14px; border-radius:8px; margin-bottom:14px; font-size:0.9rem; }
       .app-flash.success { background:rgba(34,197,94,0.18); color:#4ade80; }
       .app-flash.error { background:rgba(239,68,68,0.16); color:#f87171; }
+
+      .ai-rec-badge { display:inline-block; padding:3px 9px; border-radius:10px; font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin-left:6px; }
+      .ai-rec-strong_callback { background:rgba(34,197,94,0.22); color:#4ade80; }
+      .ai-rec-callback        { background:rgba(45,212,191,0.18); color:#5eead4; }
+      .ai-rec-maybe           { background:rgba(251,191,36,0.16); color:#fcd34d; }
+      .ai-rec-hold            { background:rgba(150,150,150,0.18); color:#aaa; }
+      .ai-rec-pending         { background:rgba(96,165,250,0.16); color:#93c5fd; }
+      .ai-rec-error           { background:rgba(239,68,68,0.16); color:#f87171; }
+      .ai-review-badge { display:inline-block; padding:3px 9px; border-radius:10px; font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin-left:6px; background:rgba(212,175,55,0.22); color:#f5d76e; }
+
+      .ai-panel { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px; margin-bottom:14px; }
+      .ai-panel-head { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:10px; }
+      .ai-panel-head h2 { margin:0; font-size:1.1rem; color:var(--accent); }
+      .ai-panel-stats { display:flex; flex-wrap:wrap; gap:18px; margin-bottom:14px; font-size:0.85rem; color:var(--muted); }
+      .ai-panel-stats strong { color:var(--text); font-size:1.1rem; display:block; }
+      .ai-panel-prose { color:var(--text); line-height:1.55; margin:6px 0 14px; }
+      .ai-panel-warning { background:rgba(212,175,55,0.12); border:1px solid rgba(212,175,55,0.35); color:#f5d76e; padding:10px 14px; border-radius:8px; margin-bottom:14px; font-size:0.88rem; }
+      .ai-cat-grid { display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:14px; }
+      @media (max-width: 760px) { .ai-cat-grid { grid-template-columns: 1fr; } }
+      .ai-cat { border:1px solid var(--border); border-radius:10px; padding:12px 14px; background:rgba(255,255,255,0.02); }
+      .ai-cat-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:6px; }
+      .ai-cat-head strong { color:var(--text); }
+      .ai-cat-score { font-weight:700; font-size:1.1rem; color:var(--accent); }
+      .ai-cat-weight { color:var(--muted); font-size:0.78rem; }
+      .ai-cat-rationale { color:var(--muted); font-size:0.85rem; line-height:1.5; margin-top:6px; }
+      .ai-cat-list { margin:6px 0 0 0; padding-left:18px; font-size:0.85rem; color:var(--text); }
+      .ai-cat-list li { margin-bottom:3px; line-height:1.45; }
+      .ai-cat-concerns li { color:#f4c5c5; }
+      .ai-bullet-list { padding-left:18px; margin:6px 0; }
+      .ai-bullet-list li { margin-bottom:5px; line-height:1.5; color:var(--text); }
+      .ai-meta { color:var(--muted); font-size:0.75rem; margin-top:14px; padding-top:10px; border-top:1px solid var(--border); }
     </style>
   `;
+}
+
+const AI_REC_LABELS = {
+  strong_callback: 'Strong callback',
+  callback: 'Callback',
+  maybe: 'Maybe',
+  hold: 'Hold',
+};
+
+function aiRecBadge(aiEvaluation) {
+  if (!aiEvaluation) return '<span class="ai-rec-badge ai-rec-pending">AI pending</span>';
+  if (aiEvaluation.errorDetail) return '<span class="ai-rec-badge ai-rec-error">AI error</span>';
+  const rec = aiEvaluation.recommendation || 'hold';
+  const label = AI_REC_LABELS[rec] || rec;
+  return `<span class="ai-rec-badge ai-rec-${escHTML(rec)}">${escHTML(label)}</span>`;
+}
+
+function aiEvaluationPanel(application) {
+  const ev = application.aiEvaluation;
+  if (!ev) {
+    if (!application.questionnaire) {
+      return `
+        <div class="ai-panel">
+          <div class="ai-panel-head"><h2>AI screening</h2></div>
+          <div class="ai-panel-prose">Applicant has not yet completed the hospitality questionnaire. The AI evaluation runs automatically after submission.</div>
+        </div>`;
+    }
+    return `
+      <div class="ai-panel">
+        <div class="ai-panel-head"><h2>AI screening</h2></div>
+        <div class="ai-panel-prose">Questionnaire submitted; AI evaluation is still in flight. Refresh in a moment.</div>
+      </div>`;
+  }
+
+  const confidenceLabel = ev.confidence ? ev.confidence.charAt(0).toUpperCase() + ev.confidence.slice(1) : '—';
+  const scoreLabel = typeof ev.weightedScore === 'number' ? ev.weightedScore.toFixed(2) : '—';
+  const categoryScores = Array.isArray(ev.categoryScores) ? ev.categoryScores : [];
+
+  const catBlocks = categoryScores.map((cat) => {
+    const ev2 = Array.isArray(cat.evidence) ? cat.evidence : [];
+    const con = Array.isArray(cat.concerns) ? cat.concerns : [];
+    return `
+      <div class="ai-cat">
+        <div class="ai-cat-head">
+          <strong>${escHTML(formatCategoryLabel(cat.category))}</strong>
+          <span><span class="ai-cat-score">${escHTML(String(cat.score ?? '—'))}</span><span class="ai-cat-weight"> &middot; weight ${escHTML(String(cat.weight ?? 0))}</span></span>
+        </div>
+        ${cat.rationale ? `<div class="ai-cat-rationale">${escHTML(cat.rationale)}</div>` : ''}
+        ${ev2.length ? `<ul class="ai-cat-list">${ev2.map((e) => `<li>${escHTML(e)}</li>`).join('')}</ul>` : ''}
+        ${con.length ? `<ul class="ai-cat-list ai-cat-concerns">${con.map((c) => `<li>${escHTML(c)}</li>`).join('')}</ul>` : ''}
+      </div>`;
+  }).join('');
+
+  const concerns = Array.isArray(ev.jobRelatedConcerns) ? ev.jobRelatedConcerns : [];
+  const followUps = Array.isArray(ev.suggestedInterviewQuestions) ? ev.suggestedInterviewQuestions : [];
+  const reviewReasons = Array.isArray(ev.humanReviewReasons) ? ev.humanReviewReasons : [];
+
+  return `
+    <div class="ai-panel">
+      <div class="ai-panel-head">
+        <h2>AI screening</h2>
+        ${aiRecBadge(ev)}
+        ${ev.humanReviewRequired ? '<span class="ai-review-badge">Human review required</span>' : ''}
+      </div>
+
+      ${ev.errorDetail ? `<div class="ai-panel-warning"><strong>AI evaluation could not complete:</strong> ${escHTML(ev.errorDetail)}</div>` : ''}
+
+      ${ev.humanReviewRequired && reviewReasons.length ? `
+        <div class="ai-panel-warning">
+          <strong>Flagged for human review:</strong>
+          <ul class="ai-bullet-list" style="margin-top:6px;">${reviewReasons.map((r) => `<li>${escHTML(r)}</li>`).join('')}</ul>
+        </div>` : ''}
+
+      <div class="ai-panel-stats">
+        <div><strong>${escHTML(scoreLabel)}</strong>Weighted score (0–5)</div>
+        <div><strong>${escHTML(confidenceLabel)}</strong>AI confidence</div>
+        ${ev.possibleBetterRoleFit ? `<div><strong>${escHTML(ev.possibleBetterRoleFit)}</strong>Possible better role fit</div>` : ''}
+      </div>
+
+      ${ev.candidateSummary ? `<div class="ai-panel-prose"><strong>Summary:</strong> ${escHTML(ev.candidateSummary)}</div>` : ''}
+      ${ev.overallRationale ? `<div class="ai-panel-prose"><strong>Rationale:</strong> ${escHTML(ev.overallRationale)}</div>` : ''}
+
+      ${catBlocks ? `<div class="ai-cat-grid">${catBlocks}</div>` : ''}
+
+      ${concerns.length ? `
+        <h3 style="font-size:0.95rem; color:var(--accent); margin:14px 0 6px;">Job-related concerns</h3>
+        <ul class="ai-bullet-list">${concerns.map((c) => `<li>${escHTML(c)}</li>`).join('')}</ul>` : ''}
+
+      ${followUps.length ? `
+        <h3 style="font-size:0.95rem; color:var(--accent); margin:14px 0 6px;">Suggested interview follow-ups</h3>
+        <ul class="ai-bullet-list">${followUps.map((q) => `<li>${escHTML(q)}</li>`).join('')}</ul>` : ''}
+
+      <div class="ai-meta">
+        Reminder: AI does not make final hiring decisions. Manager review required before any callback.
+        &middot; Model: ${escHTML(ev.modelName || '')}
+        &middot; Prompt: ${escHTML(ev.promptVersion || '')}
+        &middot; KB: ${escHTML(ev.knowledgeBaseVersion || '')}
+      </div>
+    </div>`;
+}
+
+const CATEGORY_LABEL_MAP = {
+  speak_up: 'Speak Up',
+  be_reliable: 'Be Reliable',
+  support_each_other: 'Support Each Other',
+  keep_moving_forward: 'Keep Moving Forward',
+  own_guest_experience: 'Own the Guest Experience',
+};
+function formatCategoryLabel(key) {
+  return CATEGORY_LABEL_MAP[key] || (key || '').replace(/_/g, ' ');
+}
+
+function questionnaireAnswersPanel(application) {
+  const q = application.questionnaire;
+  if (!q || !q.answers) return '';
+  const { QUESTIONS } = require('../hiring/knowledgeBase');
+  const blocks = QUESTIONS.map((qq) => {
+    const a = q.answers[qq.id] || '(no answer)';
+    return `
+      <div style="margin-bottom:14px;">
+        <div style="color:var(--muted); font-size:0.75rem; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:4px;">Q${qq.order}. ${escHTML(qq.text)}</div>
+        <div class="app-prose" style="color:var(--text); font-size:0.92rem;">${escHTML(a)}</div>
+      </div>`;
+  }).join('');
+  return `
+    <div class="app-section">
+      <h2>Questionnaire answers</h2>
+      <div style="color:var(--muted); font-size:0.78rem; margin-bottom:14px;">Submitted ${escHTML(formatFriendly(q.submittedAt))} &middot; Version ${escHTML(q.version)}</div>
+      ${blocks}
+    </div>`;
 }
 
 function applicantsList({ applications, locations, filters, counts, user, flashMsg, canSeeMultipleLocations }) {
@@ -160,6 +321,8 @@ function applicantsList({ applications, locations, filters, counts, user, flashM
         <div class="app-row-main">
           <a class="app-name" href="/admin/applicants/${escHTML(a.id)}">${escHTML(a.name)}</a>
           <span style="margin-left:8px;">${statusBadge(a.status)}</span>
+          ${aiRecBadge(a.aiEvaluation)}
+          ${a.aiEvaluation && a.aiEvaluation.humanReviewRequired ? '<span class="ai-review-badge">Human review</span>' : ''}
           <div class="app-meta">
             <span>${escHTML(a.position || '')}${a.position === 'Other' && a.positionOther ? ` (${escHTML(a.positionOther)})` : ''}</span>
             <span class="app-meta-dot">•</span>
@@ -167,6 +330,7 @@ function applicantsList({ applications, locations, filters, counts, user, flashM
             <span class="app-meta-dot">•</span>
             <span>Applied ${escHTML(formatFriendly(a.createdAt))}</span>
             ${a.email ? `<span class="app-meta-dot">•</span><span>${escHTML(a.email)}</span>` : ''}
+            ${a.aiEvaluation && typeof a.aiEvaluation.weightedScore === 'number' ? `<span class="app-meta-dot">•</span><span>AI score ${a.aiEvaluation.weightedScore.toFixed(2)} (${escHTML(a.aiEvaluation.confidence || '')})</span>` : ''}
           </div>
         </div>
         <div class="app-row-actions">
@@ -174,6 +338,18 @@ function applicantsList({ applications, locations, filters, counts, user, flashM
         </div>
       </div>
     `;
+  }).join('');
+
+  const AI_REC_OPTIONS = [
+    { value: '', label: 'All AI recs' },
+    { value: 'strong_callback', label: 'Strong callback' },
+    { value: 'callback', label: 'Callback' },
+    { value: 'maybe', label: 'Maybe' },
+    { value: 'hold', label: 'Hold' },
+  ];
+  const aiRecOptionsHtml = AI_REC_OPTIONS.map((o) => {
+    const sel = filters.aiRec === o.value ? ' selected' : '';
+    return `<option value="${escHTML(o.value)}"${sel}>${escHTML(o.label)}</option>`;
   }).join('');
 
   const flash = flashMsg ? `<div class="app-flash ${flashMsg.type === 'error' ? 'error' : 'success'}">${escHTML(flashMsg.text)}</div>` : '';
@@ -206,6 +382,13 @@ function applicantsList({ applications, locations, filters, counts, user, flashM
       </label>
       <label>Position
         <select name="position">${positionOptions}</select>
+      </label>
+      <label>AI rec
+        <select name="ai_rec">${aiRecOptionsHtml}</select>
+      </label>
+      <label style="display:flex;align-items:flex-end;gap:6px;">
+        <input type="checkbox" name="review" value="1"${filters.review === '1' ? ' checked' : ''} />
+        Needs human review
       </label>
       <label>Search
         <input type="search" name="q" placeholder="Name or email" value="${escHTML(filters.q || '')}" />
@@ -304,6 +487,9 @@ function applicantDetail({ application, interviews, user, flashMsg }) {
       <div class="app-pipeline">${pipelineHtml}</div>
       ${application.decisionNote ? `<div class="app-meta"><strong>Note on last decision:</strong> ${escHTML(application.decisionNote)}</div>` : ''}
     </div>
+
+    ${aiEvaluationPanel(application)}
+    ${questionnaireAnswersPanel(application)}
 
     <div class="app-section">
       <h2>Contact &amp; basics</h2>

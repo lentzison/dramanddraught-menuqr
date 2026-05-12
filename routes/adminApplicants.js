@@ -277,6 +277,8 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
       where: { id },
       include: {
         location: { select: { id: true, slug: true, name: true } },
+        questionnaire: true,
+        aiEvaluation: true,
       },
     }).catch(() => null);
     if (!application || (!userIsCompanyWide && !allowedLocationIds.has(application.locationId))) {
@@ -317,10 +319,33 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
       ];
     }
 
+    const aiRecFilter = url.searchParams.get('ai_rec') || '';
+    const reviewFilter = url.searchParams.get('review') || '';
+    filters.aiRec = aiRecFilter;
+    filters.review = reviewFilter;
+
+    const VALID_AI_RECS = new Set(['strong_callback', 'callback', 'maybe', 'hold']);
+    if (VALID_AI_RECS.has(aiRecFilter)) {
+      where.aiEvaluation = { ...(where.aiEvaluation || {}), recommendation: aiRecFilter };
+    }
+    if (reviewFilter === '1') {
+      where.aiEvaluation = { ...(where.aiEvaluation || {}), humanReviewRequired: true };
+    }
+
     const applications = await prisma.jobApplication.findMany({
       where,
       orderBy: { createdAt: 'desc' },
-      include: { location: { select: { name: true, slug: true } } },
+      include: {
+        location: { select: { name: true, slug: true } },
+        aiEvaluation: {
+          select: {
+            recommendation: true,
+            weightedScore: true,
+            confidence: true,
+            humanReviewRequired: true,
+          },
+        },
+      },
       take: 200,
     }).catch(() => []);
 

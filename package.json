@@ -19,6 +19,7 @@
     "seed": "node prisma/seed.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.95.2",
     "@prisma/client": "^6.16.2",
     "bcryptjs": "^3.0.3",
     "dotenv": "^17.2.2",

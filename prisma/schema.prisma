@@ -381,13 +381,63 @@ model JobApplication {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  location   Location    @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  interviews Interview[]
+  location      Location                       @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  interviews    Interview[]
+  questionnaire JobApplicationQuestionnaire?
+  aiEvaluation  JobApplicationAiEvaluation?
 
   @@index([locationId, status])
   @@index([locationId, createdAt])
   @@index([email])
   @@index([visitorId])
+}
+
+// Stores answers to the 20-question hiring questionnaire. One row per application.
+model JobApplicationQuestionnaire {
+  id            String   @id @default(uuid())
+  applicationId String   @unique
+  // Schema for `answers`: { "q1": "answer text", "q2": "...", ... }
+  answers       Json
+  version       String   // questionnaire version stamp from hiring/knowledgeBase.js
+  submittedAt   DateTime @default(now())
+
+  application   JobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+}
+
+// AI evaluation produced by Claude against the Dram & Draught hiring rubric.
+// One row per application. Code recomputes weightedScore + recommendation; AI's
+// claimed values are stored for audit but not trusted for decisions.
+model JobApplicationAiEvaluation {
+  id                      String   @id @default(uuid())
+  applicationId           String   @unique
+
+  // Result fields (code-enforced after AI returns)
+  recommendation          String   // "strong_callback" | "callback" | "maybe" | "hold"
+  weightedScore           Float
+  confidence              String   // "high" | "medium" | "low"
+  humanReviewRequired     Boolean  @default(false)
+  humanReviewReasons      Json     // string[]
+
+  // Narrative
+  candidateSummary        String
+  overallRationale        String
+  jobRelatedConcerns      Json     // string[]
+  suggestedInterviewQuestions Json // string[]
+  possibleBetterRoleFit   String?
+
+  // Category scores: [{ category, score, weight, evidence: string[], rationale, concerns: string[] }]
+  categoryScores          Json
+
+  // Provenance + audit
+  modelName               String   // e.g. "claude-opus-4-7"
+  promptVersion           String   // from hiring/knowledgeBase.js
+  knowledgeBaseVersion    String
+  rawAiPayload            Json?    // verbatim parsed AI response, for debugging
+  errorDetail             String?  // populated if eval failed
+
+  createdAt               DateTime @default(now())
+
+  application             JobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
 }
 
 model Interview {

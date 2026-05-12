@@ -4,6 +4,7 @@ const url = require('url');
 const {
   sendHTML,
   sendJSON,
+  redirect,
   getLocations,
   getDayLabel,
   buildGuestBottleNotesForCatalog,
@@ -41,6 +42,13 @@ const { generateSpiritsPage } = require('../views/spiritsPage');
 const { generateEventPage, generateEventConfirmationPage, generateEventTermsPage, eventStatus } = require('../views/eventPage');
 const { generateEventsIndexPage } = require('../views/eventsIndexPage');
 const { generateApplyPage, generateApplyClosedPage, generateApplySuccessPage, POSITIONS, DAYS, SHIFTS } = require('../views/applyPage');
+const {
+  generateQuestionnairePage,
+  generateQuestionnaireDonePage,
+  generateQuestionnaireExpiredPage,
+} = require('../views/questionnairePage');
+const { QUESTIONS: HIRING_QUESTIONS, QUESTIONNAIRE_VERSION } = require('../hiring/knowledgeBase');
+const { runAiEvaluation } = require('../hiring/aiEvaluation');
 const { generateNotFoundPage } = require('../views/notFoundPage');
 const {
   trackPageView,
@@ -1397,8 +1405,160 @@ async function handleApply(req, res, prisma, locationSlug) {
   // Fire-and-forget notifications.
   notifyApplicationSubmitted(location, application).catch((err) => console.warn('[apply] notify failed:', err.message));
 
-  sendHTML(res, 200, injectTracking(generateApplySuccessPage(location, application), sid));
+  // Send applicant to the hospitality questionnaire. The old success page is
+  // still available via /apply/q/{id}/done after the questionnaire is submitted.
+  redirect(res, `/apply/q/${application.id}`);
   return true;
+}
+
+// ─── Hospitality questionnaire (post-application screening) ───
+async function handleQuestionnaire(req, res, prisma, applicationId) {
+  if (!prisma) {
+    sendHTML(res, 500, '<h1>Service unavailable</h1>');
+    return true;
+  }
+  const application = await prisma.jobApplication.findUnique({
+    where: { id: applicationId },
+    include: { location: true, questionnaire: true },
+  }).catch(() => null);
+
+  if (!application) {
+    await send404(req, res, prisma);
+    return true;
+  }
+
+  const locationName = application.location?.name || 'Dram & Draught';
+  const locationSlug = application.location?.slug || '';
+
+  if (req.method === 'GET') {
+    if (application.questionnaire) {
+      sendHTML(res, 200, generateQuestionnaireDonePage({ application, locationName, locationSlug }));
+      return true;
+    }
+    sendHTML(res, 200, generateQuestionnairePage({ application, locationName, locationSlug }));
+    return true;
+  }
+
+  if (req.method !== 'POST') {
+    sendJSON(res, 405, { ok: false, error: 'Method Not Allowed' });
+    return true;
+  }
+
+  // Block re-submission.
+  if (application.questionnaire) {
+    sendHTML(res, 200, generateQuestionnaireExpiredPage({ locationName, locationSlug }));
+    return true;
+  }
+
+  let body;
+  try {
+    body = await parseBody(req);
+  } catch (err) {
+    sendHTML(res, 400, generateQuestionnairePage({
+      application, locationName, locationSlug,
+      errorMessage: 'Could not read your submission. Please try again.',
+    }));
+    return true;
+  }
+
+  const answers = {};
+  const missing = [];
+  for (const q of HIRING_QUESTIONS) {
+    const raw = body[q.id];
+    const text = typeof raw === 'string' ? raw.trim() : '';
+    if (!text) missing.push(q.order);
+    answers[q.id] = text.slice(0, 4000);
+  }
+
+  if (missing.length) {
+    sendHTML(res, 400, generateQuestionnairePage({
+      application, locationName, locationSlug,
+      prev: answers,
+      errorMessage: `Please answer every question (missing: ${missing.join(', ')}).`,
+    }));
+    return true;
+  }
+
+  let questionnaire;
+  try {
+    questionnaire = await prisma.jobApplicationQuestionnaire.create({
+      data: {
+        applicationId: application.id,
+        answers,
+        version: QUESTIONNAIRE_VERSION,
+      },
+    });
+  } catch (err) {
+    console.error('[questionnaire] create failed:', err.message);
+    sendHTML(res, 500, generateQuestionnairePage({
+      application, locationName, locationSlug,
+      prev: answers,
+      errorMessage: 'Something went wrong saving your answers. Please try again.',
+    }));
+    return true;
+  }
+
+  // Run the AI evaluation in the background — never block the response.
+  runAndPersistEvaluation(prisma, application, questionnaire).catch((err) => {
+    console.warn('[hiring] AI evaluation pipeline error:', err.message);
+  });
+
+  sendHTML(res, 200, generateQuestionnaireDonePage({ application, locationName, locationSlug }));
+  return true;
+}
+
+async function runAndPersistEvaluation(prisma, application, questionnaire) {
+  if (!prisma || !application || !questionnaire) return;
+  let evaluation;
+  try {
+    evaluation = await runAiEvaluation({ application, questionnaire });
+  } catch (err) {
+    console.warn('[hiring] AI evaluation crashed:', err.message);
+    evaluation = {
+      errorDetail: err.message || String(err),
+      recommendation: 'hold',
+      weightedScore: 0,
+      confidence: 'low',
+      humanReviewRequired: true,
+      humanReviewReasons: ['AI evaluation pipeline error. Manager review required.'],
+      candidateSummary: '',
+      overallRationale: 'AI evaluation pipeline error.',
+      jobRelatedConcerns: [],
+      suggestedInterviewQuestions: [],
+      possibleBetterRoleFit: null,
+      categoryScores: [],
+      modelName: 'claude-opus-4-7',
+      promptVersion: 'error',
+      knowledgeBaseVersion: 'error',
+      rawAiPayload: null,
+    };
+  }
+
+  try {
+    await prisma.jobApplicationAiEvaluation.create({
+      data: {
+        applicationId: application.id,
+        recommendation: evaluation.recommendation,
+        weightedScore: evaluation.weightedScore,
+        confidence: evaluation.confidence,
+        humanReviewRequired: evaluation.humanReviewRequired,
+        humanReviewReasons: evaluation.humanReviewReasons || [],
+        candidateSummary: evaluation.candidateSummary || '',
+        overallRationale: evaluation.overallRationale || '',
+        jobRelatedConcerns: evaluation.jobRelatedConcerns || [],
+        suggestedInterviewQuestions: evaluation.suggestedInterviewQuestions || [],
+        possibleBetterRoleFit: evaluation.possibleBetterRoleFit || null,
+        categoryScores: evaluation.categoryScores || [],
+        modelName: evaluation.modelName,
+        promptVersion: evaluation.promptVersion,
+        knowledgeBaseVersion: evaluation.knowledgeBaseVersion,
+        rawAiPayload: evaluation.rawAiPayload || null,
+        errorDetail: evaluation.errorDetail || null,
+      },
+    });
+  } catch (err) {
+    console.error('[hiring] persisting AI evaluation failed:', err.message);
+  }
 }
 
 async function notifyApplicationSubmitted(location, application) {
@@ -1763,6 +1923,12 @@ async function handlePublic(req, res, pathname, prisma) {
   const applyMatch = pathname.match(/^\/([a-z0-9-]+)\/apply$/);
   if (applyMatch) {
     return handleApply(req, res, prisma, applyMatch[1]);
+  }
+
+  // Post-application hospitality questionnaire: GET shows form, POST submits.
+  const questionnaireMatch = pathname.match(/^\/apply\/q\/([0-9a-f-]{36})$/i);
+  if (questionnaireMatch) {
+    return handleQuestionnaire(req, res, prisma, questionnaireMatch[1]);
   }
 
   // Flights page: /{slug}/flights

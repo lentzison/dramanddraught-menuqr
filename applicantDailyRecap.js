@@ -141,30 +141,34 @@ async function runApplicantDailyRecap(prisma) {
       byLocation.set(app.locationId, list);
     }
 
-    const locations = await getLocations(prisma);
+    if (yesterdayApps.length === 0) {
+      console.log('[applicant recap] no applicants yesterday; skipping send');
+      return;
+    }
 
-    const allGmEmails = new Set();
+    const locations = await getLocations(prisma);
+    const locationsWithApps = locations.filter((loc) => (byLocation.get(loc.id) || []).length > 0);
+
+    const gmEmails = new Set();
     const locationSections = [];
-    for (const location of locations) {
+    for (const location of locationsWithApps) {
       const apps = byLocation.get(location.id) || [];
       locationSections.push(renderLocationSection(location, apps));
       try {
         const gms = await getGeneralManagerEmailsForLocation(location.slug);
-        for (const email of gms) allGmEmails.add(email);
+        for (const email of gms) gmEmails.add(email);
       } catch (err) {
         console.warn(`[applicant recap] could not fetch GMs for ${location.slug}:`, err.message);
       }
     }
 
-    const recipients = Array.from(new Set([...allGmEmails, ...COMPANY_RECIPIENTS]));
+    const recipients = Array.from(new Set([...gmEmails, ...COMPANY_RECIPIENTS]));
     if (recipients.length === 0) {
       console.warn('[applicant recap] no recipients resolved; skipping send');
       return;
     }
 
-    const subject = yesterdayApps.length === 0
-      ? `Daily applicant recap — ${yesterdayHuman} — no new applicants`
-      : `Daily applicant recap — ${yesterdayHuman} — ${yesterdayApps.length} new`;
+    const subject = `Daily applicant recap — ${yesterdayHuman} — ${yesterdayApps.length} new`;
 
     const html = renderEmailHtml({
       yesterdayHuman,
@@ -174,7 +178,7 @@ async function runApplicantDailyRecap(prisma) {
 
     try {
       await sendEmailViaGoogle({ to: recipients, subject, body: html, html: true });
-      console.log(`[applicant recap] sent (${yesterdayApps.length} applicants across ${locations.length} locations, ${recipients.length} recipients)`);
+      console.log(`[applicant recap] sent (${yesterdayApps.length} applicants across ${locationsWithApps.length} locations, ${recipients.length} recipients)`);
     } catch (err) {
       console.warn('[applicant recap] send failed:', err.message);
     }

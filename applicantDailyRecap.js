@@ -127,7 +127,7 @@ async function runApplicantDailyRecap(prisma) {
 
 function scheduleApplicantDailyRecap(prisma) {
   runApplicantDailyRecap(prisma);
-  setInterval(() => runApplicantDailyRecap(prisma), 60 * 60 * 1000);
+  setInterval(() => runApplicantDailyRecap(prisma), 5 * 60 * 1000);
 }
 
 module.exports = { runApplicantDailyRecap, scheduleApplicantDailyRecap };

@@ -88,6 +88,24 @@ async function getLocationIdByMenuqrSlug(locationSlug) {
   }
 }
 
+async function getGeneralManagerEmailsForLocation(locationSlug) {
+  if (!locationSlug) return [];
+  const db = getPool();
+  const locationId = await getLocationIdByMenuqrSlug(locationSlug);
+  if (!locationId) return [];
+  const result = await db.query(
+    `SELECT DISTINCT u.email
+       FROM "User" u
+       JOIN "UserLocation" l ON l."userId" = u.id
+      WHERE u."isApproved" = true
+        AND l.role = 'GENERAL_MANAGER'
+        AND l."locationId"::text = $1::text
+      ORDER BY u.email ASC`,
+    [locationId],
+  );
+  return (result.rows || []).map((row) => String(row.email || '').trim().toLowerCase()).filter(Boolean);
+}
+
 async function getBarSupportEmailsForLocation(locationSlug = null) {
   const db = getPool();
   const locationId = locationSlug ? await getLocationIdByMenuqrSlug(locationSlug) : null;
@@ -832,6 +850,7 @@ module.exports = {
   getOnTap,
   getBarSupportEmails,
   getBarSupportEmailsForLocation,
+  getGeneralManagerEmailsForLocation,
   getSpiritCategories,
   getSpiritCatalog,
   getSpiritList,

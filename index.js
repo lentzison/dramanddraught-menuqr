@@ -13,6 +13,7 @@ const { handleAdminEvents } = require('./routes/adminEvents');
 const { handleAdminApplicants } = require('./routes/adminApplicants');
 const { handleAdminLtos } = require('./routes/adminLtos');
 const { scheduleInterviewReminders } = require('./interviewReminders');
+const { scheduleApplicantDailyRecap } = require('./applicantDailyRecap');
 const { generateNotFoundPage } = require('./views/notFoundPage');
 
 const PORT = parseInt(process.env.PORT || '80', 10);
@@ -88,7 +89,8 @@ const server = http.createServer((req, res) => {
   });
 });
 
-const GIFT_CARD_RECIPIENTS = [
+const GIFT_CARD_RECIPIENTS =
+    [
   'carrie@dramanddraught.com',
   'lexi@dramanddraught.com',
   'lentz@dramanddraught.com',
@@ -218,4 +220,5 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log('Ready to serve location pages!');
   scheduleGiftCardDrawing();
   scheduleInterviewReminders(prisma);
+  scheduleApplicantDailyRecap(prisma);
 });

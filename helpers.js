@@ -1095,6 +1095,7 @@ async function sendEmailViaGoogle({ to, cc, bcc, subject, body, html = false, at
     bcc: bccList,
     subject,
     body,
+    html,
     attachments,
   });
 

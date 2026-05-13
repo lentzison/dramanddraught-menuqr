@@ -381,6 +381,9 @@ model JobApplication {
   // Last time we emailed this applicant the questionnaire link (backfill script
   // sets this; null means we have not yet invited them via that flow).
   questionnaireInviteSentAt DateTime?
+  // Auto-reminder bookkeeping. 24h fires before 72h; flags prevent re-sends.
+  questionnaireReminder24hSent Boolean @default(false)
+  questionnaireReminder72hSent Boolean @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

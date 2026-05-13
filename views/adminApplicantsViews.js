@@ -260,7 +260,10 @@ function aiEvaluationPanel(application) {
       <div class="ai-watchout ai-watchout-error">
         <h3>Screening could not complete</h3>
         <p style="margin:0; color:#f4c5c5;">${escHTML(ev.errorDetail)}</p>
-        <p style="margin:8px 0 0; color:var(--muted); font-size:0.82rem;">Review the questionnaire answers below and make a decision manually.</p>
+        <p style="margin:8px 0 12px; color:var(--muted); font-size:0.82rem;">Review the questionnaire answers below and make a decision manually, or retry now if the underlying issue is fixed.</p>
+        <form method="POST" action="/admin/applicants/${escHTML(application.id)}/retry-screening" style="margin:0;" onsubmit="return confirm('Re-run screening for this applicant? This will use API credits.');">
+          <button type="submit" class="btn btn-secondary btn-sm">Retry screening</button>
+        </form>
       </div>`;
   }
 
@@ -375,7 +378,7 @@ function questionnaireAnswersPanel(application) {
     </details>`;
 }
 
-function applicantsList({ applications, locations, filters, counts, user, flashMsg, canSeeMultipleLocations, pendingInviteCount = 0 }) {
+function applicantsList({ applications, locations, filters, counts, user, flashMsg, canSeeMultipleLocations, pendingInviteCount = 0, failedScreeningCount = 0 }) {
   const positionOptions = ['', ...POSITIONS].map((p) => {
     const sel = filters.position === p ? ' selected' : '';
     const label = p === '' ? 'All positions' : p;
@@ -451,8 +454,12 @@ function applicantsList({ applications, locations, filters, counts, user, flashM
         ${pendingInviteCount > 0 ? `
           <form method="POST" action="/admin/applicants/send-questionnaire-invites" style="margin:0;" onsubmit="return confirm('Email ${pendingInviteCount} applicant${pendingInviteCount === 1 ? '' : 's'} the questionnaire link?');">
             <button type="submit" class="btn btn-primary">Email ${pendingInviteCount} applicant${pendingInviteCount === 1 ? '' : 's'} the quiz link</button>
-          </form>` : `
-          <span class="app-meta" style="font-size:0.78rem;">No applicants need a quiz reminder.</span>`}
+          </form>` : ''}
+        ${failedScreeningCount > 0 ? `
+          <form method="POST" action="/admin/applicants/retry-failed-screenings" style="margin:0;" onsubmit="return confirm('Re-run screening for ${failedScreeningCount} applicant${failedScreeningCount === 1 ? '' : 's'}? This will use API credits.');">
+            <button type="submit" class="btn btn-secondary">Retry ${failedScreeningCount} failed screening${failedScreeningCount === 1 ? '' : 's'}</button>
+          </form>` : ''}
+        ${pendingInviteCount === 0 && failedScreeningCount === 0 ? `<span class="app-meta" style="font-size:0.78rem;">All caught up.</span>` : ''}
         <a href="/admin/applicants/hiring-config" class="btn btn-secondary">Screening config</a>
       </div>
     </div>

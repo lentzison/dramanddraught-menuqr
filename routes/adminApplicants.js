@@ -2,6 +2,52 @@ const { sendHTML, parseBody, redirect, getFlashMsg, sendEmailViaGoogle } = requi
 const { requireAuth, isCompanyWide, getUserLocationSlugs } = require('../auth');
 const { applicantsList, applicantDetail, STATUS_LABELS } = require('../views/adminApplicantsViews');
 const { writeAudit } = require('../auditLog');
+const { runAiEvaluation } = require('../hiring/aiEvaluation');
+
+async function rerunAndPersistScreening(prisma, application, questionnaire) {
+  const evaluation = await runAiEvaluation({ application, questionnaire });
+  await prisma.jobApplicationAiEvaluation.upsert({
+    where: { applicationId: application.id },
+    update: {
+      recommendation: evaluation.recommendation,
+      weightedScore: evaluation.weightedScore,
+      confidence: evaluation.confidence,
+      humanReviewRequired: evaluation.humanReviewRequired,
+      humanReviewReasons: evaluation.humanReviewReasons || [],
+      candidateSummary: evaluation.candidateSummary || '',
+      overallRationale: evaluation.overallRationale || '',
+      jobRelatedConcerns: evaluation.jobRelatedConcerns || [],
+      suggestedInterviewQuestions: evaluation.suggestedInterviewQuestions || [],
+      possibleBetterRoleFit: evaluation.possibleBetterRoleFit || null,
+      categoryScores: evaluation.categoryScores || [],
+      modelName: evaluation.modelName,
+      promptVersion: evaluation.promptVersion,
+      knowledgeBaseVersion: evaluation.knowledgeBaseVersion,
+      rawAiPayload: evaluation.rawAiPayload || null,
+      errorDetail: evaluation.errorDetail || null,
+    },
+    create: {
+      applicationId: application.id,
+      recommendation: evaluation.recommendation,
+      weightedScore: evaluation.weightedScore,
+      confidence: evaluation.confidence,
+      humanReviewRequired: evaluation.humanReviewRequired,
+      humanReviewReasons: evaluation.humanReviewReasons || [],
+      candidateSummary: evaluation.candidateSummary || '',
+      overallRationale: evaluation.overallRationale || '',
+      jobRelatedConcerns: evaluation.jobRelatedConcerns || [],
+      suggestedInterviewQuestions: evaluation.suggestedInterviewQuestions || [],
+      possibleBetterRoleFit: evaluation.possibleBetterRoleFit || null,
+      categoryScores: evaluation.categoryScores || [],
+      modelName: evaluation.modelName,
+      promptVersion: evaluation.promptVersion,
+      knowledgeBaseVersion: evaluation.knowledgeBaseVersion,
+      rawAiPayload: evaluation.rawAiPayload || null,
+      errorDetail: evaluation.errorDetail || null,
+    },
+  });
+  return evaluation;
+}
 
 const VALID_STATUSES = new Set(Object.keys(STATUS_LABELS));
 const VALID_INTERVIEW_TYPES = new Set(['in_person', 'phone', 'video']);
@@ -82,6 +128,85 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
   if (pathname === '/admin/applicants/hiring-config') {
     const { hiringConfigPage } = require('../views/adminApplicantsViews');
     sendHTML(res, 200, hiringConfigPage({ user }));
+    return true;
+  }
+
+  // ─── Retry a single failed screening: POST /admin/applicants/:id/retry-screening ───
+  const retryOneMatch = pathname.match(/^\/admin\/applicants\/([0-9a-f-]{8,})\/retry-screening$/i);
+  if (retryOneMatch && req.method === 'POST') {
+    const id = retryOneMatch[1];
+    const app = await prisma.jobApplication.findUnique({
+      where: { id },
+      include: { questionnaire: true, location: true },
+    }).catch(() => null);
+    if (!app || (!userIsCompanyWide && !allowedLocationIds.has(app.locationId))) {
+      sendHTML(res, 404, '<h1>Not found</h1>');
+      return true;
+    }
+    if (!app.questionnaire) {
+      flashRedirect(res, `/admin/applicants/${id}`, 'error', 'No questionnaire on file to score.');
+      return true;
+    }
+    try {
+      const result = await rerunAndPersistScreening(prisma, app, app.questionnaire);
+      writeAudit(prisma, req, user, {
+        action: 'retry',
+        resourceType: 'screening',
+        resourceId: id,
+        resourceLabel: app.name,
+        details: { ok: !result.errorDetail, error: result.errorDetail || null },
+      });
+      if (result.errorDetail) {
+        flashRedirect(res, `/admin/applicants/${id}`, 'error', `Screening still failed: ${result.errorDetail.slice(0, 200)}`);
+      } else {
+        flashRedirect(res, `/admin/applicants/${id}`, 'success', 'Screening complete.');
+      }
+    } catch (err) {
+      console.warn('[retry-screening] error:', err.message);
+      flashRedirect(res, `/admin/applicants/${id}`, 'error', `Screening pipeline error: ${err.message}`);
+    }
+    return true;
+  }
+
+  // ─── Retry all failed screenings: POST /admin/applicants/retry-failed-screenings ───
+  if (pathname === '/admin/applicants/retry-failed-screenings' && req.method === 'POST') {
+    const eligible = await prisma.jobApplication.findMany({
+      where: {
+        ...applicationLocationGate,
+        questionnaire: { isNot: null },
+        OR: [
+          { aiEvaluation: null },
+          { aiEvaluation: { errorDetail: { not: null } } },
+        ],
+      },
+      include: { questionnaire: true, location: true },
+      orderBy: { createdAt: 'asc' },
+    }).catch(() => []);
+    let ok = 0;
+    let stillFailing = 0;
+    for (const app of eligible) {
+      if (!app.questionnaire) continue;
+      try {
+        const result = await rerunAndPersistScreening(prisma, app, app.questionnaire);
+        if (result.errorDetail) stillFailing++;
+        else ok++;
+      } catch (err) {
+        stillFailing++;
+        console.warn('[retry-failed-screenings] error for', app.id, err.message);
+      }
+    }
+    writeAudit(prisma, req, user, {
+      action: 'retry',
+      resourceType: 'screening_batch',
+      resourceLabel: `${ok} ok / ${stillFailing} still failing`,
+      details: { ok, stillFailing, eligible: eligible.length },
+    });
+    const note = stillFailing > 0
+      ? `Re-scored ${ok}; ${stillFailing} still failing. Check error details on each.`
+      : ok === 0
+        ? 'No screenings needed a retry.'
+        : `Re-scored ${ok} applicant${ok === 1 ? '' : 's'}.`;
+    flashRedirect(res, '/admin/applicants', stillFailing > 0 ? 'error' : 'success', note);
     return true;
   }
 
@@ -451,6 +576,19 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
       },
     }).catch(() => 0);
 
+    // Count of applicants whose questionnaire is in but screening failed or
+    // never produced a result — drives the "Retry failed screenings" button.
+    const failedScreeningCount = await prisma.jobApplication.count({
+      where: {
+        ...applicationLocationGate,
+        questionnaire: { isNot: null },
+        OR: [
+          { aiEvaluation: null },
+          { aiEvaluation: { errorDetail: { not: null } } },
+        ],
+      },
+    }).catch(() => 0);
+
     // Counts for stat cards (scoped to allowed locations, ignoring filters
     // so the stats represent overall pipeline state, not the filtered view).
     const aggregate = await prisma.jobApplication.groupBy({
@@ -473,6 +611,7 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
       flashMsg,
       canSeeMultipleLocations: userIsCompanyWide || locations.length > 1,
       pendingInviteCount,
+      failedScreeningCount,
     }));
     return true;
   }

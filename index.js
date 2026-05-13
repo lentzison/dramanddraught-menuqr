@@ -14,6 +14,7 @@ const { handleAdminApplicants } = require('./routes/adminApplicants');
 const { handleAdminLtos } = require('./routes/adminLtos');
 const { scheduleInterviewReminders } = require('./interviewReminders');
 const { scheduleApplicantDailyRecap } = require('./applicantDailyRecap');
+const { scheduleQuestionnaireReminders } = require('./questionnaireReminders');
 const { generateNotFoundPage } = require('./views/notFoundPage');
 
 const PORT = parseInt(process.env.PORT || '80', 10);
@@ -221,4 +222,5 @@ server.listen(PORT, '0.0.0.0', () => {
   scheduleGiftCardDrawing();
   scheduleInterviewReminders(prisma);
   scheduleApplicantDailyRecap(prisma);
+  scheduleQuestionnaireReminders(prisma);
 });

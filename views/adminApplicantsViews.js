@@ -132,10 +132,8 @@ function applicantStyles() {
         padding:8px 16px; border-radius:999px; font-weight:800;
         text-transform:uppercase; letter-spacing:0.06em; font-size:0.82rem;
       }
-      .ai-verdict-pill.is-strong_callback { background:rgba(34,197,94,0.22); color:#4ade80; }
-      .ai-verdict-pill.is-callback        { background:rgba(45,212,191,0.18); color:#5eead4; }
-      .ai-verdict-pill.is-maybe           { background:rgba(251,191,36,0.18); color:#fcd34d; }
-      .ai-verdict-pill.is-hold            { background:rgba(150,150,150,0.20); color:#aaa; }
+      .ai-verdict-pill.is-recommend       { background:rgba(34,197,94,0.22); color:#4ade80; }
+      .ai-verdict-pill.is-dont_recommend  { background:rgba(150,150,150,0.20); color:#bbb; }
       .ai-verdict-pill.is-pending         { background:rgba(96,165,250,0.18); color:#93c5fd; }
       .ai-verdict-pill.is-error           { background:rgba(239,68,68,0.18); color:#f87171; }
       .ai-verdict-score { font-size:1.6rem; font-weight:800; color:var(--text); }
@@ -191,10 +189,8 @@ function applicantStyles() {
 
       .ai-meta { color:var(--muted); font-size:0.72rem; margin-top:8px; padding:8px 14px; }
       .ai-rec-badge { display:inline-block; padding:3px 9px; border-radius:10px; font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin-left:6px; }
-      .ai-rec-strong_callback { background:rgba(34,197,94,0.22); color:#4ade80; }
-      .ai-rec-callback        { background:rgba(45,212,191,0.18); color:#5eead4; }
-      .ai-rec-maybe           { background:rgba(251,191,36,0.18); color:#fcd34d; }
-      .ai-rec-hold            { background:rgba(150,150,150,0.20); color:#aaa; }
+      .ai-rec-recommend       { background:rgba(34,197,94,0.22); color:#4ade80; }
+      .ai-rec-dont_recommend  { background:rgba(150,150,150,0.20); color:#bbb; }
       .ai-rec-pending         { background:rgba(96,165,250,0.18); color:#93c5fd; }
       .ai-rec-error           { background:rgba(239,68,68,0.18); color:#f87171; }
       .ai-review-badge { display:inline-block; padding:3px 9px; border-radius:10px; font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin-left:6px; background:rgba(212,175,55,0.22); color:#f5d76e; }
@@ -202,33 +198,30 @@ function applicantStyles() {
   `;
 }
 
-const AI_REC_LABELS = {
-  strong_callback: 'Strong callback',
-  callback: 'Callback',
-  maybe: 'Maybe',
-  hold: 'Hold',
-};
-
 function aiRecBadge(aiEvaluation) {
   if (!aiEvaluation) return '<span class="ai-rec-badge ai-rec-pending">AI pending</span>';
   if (aiEvaluation.errorDetail) return '<span class="ai-rec-badge ai-rec-error">AI error</span>';
-  const rec = aiEvaluation.recommendation || 'hold';
-  const label = AI_REC_LABELS[rec] || rec;
-  return `<span class="ai-rec-badge ai-rec-${escHTML(rec)}">${escHTML(label)}</span>`;
+  const bucket = verdictBucketFor(aiEvaluation.recommendation);
+  const label = VERDICT_LABELS[bucket];
+  return `<span class="ai-rec-badge ai-rec-${escHTML(bucket)}">${escHTML(label)}</span>`;
+}
+
+// Underlying recommendations collapse to two manager-facing verdicts.
+// `recommend` covers strong_callback + callback; `dont_recommend` covers maybe + hold.
+function verdictBucketFor(rec) {
+  return rec === 'strong_callback' || rec === 'callback' ? 'recommend' : 'dont_recommend';
 }
 
 const VERDICT_LABELS = {
-  strong_callback: 'Strong callback',
-  callback: 'Callback',
-  maybe: 'Maybe — needs more info',
-  hold: 'Hold',
+  recommend: 'Recommend for interview',
+  dont_recommend: 'Don’t recommend',
 };
 
 const VERDICT_HEADLINES = {
   strong_callback: 'Strong fit — bring them in.',
-  callback: 'Worth a callback.',
-  maybe: 'Mixed signals — interview only if you have time.',
-  hold: 'Hold — manager review required before any callback.',
+  callback: 'Worth bringing in.',
+  maybe: 'Mixed signals — would not interview without more info.',
+  hold: 'Skip — answers do not meet the bar.',
 };
 
 function aiEvaluationPanel(application) {
@@ -269,9 +262,10 @@ function aiEvaluationPanel(application) {
   const categoryScores = Array.isArray(ev.categoryScores) ? ev.categoryScores : [];
 
   // Verdict card — the one line a GM needs to read
+  const bucket = verdictBucketFor(rec);
   const verdict = `
     <div class="ai-verdict">
-      <span class="ai-verdict-pill is-${escHTML(rec)}">${escHTML(VERDICT_LABELS[rec] || rec)}</span>
+      <span class="ai-verdict-pill is-${escHTML(bucket)}">${escHTML(VERDICT_LABELS[bucket])}</span>
       <div class="ai-verdict-score">${escHTML(scoreLabel)}<small>Score / 5</small></div>
       <div class="ai-verdict-confidence">Confidence: ${escHTML(confidenceLabel)}</div>
       ${summary ? `<div class="ai-verdict-summary">${escHTML(summary)}</div>` : ''}
@@ -420,11 +414,9 @@ function applicantsList({ applications, locations, filters, counts, user, flashM
   }).join('');
 
   const AI_REC_OPTIONS = [
-    { value: '', label: 'All AI recs' },
-    { value: 'strong_callback', label: 'Strong callback' },
-    { value: 'callback', label: 'Callback' },
-    { value: 'maybe', label: 'Maybe' },
-    { value: 'hold', label: 'Hold' },
+    { value: '', label: 'All AI verdicts' },
+    { value: 'recommend', label: 'Recommend for interview' },
+    { value: 'dont_recommend', label: 'Don’t recommend' },
   ];
   const aiRecOptionsHtml = AI_REC_OPTIONS.map((o) => {
     const sel = filters.aiRec === o.value ? ' selected' : '';
@@ -727,14 +719,13 @@ function hiringConfigPage({ user }) {
     </div>
 
     <div class="app-section">
-      <h2>Callback thresholds</h2>
-      <ul style="line-height:1.7; color:var(--text); padding-left:20px; margin:0;">
-        <li><strong style="color:#4ade80;">Strong callback</strong> — weighted &ge; 4.2 and every category &ge; 3.5</li>
-        <li><strong style="color:#5eead4;">Callback</strong> — weighted 3.7&ndash;4.19, no category below 3.0</li>
-        <li><strong style="color:#fcd34d;">Maybe</strong> — weighted 3.2&ndash;3.69; needs interview follow-up</li>
-        <li><strong style="color:#aaa;">Hold</strong> — weighted &lt; 3.2, any category &lt; 2.5, AI flags a hold, or availability incompatible</li>
+      <h2>How the verdict is calculated</h2>
+      <p style="color:var(--text); line-height:1.55; margin:0 0 12px;">Each applicant gets one of two verdicts:</p>
+      <ul style="line-height:1.7; color:var(--text); padding-left:20px; margin:0 0 14px;">
+        <li><strong style="color:#4ade80;">Recommend for interview</strong> — weighted score &ge; 3.7 and no category below 3.0.</li>
+        <li><strong style="color:#bbb;">Don’t recommend</strong> — weighted score &lt; 3.7, any category below 2.5, or a serious concern (availability, eligibility).</li>
       </ul>
-      <p class="app-meta" style="margin-top:10px;">Managers always make the final call. The system never auto-rejects an applicant.</p>
+      <p class="app-meta" style="margin:0;">Internally the rubric still tracks four buckets (strong callback / callback / maybe / hold) for analytics. Managers see only the two-state verdict. Managers always make the final call — the system never auto-rejects an applicant.</p>
     </div>
 
     <div class="app-section">

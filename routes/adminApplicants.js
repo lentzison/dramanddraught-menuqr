@@ -331,9 +331,10 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
     filters.aiRec = aiRecFilter;
     filters.review = reviewFilter;
 
-    const VALID_AI_RECS = new Set(['strong_callback', 'callback', 'maybe', 'hold']);
-    if (VALID_AI_RECS.has(aiRecFilter)) {
-      where.aiEvaluation = { ...(where.aiEvaluation || {}), recommendation: aiRecFilter };
+    if (aiRecFilter === 'recommend') {
+      where.aiEvaluation = { ...(where.aiEvaluation || {}), recommendation: { in: ['strong_callback', 'callback'] } };
+    } else if (aiRecFilter === 'dont_recommend') {
+      where.aiEvaluation = { ...(where.aiEvaluation || {}), recommendation: { in: ['maybe', 'hold'] } };
     }
     if (reviewFilter === '1') {
       where.aiEvaluation = { ...(where.aiEvaluation || {}), humanReviewRequired: true };

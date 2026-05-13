@@ -124,36 +124,80 @@ function applicantStyles() {
       .app-flash.success { background:rgba(34,197,94,0.18); color:#4ade80; }
       .app-flash.error { background:rgba(239,68,68,0.16); color:#f87171; }
 
+      /* AI screening — cleaned-up, GM-friendly layout */
+      .ai-card { border-radius:12px; padding:18px 20px; margin-bottom:14px; }
+      .ai-verdict { display:flex; flex-wrap:wrap; align-items:center; gap:14px; padding:18px 22px; border-radius:12px; margin-bottom:14px; border:1px solid var(--border); background:var(--card); }
+      .ai-verdict-pill {
+        display:inline-flex; align-items:center; gap:8px;
+        padding:8px 16px; border-radius:999px; font-weight:800;
+        text-transform:uppercase; letter-spacing:0.06em; font-size:0.82rem;
+      }
+      .ai-verdict-pill.is-strong_callback { background:rgba(34,197,94,0.22); color:#4ade80; }
+      .ai-verdict-pill.is-callback        { background:rgba(45,212,191,0.18); color:#5eead4; }
+      .ai-verdict-pill.is-maybe           { background:rgba(251,191,36,0.18); color:#fcd34d; }
+      .ai-verdict-pill.is-hold            { background:rgba(150,150,150,0.20); color:#aaa; }
+      .ai-verdict-pill.is-pending         { background:rgba(96,165,250,0.18); color:#93c5fd; }
+      .ai-verdict-pill.is-error           { background:rgba(239,68,68,0.18); color:#f87171; }
+      .ai-verdict-score { font-size:1.6rem; font-weight:800; color:var(--text); }
+      .ai-verdict-score small { display:block; font-size:0.62rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em; margin-top:2px; }
+      .ai-verdict-summary { flex:1 1 320px; color:var(--text); font-size:0.98rem; line-height:1.45; min-width:240px; }
+      .ai-verdict-confidence { color:var(--muted); font-size:0.78rem; text-transform:uppercase; letter-spacing:0.05em; }
+
+      .ai-watchout { background:rgba(212,175,55,0.10); border:1px solid rgba(212,175,55,0.40); border-radius:12px; padding:14px 18px; margin-bottom:14px; }
+      .ai-watchout h3 { margin:0 0 8px; color:#f5d76e; font-size:0.95rem; }
+      .ai-watchout ul { margin:0; padding-left:22px; line-height:1.55; }
+      .ai-watchout li { margin-bottom:4px; color:#f5e9c0; }
+      .ai-watchout-error { background:rgba(239,68,68,0.12); border-color:rgba(239,68,68,0.40); }
+      .ai-watchout-error h3 { color:#fca5a5; }
+      .ai-watchout-error li { color:#f4c5c5; }
+
+      .ai-followups { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px 18px; margin-bottom:14px; }
+      .ai-followups h3 { margin:0 0 10px; color:var(--accent); font-size:0.95rem; }
+      .ai-followups ol { margin:0; padding-left:22px; line-height:1.5; }
+      .ai-followups li { margin-bottom:6px; color:var(--text); font-size:0.94rem; }
+
+      .ai-cats { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px 18px; margin-bottom:14px; }
+      .ai-cats h3 { margin:0 0 10px; color:var(--accent); font-size:0.95rem; }
+      .ai-cat-row { display:flex; align-items:center; gap:12px; padding:8px 0; border-bottom:1px solid var(--border); }
+      .ai-cat-row:last-child { border-bottom:none; }
+      .ai-cat-row .label { flex:0 0 180px; color:var(--text); font-weight:600; font-size:0.92rem; }
+      .ai-cat-row .meter {
+        flex:1 1 auto; height:8px; border-radius:4px;
+        background:rgba(255,255,255,0.06); overflow:hidden; min-width:80px;
+      }
+      .ai-cat-row .meter > span { display:block; height:100%; background:linear-gradient(90deg, #4ade80, #d4af37); }
+      .ai-cat-row .num { flex:0 0 46px; text-align:right; color:var(--text); font-weight:700; font-size:0.95rem; }
+      .ai-cat-row .num small { color:var(--muted); font-weight:500; font-size:0.7rem; margin-left:4px; }
+      .ai-cat-detail { padding:6px 0 8px 14px; border-left:2px solid rgba(212,175,55,0.25); margin:4px 0 12px 0; }
+      .ai-cat-detail .why { color:var(--muted); font-size:0.86rem; line-height:1.5; margin-bottom:8px; }
+      .ai-cat-detail h4 { margin:8px 0 4px; font-size:0.74rem; color:var(--accent); text-transform:uppercase; letter-spacing:0.06em; }
+      .ai-cat-detail ul { margin:0 0 6px; padding-left:18px; }
+      .ai-cat-detail li { font-size:0.86rem; line-height:1.45; margin-bottom:3px; color:var(--text); }
+      .ai-cat-detail .concerns li { color:#f4c5c5; }
+      details.ai-cat-toggle > summary { cursor:pointer; color:var(--accent); font-size:0.78rem; padding:6px 0; list-style:none; }
+      details.ai-cat-toggle > summary::-webkit-details-marker { display:none; }
+      details.ai-cat-toggle > summary::before { content:'▸ '; }
+      details.ai-cat-toggle[open] > summary::before { content:'▾ '; }
+
+      details.ai-collapse { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px 18px; margin-bottom:14px; }
+      details.ai-collapse > summary { cursor:pointer; color:var(--text); font-weight:600; font-size:0.95rem; list-style:none; }
+      details.ai-collapse > summary::-webkit-details-marker { display:none; }
+      details.ai-collapse > summary::before { content:'▸ '; color:var(--accent); }
+      details.ai-collapse[open] > summary::before { content:'▾ '; color:var(--accent); }
+      details.ai-collapse[open] > summary { padding-bottom:10px; border-bottom:1px solid var(--border); margin-bottom:14px; }
+      details.ai-collapse .answer-q { color:var(--muted); font-size:0.78rem; text-transform:uppercase; letter-spacing:0.05em; margin:14px 0 4px; }
+      details.ai-collapse .answer-q:first-of-type { margin-top:0; }
+      details.ai-collapse .answer-a { color:var(--text); font-size:0.92rem; line-height:1.55; white-space:pre-wrap; }
+
+      .ai-meta { color:var(--muted); font-size:0.72rem; margin-top:8px; padding:8px 14px; }
       .ai-rec-badge { display:inline-block; padding:3px 9px; border-radius:10px; font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin-left:6px; }
       .ai-rec-strong_callback { background:rgba(34,197,94,0.22); color:#4ade80; }
       .ai-rec-callback        { background:rgba(45,212,191,0.18); color:#5eead4; }
-      .ai-rec-maybe           { background:rgba(251,191,36,0.16); color:#fcd34d; }
-      .ai-rec-hold            { background:rgba(150,150,150,0.18); color:#aaa; }
-      .ai-rec-pending         { background:rgba(96,165,250,0.16); color:#93c5fd; }
-      .ai-rec-error           { background:rgba(239,68,68,0.16); color:#f87171; }
+      .ai-rec-maybe           { background:rgba(251,191,36,0.18); color:#fcd34d; }
+      .ai-rec-hold            { background:rgba(150,150,150,0.20); color:#aaa; }
+      .ai-rec-pending         { background:rgba(96,165,250,0.18); color:#93c5fd; }
+      .ai-rec-error           { background:rgba(239,68,68,0.18); color:#f87171; }
       .ai-review-badge { display:inline-block; padding:3px 9px; border-radius:10px; font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin-left:6px; background:rgba(212,175,55,0.22); color:#f5d76e; }
-
-      .ai-panel { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px; margin-bottom:14px; }
-      .ai-panel-head { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-bottom:10px; }
-      .ai-panel-head h2 { margin:0; font-size:1.1rem; color:var(--accent); }
-      .ai-panel-stats { display:flex; flex-wrap:wrap; gap:18px; margin-bottom:14px; font-size:0.85rem; color:var(--muted); }
-      .ai-panel-stats strong { color:var(--text); font-size:1.1rem; display:block; }
-      .ai-panel-prose { color:var(--text); line-height:1.55; margin:6px 0 14px; }
-      .ai-panel-warning { background:rgba(212,175,55,0.12); border:1px solid rgba(212,175,55,0.35); color:#f5d76e; padding:10px 14px; border-radius:8px; margin-bottom:14px; font-size:0.88rem; }
-      .ai-cat-grid { display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:14px; }
-      @media (max-width: 760px) { .ai-cat-grid { grid-template-columns: 1fr; } }
-      .ai-cat { border:1px solid var(--border); border-radius:10px; padding:12px 14px; background:rgba(255,255,255,0.02); }
-      .ai-cat-head { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:6px; }
-      .ai-cat-head strong { color:var(--text); }
-      .ai-cat-score { font-weight:700; font-size:1.1rem; color:var(--accent); }
-      .ai-cat-weight { color:var(--muted); font-size:0.78rem; }
-      .ai-cat-rationale { color:var(--muted); font-size:0.85rem; line-height:1.5; margin-top:6px; }
-      .ai-cat-list { margin:6px 0 0 0; padding-left:18px; font-size:0.85rem; color:var(--text); }
-      .ai-cat-list li { margin-bottom:3px; line-height:1.45; }
-      .ai-cat-concerns li { color:#f4c5c5; }
-      .ai-bullet-list { padding-left:18px; margin:6px 0; }
-      .ai-bullet-list li { margin-bottom:5px; line-height:1.5; color:var(--text); }
-      .ai-meta { color:var(--muted); font-size:0.75rem; margin-top:14px; padding-top:10px; border-top:1px solid var(--border); }
     </style>
   `;
 }
@@ -173,88 +217,126 @@ function aiRecBadge(aiEvaluation) {
   return `<span class="ai-rec-badge ai-rec-${escHTML(rec)}">${escHTML(label)}</span>`;
 }
 
+const VERDICT_LABELS = {
+  strong_callback: 'Strong callback',
+  callback: 'Callback',
+  maybe: 'Maybe — needs more info',
+  hold: 'Hold',
+};
+
+const VERDICT_HEADLINES = {
+  strong_callback: 'Strong fit — bring them in.',
+  callback: 'Worth a callback.',
+  maybe: 'Mixed signals — interview only if you have time.',
+  hold: 'Hold — manager review required before any callback.',
+};
+
 function aiEvaluationPanel(application) {
   const ev = application.aiEvaluation;
   if (!ev) {
     if (!application.questionnaire) {
       return `
-        <div class="ai-panel">
-          <div class="ai-panel-head"><h2>AI screening</h2></div>
-          <div class="ai-panel-prose">Applicant has not yet completed the hospitality questionnaire. The AI evaluation runs automatically after submission.</div>
+        <div class="ai-verdict">
+          <span class="ai-verdict-pill is-pending">Awaiting questionnaire</span>
+          <div class="ai-verdict-summary">The applicant has not yet completed the hospitality questionnaire. AI evaluation runs automatically once they submit it.</div>
         </div>`;
     }
     return `
-      <div class="ai-panel">
-        <div class="ai-panel-head"><h2>AI screening</h2></div>
-        <div class="ai-panel-prose">Questionnaire submitted; AI evaluation is still in flight. Refresh in a moment.</div>
+      <div class="ai-verdict">
+        <span class="ai-verdict-pill is-pending">Evaluating…</span>
+        <div class="ai-verdict-summary">Questionnaire submitted; AI evaluation is still in flight. Refresh in a moment.</div>
       </div>`;
   }
 
-  const confidenceLabel = ev.confidence ? ev.confidence.charAt(0).toUpperCase() + ev.confidence.slice(1) : '—';
-  const scoreLabel = typeof ev.weightedScore === 'number' ? ev.weightedScore.toFixed(2) : '—';
-  const categoryScores = Array.isArray(ev.categoryScores) ? ev.categoryScores : [];
-
-  const catBlocks = categoryScores.map((cat) => {
-    const ev2 = Array.isArray(cat.evidence) ? cat.evidence : [];
-    const con = Array.isArray(cat.concerns) ? cat.concerns : [];
+  if (ev.errorDetail) {
     return `
-      <div class="ai-cat">
-        <div class="ai-cat-head">
-          <strong>${escHTML(formatCategoryLabel(cat.category))}</strong>
-          <span><span class="ai-cat-score">${escHTML(String(cat.score ?? '—'))}</span><span class="ai-cat-weight"> &middot; weight ${escHTML(String(cat.weight ?? 0))}</span></span>
-        </div>
-        ${cat.rationale ? `<div class="ai-cat-rationale">${escHTML(cat.rationale)}</div>` : ''}
-        ${ev2.length ? `<ul class="ai-cat-list">${ev2.map((e) => `<li>${escHTML(e)}</li>`).join('')}</ul>` : ''}
-        ${con.length ? `<ul class="ai-cat-list ai-cat-concerns">${con.map((c) => `<li>${escHTML(c)}</li>`).join('')}</ul>` : ''}
+      <div class="ai-watchout ai-watchout-error">
+        <h3>AI screening could not complete</h3>
+        <p style="margin:0; color:#f4c5c5;">${escHTML(ev.errorDetail)}</p>
+        <p style="margin:8px 0 0; color:var(--muted); font-size:0.82rem;">Review the questionnaire answers below and make a decision manually.</p>
       </div>`;
-  }).join('');
+  }
 
+  const rec = ev.recommendation || 'hold';
+  const scoreLabel = typeof ev.weightedScore === 'number' ? ev.weightedScore.toFixed(1) : '—';
+  const confidenceLabel = ev.confidence ? ev.confidence.charAt(0).toUpperCase() + ev.confidence.slice(1) : '—';
+  const headline = VERDICT_HEADLINES[rec] || '';
+  const summary = ev.candidateSummary || ev.overallRationale || headline;
+
+  const reviewReasons = Array.isArray(ev.humanReviewReasons) ? ev.humanReviewReasons : [];
   const concerns = Array.isArray(ev.jobRelatedConcerns) ? ev.jobRelatedConcerns : [];
   const followUps = Array.isArray(ev.suggestedInterviewQuestions) ? ev.suggestedInterviewQuestions : [];
-  const reviewReasons = Array.isArray(ev.humanReviewReasons) ? ev.humanReviewReasons : [];
+  const categoryScores = Array.isArray(ev.categoryScores) ? ev.categoryScores : [];
 
-  return `
-    <div class="ai-panel">
-      <div class="ai-panel-head">
-        <h2>AI screening</h2>
-        ${aiRecBadge(ev)}
-        ${ev.humanReviewRequired ? '<span class="ai-review-badge">Human review required</span>' : ''}
-      </div>
-
-      ${ev.errorDetail ? `<div class="ai-panel-warning"><strong>AI evaluation could not complete:</strong> ${escHTML(ev.errorDetail)}</div>` : ''}
-
-      ${ev.humanReviewRequired && reviewReasons.length ? `
-        <div class="ai-panel-warning">
-          <strong>Flagged for human review:</strong>
-          <ul class="ai-bullet-list" style="margin-top:6px;">${reviewReasons.map((r) => `<li>${escHTML(r)}</li>`).join('')}</ul>
-        </div>` : ''}
-
-      <div class="ai-panel-stats">
-        <div><strong>${escHTML(scoreLabel)}</strong>Weighted score (0–5)</div>
-        <div><strong>${escHTML(confidenceLabel)}</strong>AI confidence</div>
-        ${ev.possibleBetterRoleFit ? `<div><strong>${escHTML(ev.possibleBetterRoleFit)}</strong>Possible better role fit</div>` : ''}
-      </div>
-
-      ${ev.candidateSummary ? `<div class="ai-panel-prose"><strong>Summary:</strong> ${escHTML(ev.candidateSummary)}</div>` : ''}
-      ${ev.overallRationale ? `<div class="ai-panel-prose"><strong>Rationale:</strong> ${escHTML(ev.overallRationale)}</div>` : ''}
-
-      ${catBlocks ? `<div class="ai-cat-grid">${catBlocks}</div>` : ''}
-
-      ${concerns.length ? `
-        <h3 style="font-size:0.95rem; color:var(--accent); margin:14px 0 6px;">Job-related concerns</h3>
-        <ul class="ai-bullet-list">${concerns.map((c) => `<li>${escHTML(c)}</li>`).join('')}</ul>` : ''}
-
-      ${followUps.length ? `
-        <h3 style="font-size:0.95rem; color:var(--accent); margin:14px 0 6px;">Suggested interview follow-ups</h3>
-        <ul class="ai-bullet-list">${followUps.map((q) => `<li>${escHTML(q)}</li>`).join('')}</ul>` : ''}
-
-      <div class="ai-meta">
-        Reminder: AI does not make final hiring decisions. Manager review required before any callback.
-        &middot; Model: ${escHTML(ev.modelName || '')}
-        &middot; Prompt: ${escHTML(ev.promptVersion || '')}
-        &middot; KB: ${escHTML(ev.knowledgeBaseVersion || '')}
-      </div>
+  // Verdict card — the one line a GM needs to read
+  const verdict = `
+    <div class="ai-verdict">
+      <span class="ai-verdict-pill is-${escHTML(rec)}">${escHTML(VERDICT_LABELS[rec] || rec)}</span>
+      <div class="ai-verdict-score">${escHTML(scoreLabel)}<small>Score / 5</small></div>
+      <div class="ai-verdict-confidence">Confidence: ${escHTML(confidenceLabel)}</div>
+      ${summary ? `<div class="ai-verdict-summary">${escHTML(summary)}</div>` : ''}
     </div>`;
+
+  // Watch outs — only render when there's something the GM needs to know
+  const watchoutItems = [];
+  if (ev.humanReviewRequired && reviewReasons.length) {
+    for (const r of reviewReasons) watchoutItems.push(escHTML(r));
+  } else if (ev.humanReviewRequired) {
+    watchoutItems.push('Manager review required before any decision.');
+  }
+  for (const c of concerns) watchoutItems.push(escHTML(c));
+  const watchouts = watchoutItems.length ? `
+    <div class="ai-watchout">
+      <h3>Watch outs</h3>
+      <ul>${watchoutItems.map((t) => `<li>${t}</li>`).join('')}</ul>
+    </div>` : '';
+
+  // Interview follow-ups — front and center
+  const followupsBlock = followUps.length ? `
+    <div class="ai-followups">
+      <h3>For your interview — ask these</h3>
+      <ol>${followUps.map((q) => `<li>${escHTML(q)}</li>`).join('')}</ol>
+    </div>` : '';
+
+  // Category breakdown — compact list with a click-to-expand for evidence
+  const categoryRows = categoryScores.map((cat) => {
+    const score = typeof cat.score === 'number' ? cat.score : 0;
+    const meterPct = Math.max(0, Math.min(100, score * 20));
+    const ev2 = Array.isArray(cat.evidence) ? cat.evidence : [];
+    const con = Array.isArray(cat.concerns) ? cat.concerns : [];
+    const hasDetail = (cat.rationale && cat.rationale.length) || ev2.length || con.length;
+    const row = `
+      <div class="ai-cat-row">
+        <div class="label">${escHTML(formatCategoryLabel(cat.category))}</div>
+        <div class="meter"><span style="width:${meterPct}%"></span></div>
+        <div class="num">${score || '—'}<small>/5</small></div>
+      </div>`;
+    if (!hasDetail) return row;
+    return `
+      ${row}
+      <details class="ai-cat-toggle">
+        <summary>Why this score &middot; evidence</summary>
+        <div class="ai-cat-detail">
+          ${cat.rationale ? `<div class="why">${escHTML(cat.rationale)}</div>` : ''}
+          ${ev2.length ? `<h4>Evidence</h4><ul>${ev2.map((e) => `<li>${escHTML(e)}</li>`).join('')}</ul>` : ''}
+          ${con.length ? `<h4>Concerns</h4><ul class="concerns">${con.map((c) => `<li>${escHTML(c)}</li>`).join('')}</ul>` : ''}
+        </div>
+      </details>`;
+  }).join('');
+
+  const categories = categoryRows ? `
+    <div class="ai-cats">
+      <h3>Category scores</h3>
+      ${categoryRows}
+    </div>` : '';
+
+  const meta = `
+    <div class="ai-meta">
+      Reminder: AI does not make final hiring decisions. Manager review required before any callback.
+      ${ev.possibleBetterRoleFit ? ` &middot; Possible better fit: ${escHTML(ev.possibleBetterRoleFit)}` : ''}
+    </div>`;
+
+  return `${verdict}${watchouts}${followupsBlock}${categories}${meta}`;
 }
 
 const CATEGORY_LABEL_MAP = {
@@ -275,17 +357,14 @@ function questionnaireAnswersPanel(application) {
   const blocks = QUESTIONS.map((qq) => {
     const a = q.answers[qq.id] || '(no answer)';
     return `
-      <div style="margin-bottom:14px;">
-        <div style="color:var(--muted); font-size:0.75rem; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:4px;">Q${qq.order}. ${escHTML(qq.text)}</div>
-        <div class="app-prose" style="color:var(--text); font-size:0.92rem;">${escHTML(a)}</div>
-      </div>`;
+      <div class="answer-q">Q${qq.order}. ${escHTML(qq.text)}</div>
+      <div class="answer-a">${escHTML(a)}</div>`;
   }).join('');
   return `
-    <div class="app-section">
-      <h2>Questionnaire answers</h2>
-      <div style="color:var(--muted); font-size:0.78rem; margin-bottom:14px;">Submitted ${escHTML(formatFriendly(q.submittedAt))} &middot; Version ${escHTML(q.version)}</div>
+    <details class="ai-collapse">
+      <summary>Show all 20 questionnaire answers <span style="color:var(--muted); font-weight:400; font-size:0.78rem;">&middot; submitted ${escHTML(formatFriendly(q.submittedAt))}</span></summary>
       ${blocks}
-    </div>`;
+    </details>`;
 }
 
 function applicantsList({ applications, locations, filters, counts, user, flashMsg, canSeeMultipleLocations }) {

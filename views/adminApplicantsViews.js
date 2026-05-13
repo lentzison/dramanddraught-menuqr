@@ -228,10 +228,13 @@ function aiEvaluationPanel(application) {
   const ev = application.aiEvaluation;
   if (!ev) {
     if (!application.questionnaire) {
+      const inviteNote = application.questionnaireInviteSentAt
+        ? ` Reminder email sent on ${escHTML(formatFriendly(application.questionnaireInviteSentAt))}.`
+        : '';
       return `
         <div class="ai-verdict">
           <span class="ai-verdict-pill is-pending">Awaiting questionnaire</span>
-          <div class="ai-verdict-summary">The applicant has not yet completed the hospitality questionnaire. AI evaluation runs automatically once they submit it.</div>
+          <div class="ai-verdict-summary">The applicant has not yet completed the hospitality questionnaire. AI evaluation runs automatically once they submit it.${inviteNote}</div>
         </div>`;
     }
     return `

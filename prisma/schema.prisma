@@ -378,6 +378,9 @@ model JobApplication {
   visitorId       String?
   sessionId       String?
   source          String?
+  // Last time we emailed this applicant the questionnaire link (backfill script
+  // sets this; null means we have not yet invited them via that flow).
+  questionnaireInviteSentAt DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

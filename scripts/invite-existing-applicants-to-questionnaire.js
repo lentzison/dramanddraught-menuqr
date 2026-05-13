@@ -6,6 +6,11 @@
 //   - JobApplication has no JobApplicationQuestionnaire row yet
 //   - status is "new" or "reviewing" (skip hired/rejected/withdrawn/etc.)
 //   - has an email address
+//   - questionnaireInviteSentAt is null (we have not already emailed them via
+//     this flow). Pass --force to re-send to people we already nudged.
+//
+// On each successful send, the applicant's questionnaireInviteSentAt is
+// updated so re-runs are idempotent.
 //
 // Usage (dry-run by default; prints what would be sent):
 //   node scripts/invite-existing-applicants-to-questionnaire.js
@@ -16,6 +21,7 @@
 // Optional filters:
 //   --location=greensboro       only this location slug
 //   --before=2026-05-12         only applications created strictly before this date (ISO)
+//   --force                     also include applicants who were already invited
 //
 // Requires DATABASE_URL + Gmail service-account env vars to be present.
 
@@ -27,9 +33,10 @@ const MENUQR_BASE_URL = process.env.MENUQR_BASE_URL || 'https://menuqr.apps.dram
 const ACTIVE_STATUSES = ['new', 'reviewing'];
 
 function parseArgs() {
-  const out = { send: false, location: null, before: null };
+  const out = { send: false, location: null, before: null, force: false };
   for (const arg of process.argv.slice(2)) {
     if (arg === '--send') out.send = true;
+    else if (arg === '--force') out.force = true;
     else if (arg.startsWith('--location=')) out.location = arg.slice('--location='.length);
     else if (arg.startsWith('--before=')) out.before = new Date(arg.slice('--before='.length));
   }
@@ -71,6 +78,9 @@ async function main() {
     status: { in: ACTIVE_STATUSES },
     email: { not: '' },
   };
+  if (!args.force) {
+    where.questionnaireInviteSentAt = null;
+  }
   if (args.before) {
     where.createdAt = { lt: args.before };
   }
@@ -118,6 +128,12 @@ async function main() {
         console.warn(`  · FAILED ${to}: ${result.reason || 'unknown'} ${result.detail ? '— ' + result.detail : ''}`);
       } else {
         sent++;
+        await prisma.jobApplication
+          .update({
+            where: { id: application.id },
+            data: { questionnaireInviteSentAt: new Date() },
+          })
+          .catch((err) => console.warn(`  · could not stamp invite-sent for ${to}: ${err.message}`));
         console.log(`  → ${to}  (${application.location.name})`);
       }
     } catch (err) {

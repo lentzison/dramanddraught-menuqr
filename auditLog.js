@@ -21,9 +21,11 @@ function getClientIp(req) {
   return (req.socket && req.socket.remoteAddress) || null;
 }
 
+// Always returns a Promise so callers can safely chain .catch even when the
+// audit log is unavailable or the entry is malformed.
 function writeAudit(prisma, req, user, entry) {
-  if (!prisma || !prisma.auditLog) return;
-  if (!entry || !entry.action || !entry.resourceType) return;
+  if (!prisma || !prisma.auditLog) return Promise.resolve();
+  if (!entry || !entry.action || !entry.resourceType) return Promise.resolve();
   const data = {
     userId: user && user.id ? String(user.id) : null,
     userEmail: user && user.email ? String(user.email) : null,
@@ -38,8 +40,7 @@ function writeAudit(prisma, req, user, entry) {
     details: entry.details || null,
     ipAddress: getClientIp(req),
   };
-  // Fire and forget
-  prisma.auditLog.create({ data }).catch((err) => {
+  return prisma.auditLog.create({ data }).catch((err) => {
     console.warn('Audit log write failed:', err.message);
   });
 }

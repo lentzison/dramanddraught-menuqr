@@ -217,8 +217,6 @@ const QUESTIONS = [
 
 const APPLICANT_NOTICE = `As part of our hiring process, Dram & Draught asks applicants to complete a short questionnaire about hospitality, teamwork, communication, learning, availability, and job-related situations.
 
-We may use AI to help summarize and organize questionnaire responses for manager review. AI does not make final hiring decisions. A Dram & Draught manager reviews applications before deciding whether to schedule an interview.
-
 Please do not include medical information, family status, or other personal information unrelated to the job. If you need an accommodation or an alternative way to complete this questionnaire, please contact us.`;
 
 // Full knowledge base text injected into the AI's system prompt. Kept as a

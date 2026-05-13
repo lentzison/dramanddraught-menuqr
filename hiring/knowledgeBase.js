@@ -281,7 +281,7 @@ A weak answer is not a poorly-written answer. Never penalize grammar, spelling, 
 - 2: Weak evidence, vague, low ownership, or possible concern. Needs serious follow-up.
 - 1: Clear job-related concern — dismissive guest attitude, "that's not my job", defensive to feedback, cannot meet availability, escalates conflict.
 
-## Callback thresholds (code-enforced; AI recommendation is advisory)
+## Callback thresholds (code-enforced; the screener's recommendation is advisory)
 - strong_callback: weighted score >= 4.2, no category below 3.5, availability compatible, no serious concerns
 - callback: weighted score 3.7–4.19, no category below 3.0, availability compatible
 - maybe: weighted score 3.2–3.69, may fit a different role, evidence promising but incomplete

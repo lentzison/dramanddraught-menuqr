@@ -85,6 +85,86 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
     return true;
   }
 
+  // ─── Send questionnaire invites to applicants who haven't done it yet ───
+  if (pathname === '/admin/applicants/send-questionnaire-invites' && req.method === 'POST') {
+    const MENUQR_BASE_URL = process.env.MENUQR_BASE_URL || 'https://menuqr.apps.dramanddraught.com';
+    const body = await parseBody(req).catch(() => ({}));
+    const force = body.force === '1' || body.force === 'on';
+
+    const where = {
+      ...applicationLocationGate,
+      questionnaire: { is: null },
+      status: { in: ['new', 'reviewing'] },
+      email: { not: '' },
+    };
+    if (!force) where.questionnaireInviteSentAt = null;
+
+    const eligible = await prisma.jobApplication.findMany({
+      where,
+      include: { location: { select: { id: true, name: true, slug: true } } },
+      orderBy: { createdAt: 'asc' },
+    }).catch(() => []);
+
+    let sent = 0;
+    let failed = 0;
+    for (const app of eligible) {
+      if (!app.email) continue;
+      const firstName = (app.name || '').split(' ')[0] || 'there';
+      const positionPhrase = app.position
+        ? ` for the ${app.position}${app.position === 'Other' && app.positionOther ? ` (${app.positionOther})` : ''} role`
+        : '';
+      const url = `${MENUQR_BASE_URL}/apply/q/${app.id}`;
+      const emailBody = [
+        `Hi ${firstName},`,
+        '',
+        `Thanks again for applying to Dram & Draught – ${app.location.name}${positionPhrase}.`,
+        '',
+        "We added a short hospitality questionnaire to our hiring process and we'd love to see your answers before we move forward. It takes about 10 minutes.",
+        '',
+        `Complete it here: ${url}`,
+        '',
+        "If the link doesn't work, just reply to this email and we'll send a fresh one.",
+        '',
+        'Cheers,',
+        'Dram & Draught',
+      ].join('\n');
+      try {
+        const result = await sendEmailViaGoogle({
+          to: app.email,
+          subject: 'One more step for your Dram & Draught application',
+          body: emailBody,
+        });
+        if (result && result.ok === false) {
+          failed++;
+          continue;
+        }
+        sent++;
+        await prisma.jobApplication.update({
+          where: { id: app.id },
+          data: { questionnaireInviteSentAt: new Date() },
+        }).catch(() => {});
+      } catch (err) {
+        failed++;
+        console.warn('[questionnaire-invite] send failed for', app.email, err.message);
+      }
+    }
+
+    writeAudit(prisma, req, user, {
+      action: 'send',
+      resourceType: 'questionnaire_invites',
+      resourceLabel: `${sent} sent, ${failed} failed`,
+      details: { sent, failed, eligible: eligible.length, force },
+    });
+
+    const note = failed > 0
+      ? `Sent ${sent} invite${sent === 1 ? '' : 's'}; ${failed} failed (check server logs).`
+      : sent === 0
+        ? 'No applicants needed an invite.'
+        : `Sent ${sent} invite${sent === 1 ? '' : 's'}.`;
+    flashRedirect(res, '/admin/applicants', failed > 0 ? 'error' : 'success', note);
+    return true;
+  }
+
   // ─── Resume download: /admin/applicants/:id/resume ───
   const resumeMatch = pathname.match(/^\/admin\/applicants\/([0-9a-f-]{8,})\/resume$/i);
   if (resumeMatch) {
@@ -345,17 +425,31 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
       orderBy: { createdAt: 'desc' },
       include: {
         location: { select: { name: true, slug: true } },
+        questionnaire: { select: { id: true } },
         aiEvaluation: {
           select: {
             recommendation: true,
             weightedScore: true,
             confidence: true,
             humanReviewRequired: true,
+            errorDetail: true,
           },
         },
       },
       take: 200,
     }).catch(() => []);
+
+    // Count of applicants who still owe a questionnaire and have not yet been
+    // reminded — drives the "Send invites" button label.
+    const pendingInviteCount = await prisma.jobApplication.count({
+      where: {
+        ...applicationLocationGate,
+        questionnaire: { is: null },
+        questionnaireInviteSentAt: null,
+        status: { in: ['new', 'reviewing'] },
+        email: { not: '' },
+      },
+    }).catch(() => 0);
 
     // Counts for stat cards (scoped to allowed locations, ignoring filters
     // so the stats represent overall pipeline state, not the filtered view).
@@ -378,6 +472,7 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
       user,
       flashMsg,
       canSeeMultipleLocations: userIsCompanyWide || locations.length > 1,
+      pendingInviteCount,
     }));
     return true;
   }

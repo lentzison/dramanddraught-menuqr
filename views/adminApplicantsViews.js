@@ -124,7 +124,7 @@ function applicantStyles() {
       .app-flash.success { background:rgba(34,197,94,0.18); color:#4ade80; }
       .app-flash.error { background:rgba(239,68,68,0.16); color:#f87171; }
 
-      /* AI screening — cleaned-up, GM-friendly layout */
+      /* Applicant screening — cleaned-up, GM-friendly layout */
       .ai-card { border-radius:12px; padding:18px 20px; margin-bottom:14px; }
       .ai-verdict { display:flex; flex-wrap:wrap; align-items:center; gap:14px; padding:18px 22px; border-radius:12px; margin-bottom:14px; border:1px solid var(--border); background:var(--card); }
       .ai-verdict-pill {
@@ -198,10 +198,21 @@ function applicantStyles() {
   `;
 }
 
-function aiRecBadge(aiEvaluation) {
-  if (!aiEvaluation) return '<span class="ai-rec-badge ai-rec-pending">AI pending</span>';
-  if (aiEvaluation.errorDetail) return '<span class="ai-rec-badge ai-rec-error">AI error</span>';
-  const bucket = verdictBucketFor(aiEvaluation.recommendation);
+function aiRecBadge(application) {
+  // Accepts the whole application so we can distinguish "no quiz yet" from
+  // "quiz in, AI still running".
+  const ev = application && application.aiEvaluation;
+  const hasQuiz = application && application.questionnaire;
+  if (!ev) {
+    if (!hasQuiz) {
+      const invited = application && application.questionnaireInviteSentAt;
+      const label = invited ? 'Quiz not done — reminded' : 'Quiz not done';
+      return `<span class="ai-rec-badge ai-rec-pending">${escHTML(label)}</span>`;
+    }
+    return '<span class="ai-rec-badge ai-rec-pending">Quiz in — evaluating</span>';
+  }
+  if (ev.errorDetail) return '<span class="ai-rec-badge ai-rec-error">Screening error</span>';
+  const bucket = verdictBucketFor(ev.recommendation);
   const label = VERDICT_LABELS[bucket];
   return `<span class="ai-rec-badge ai-rec-${escHTML(bucket)}">${escHTML(label)}</span>`;
 }
@@ -234,20 +245,20 @@ function aiEvaluationPanel(application) {
       return `
         <div class="ai-verdict">
           <span class="ai-verdict-pill is-pending">Awaiting questionnaire</span>
-          <div class="ai-verdict-summary">The applicant has not yet completed the hospitality questionnaire. AI evaluation runs automatically once they submit it.${inviteNote}</div>
+          <div class="ai-verdict-summary">The applicant has not yet completed the hospitality questionnaire. Screening runs automatically once they submit it.${inviteNote}</div>
         </div>`;
     }
     return `
       <div class="ai-verdict">
         <span class="ai-verdict-pill is-pending">Evaluating…</span>
-        <div class="ai-verdict-summary">Questionnaire submitted; AI evaluation is still in flight. Refresh in a moment.</div>
+        <div class="ai-verdict-summary">Questionnaire submitted; screening is still in flight. Refresh in a moment.</div>
       </div>`;
   }
 
   if (ev.errorDetail) {
     return `
       <div class="ai-watchout ai-watchout-error">
-        <h3>AI screening could not complete</h3>
+        <h3>Screening could not complete</h3>
         <p style="margin:0; color:#f4c5c5;">${escHTML(ev.errorDetail)}</p>
         <p style="margin:8px 0 0; color:var(--muted); font-size:0.82rem;">Review the questionnaire answers below and make a decision manually.</p>
       </div>`;
@@ -329,7 +340,7 @@ function aiEvaluationPanel(application) {
 
   const meta = `
     <div class="ai-meta">
-      Reminder: AI does not make final hiring decisions. Manager review required before any callback.
+      Reminder: this screening is advisory only. Manager review required before any callback.
       ${ev.possibleBetterRoleFit ? ` &middot; Possible better fit: ${escHTML(ev.possibleBetterRoleFit)}` : ''}
     </div>`;
 
@@ -364,7 +375,7 @@ function questionnaireAnswersPanel(application) {
     </details>`;
 }
 
-function applicantsList({ applications, locations, filters, counts, user, flashMsg, canSeeMultipleLocations }) {
+function applicantsList({ applications, locations, filters, counts, user, flashMsg, canSeeMultipleLocations, pendingInviteCount = 0 }) {
   const positionOptions = ['', ...POSITIONS].map((p) => {
     const sel = filters.position === p ? ' selected' : '';
     const label = p === '' ? 'All positions' : p;
@@ -397,7 +408,7 @@ function applicantsList({ applications, locations, filters, counts, user, flashM
         <div class="app-row-main">
           <a class="app-name" href="/admin/applicants/${escHTML(a.id)}">${escHTML(a.name)}</a>
           <span style="margin-left:8px;">${statusBadge(a.status)}</span>
-          ${aiRecBadge(a.aiEvaluation)}
+          ${aiRecBadge(a)}
           ${a.aiEvaluation && a.aiEvaluation.humanReviewRequired ? '<span class="ai-review-badge">Human review</span>' : ''}
           <div class="app-meta">
             <span>${escHTML(a.position || '')}${a.position === 'Other' && a.positionOther ? ` (${escHTML(a.positionOther)})` : ''}</span>
@@ -406,7 +417,7 @@ function applicantsList({ applications, locations, filters, counts, user, flashM
             <span class="app-meta-dot">•</span>
             <span>Applied ${escHTML(formatFriendly(a.createdAt))}</span>
             ${a.email ? `<span class="app-meta-dot">•</span><span>${escHTML(a.email)}</span>` : ''}
-            ${a.aiEvaluation && typeof a.aiEvaluation.weightedScore === 'number' ? `<span class="app-meta-dot">•</span><span>AI score ${a.aiEvaluation.weightedScore.toFixed(2)} (${escHTML(a.aiEvaluation.confidence || '')})</span>` : ''}
+            ${a.aiEvaluation && typeof a.aiEvaluation.weightedScore === 'number' ? `<span class="app-meta-dot">•</span><span>Score ${a.aiEvaluation.weightedScore.toFixed(2)} (${escHTML(a.aiEvaluation.confidence || '')})</span>` : ''}
           </div>
         </div>
         <div class="app-row-actions">
@@ -417,7 +428,7 @@ function applicantsList({ applications, locations, filters, counts, user, flashM
   }).join('');
 
   const AI_REC_OPTIONS = [
-    { value: '', label: 'All AI verdicts' },
+    { value: '', label: 'All verdicts' },
     { value: 'recommend', label: 'Recommend for interview' },
     { value: 'dont_recommend', label: 'Don’t recommend' },
   ];
@@ -436,7 +447,14 @@ function applicantsList({ applications, locations, filters, counts, user, flashM
         <h1>Applicants</h1>
         <p class="page-subtitle">Review applications, schedule interviews, and move candidates through the pipeline.</p>
       </div>
-      <a href="/admin/applicants/hiring-config" class="btn btn-secondary">Screening config &amp; KB</a>
+      <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+        ${pendingInviteCount > 0 ? `
+          <form method="POST" action="/admin/applicants/send-questionnaire-invites" style="margin:0;" onsubmit="return confirm('Email ${pendingInviteCount} applicant${pendingInviteCount === 1 ? '' : 's'} the questionnaire link?');">
+            <button type="submit" class="btn btn-primary">Email ${pendingInviteCount} applicant${pendingInviteCount === 1 ? '' : 's'} the quiz link</button>
+          </form>` : `
+          <span class="app-meta" style="font-size:0.78rem;">No applicants need a quiz reminder.</span>`}
+        <a href="/admin/applicants/hiring-config" class="btn btn-secondary">Screening config</a>
+      </div>
     </div>
     ${flash}
 
@@ -458,7 +476,7 @@ function applicantsList({ applications, locations, filters, counts, user, flashM
       <label>Position
         <select name="position">${positionOptions}</select>
       </label>
-      <label>AI rec
+      <label>Recommendation
         <select name="ai_rec">${aiRecOptionsHtml}</select>
       </label>
       <label style="display:flex;align-items:flex-end;gap:6px;">
@@ -700,7 +718,7 @@ function hiringConfigPage({ user }) {
       <div>
         <div class="admin-kicker">Hiring</div>
         <h1>Screening configuration</h1>
-        <p class="page-subtitle">Read-only view of the knowledge base, role weights, and questionnaire that drive AI recommendations. Edits live in <code>hiring/knowledgeBase.js</code>; bump the version stamps when you change anything.</p>
+        <p class="page-subtitle">Read-only view of the knowledge base, role weights, and questionnaire that drive screening recommendations. Edits live in <code>hiring/knowledgeBase.js</code>; bump the version stamps when you change anything.</p>
       </div>
       <a href="/admin/applicants" class="btn btn-secondary">&larr; Back to applicants</a>
     </div>
@@ -712,7 +730,7 @@ function hiringConfigPage({ user }) {
 
     <div class="app-section">
       <h2>Role weights</h2>
-      <p class="app-meta" style="margin-bottom:10px;">Each row sums to 100. These are code-authoritative; the AI's claimed weights are ignored when recomputing the weighted score.</p>
+      <p class="app-meta" style="margin-bottom:10px;">Each row sums to 100. These are code-authoritative; the screener's claimed weights are ignored when recomputing the weighted score.</p>
       <div style="overflow-x:auto;">
         <table style="width:100%; border-collapse:collapse; font-size:0.9rem;">
           <thead><tr>${weightHeader}</tr></thead>

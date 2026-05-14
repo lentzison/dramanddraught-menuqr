@@ -25,15 +25,15 @@ async function main() {
     const candidates = await pool.query(
       `SELECT DISTINCT u.id, u.email, u."firstName", u."lastName", u."isApproved",
               COALESCE(
-                array_agg(DISTINCT ul.role) FILTER (WHERE ul.role IS NOT NULL),
+                array_agg(DISTINCT ul.role::text) FILTER (WHERE ul.role IS NOT NULL),
                 '{}'
               ) AS location_roles,
               COALESCE(
-                array_agg(DISTINCT s.role) FILTER (WHERE s.role IS NOT NULL),
+                array_agg(DISTINCT s.role::text) FILTER (WHERE s.role IS NOT NULL),
                 '{}'
               ) AS support_roles
          FROM "User" u
-         LEFT JOIN "UserLocation" ul         ON ul."userId" = u.id AND ul.role = ANY($1::text[])
+         LEFT JOIN "UserLocation" ul         ON ul."userId" = u.id AND ul.role::text = ANY($1::text[])
          LEFT JOIN "UserBarSupportRole" s    ON s."userId"  = u.id
         WHERE ul.role IS NOT NULL OR s.role IS NOT NULL
         GROUP BY u.id, u.email, u."firstName", u."lastName", u."isApproved"

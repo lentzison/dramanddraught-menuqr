@@ -7,10 +7,10 @@
 //   QUESTIONNAIRE_VERSION    — question wording, ordering, or scoring anchors
 //   RUBRIC_VERSION           — role weights, thresholds, or rubric definitions
 
-const KNOWLEDGE_BASE_VERSION = 'kb-v2-2026-05-14';
+const KNOWLEDGE_BASE_VERSION = 'kb-v3-2026-05-14';
 const PROMPT_VERSION = 'prompt-v2-2026-05-14';
 const QUESTIONNAIRE_VERSION = 'questionnaire-v2-2026-05-14';
-const RUBRIC_VERSION = 'rubric-v2-2026-05-14';
+const RUBRIC_VERSION = 'rubric-v3-2026-05-14';
 
 const ROLES = ['bartender', 'barback', 'server', 'door', 'lead_shift_lead', 'other'];
 
@@ -95,12 +95,12 @@ function weightsForRole(role) {
   return ROLE_WEIGHTS[role] || DEFAULT_WEIGHTS;
 }
 
-// Callback thresholds (v2). Lowered the "recommend" floor 3.7 → 3.5 because
-// real candidates cluster 3.5–4.0; the old threshold separated lucky from
-// unlucky instead of strong from weak.
+// Callback thresholds (v3). Recommend floor at 3.7 — paired with v2's rubric
+// rewrite (per-question anchors, short-answer floor, achievable 5s) that
+// re-spreads scores instead of clustering them at 3.
 const THRESHOLDS = {
   strongRecommend: { weighted: 4.2, minCategory: 3.5 },
-  recommend:       { weighted: 3.5, minCategory: 3.0 },
+  recommend:       { weighted: 3.7, minCategory: 3.0 },
   // anything below recommend → don't_recommend
   holdMinCategory: 2.5, // any category below this → forced don't_recommend
   reviewBand:      0.15, // weighted score within ±band of recommend threshold → flag review
@@ -418,7 +418,7 @@ A weak answer is not a poorly-written answer. Never penalize grammar, spelling, 
 
 ## Callback thresholds (code-enforced)
 These are computed on the recomputed weighted score using authoritative role weights. The screener's claimed recommendation is advisory; code re-derives.
-- Recommend: weighted ≥ 3.5 AND every category ≥ 3.0 AND no hard deal-breaker.
+- Recommend: weighted ≥ 3.7 AND every category ≥ 3.0 AND no hard deal-breaker.
 - Don't recommend: anything else, including any category < 2.5.
 
 ## What never enters scoring

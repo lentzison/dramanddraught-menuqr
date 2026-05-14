@@ -750,7 +750,7 @@ function hiringConfigPage({ user }) {
       <h2>How the verdict is calculated</h2>
       <p style="color:var(--text); line-height:1.55; margin:0 0 12px;">Each applicant gets one of two verdicts:</p>
       <ul style="line-height:1.7; color:var(--text); padding-left:20px; margin:0 0 14px;">
-        <li><strong style="color:#4ade80;">Recommend for interview</strong> — weighted score &ge; 3.5, every category &ge; 3.0, and no hard deal-breaker.</li>
+        <li><strong style="color:#4ade80;">Recommend for interview</strong> — weighted score &ge; 3.7, every category &ge; 3.0, and no hard deal-breaker.</li>
         <li><strong style="color:#bbb;">Don’t recommend</strong> — anything else, including any category &lt; 2.5 or an active deal-breaker.</li>
       </ul>
       <h3 style="margin:14px 0 6px; font-size:0.95rem; color:var(--accent);">Hard deal-breakers (force "Don’t recommend")</h3>

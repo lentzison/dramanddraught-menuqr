@@ -56,7 +56,8 @@ async function main() {
       console.log(`  ✓ already has bar-support role ${role}`);
     } else {
       await pool.query(
-        `INSERT INTO "UserBarSupportRole" (id, "userId", role) VALUES ($1, $2, $3::"BarSupportAdminRole")`,
+        `INSERT INTO "UserBarSupportRole" (id, "userId", role, "createdAt", "updatedAt")
+         VALUES ($1, $2, $3::"BarSupportAdminRole", NOW(), NOW())`,
         [crypto.randomUUID(), user.id, role],
       );
       console.log(`  → granted bar-support role ${role}`);

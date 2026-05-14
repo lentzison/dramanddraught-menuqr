@@ -7,6 +7,7 @@
 // ROLE must be one of: FOUNDER, MANAGING_DIRECTOR, HR, TRAINING, FINANCE, MARKETING
 
 const { Pool } = require('pg');
+const crypto = require('crypto');
 
 const ALLOWED_ROLES = new Set(['FOUNDER', 'MANAGING_DIRECTOR', 'HR', 'TRAINING', 'FINANCE', 'MARKETING']);
 
@@ -55,8 +56,8 @@ async function main() {
       console.log(`  ✓ already has bar-support role ${role}`);
     } else {
       await pool.query(
-        `INSERT INTO "UserBarSupportRole" ("userId", role) VALUES ($1, $2::"BarSupportAdminRole")`,
-        [user.id, role],
+        `INSERT INTO "UserBarSupportRole" (id, "userId", role) VALUES ($1, $2, $3::"BarSupportAdminRole")`,
+        [crypto.randomUUID(), user.id, role],
       );
       console.log(`  → granted bar-support role ${role}`);
     }

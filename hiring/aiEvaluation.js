@@ -12,6 +12,8 @@ const {
   weightsForRole,
   buildSystemPrompt,
   buildResponseSchema,
+  THRESHOLDS,
+  MIN_ANSWER_LENGTH,
 } = require('./knowledgeBase');
 
 const MODEL = 'claude-opus-4-7';
@@ -66,20 +68,59 @@ function recomputeWeightedScore(categoryScores, role) {
   return Math.round((weightedSum / totalWeight) * 100) / 100;
 }
 
-// Code-enforced recommendation. Trusts the AI's "hold" verdict; otherwise
-// re-derives from the recomputed weighted score + minimum category score.
-function determineRecommendation({ weightedScore, categoryScores, aiRecommendation, hasSeriousConcern, availabilityCompatible }) {
+// Code-enforced recommendation (v2 thresholds, 3.5 floor).
+function determineRecommendation({ weightedScore, categoryScores, aiRecommendation, dealBreakers }) {
   const scores = (categoryScores || []).map((c) => c && typeof c.score === 'number' ? c.score : 0);
   const minScore = scores.length ? Math.min(...scores) : 0;
 
-  if (availabilityCompatible === false) return 'hold';
-  if (hasSeriousConcern) return 'hold';
+  if (dealBreakers && dealBreakers.length) return 'hold';
   if (aiRecommendation === 'hold') return 'hold';
-  if (minScore > 0 && minScore < 2.5) return 'hold';
-  if (weightedScore < 3.2) return 'hold';
-  if (weightedScore >= 4.2 && minScore >= 3.5) return 'strong_callback';
-  if (weightedScore >= 3.7 && minScore >= 3.0) return 'callback';
+  if (minScore > 0 && minScore < THRESHOLDS.holdMinCategory) return 'hold';
+  if (weightedScore < THRESHOLDS.recommend.weighted) return 'hold';
+  if (weightedScore >= THRESHOLDS.strongRecommend.weighted && minScore >= THRESHOLDS.strongRecommend.minCategory) return 'strong_callback';
+  if (weightedScore >= THRESHOLDS.recommend.weighted && minScore >= THRESHOLDS.recommend.minCategory) return 'callback';
   return 'maybe';
+}
+
+// Short-answer floor — any answer under MIN_ANSWER_LENGTH (excluding Q20)
+// cannot serve as evidence for a category score above 2. If a category's
+// mapped questions are majority short, cap its score at 2.
+function capCategoriesForShortAnswers(categoryScores, answers) {
+  const shortQs = new Set();
+  for (const q of QUESTIONS) {
+    if (q.id === 'q20') continue;
+    const a = (answers && answers[q.id]) || '';
+    if (a.trim().length < MIN_ANSWER_LENGTH) shortQs.add(q.id);
+  }
+  if (shortQs.size === 0) return { capped: categoryScores, notes: [] };
+
+  const notes = [];
+  const capped = categoryScores.map((entry) => {
+    if (!entry) return entry;
+    const mapped = QUESTIONS.filter((q) => q.scoringCategories.includes(entry.category) && q.id !== 'q20');
+    if (mapped.length === 0) return entry;
+    const shortCount = mapped.filter((q) => shortQs.has(q.id)).length;
+    const ratio = shortCount / mapped.length;
+    if (ratio >= 0.5 && entry.score > 2) {
+      notes.push(`Capped ${entry.category} from ${entry.score} to 2: ${shortCount}/${mapped.length} mapped answers are below ${MIN_ANSWER_LENGTH} chars.`);
+      return { ...entry, score: 2 };
+    }
+    return entry;
+  });
+  return { capped, notes };
+}
+
+// Identifies the hard deal-breakers from KB §Non-negotiables that we can
+// detect deterministically. Returns an array of reasons (empty when clean).
+function detectDealBreakers(application) {
+  const reasons = [];
+  const positionLower = String(application.position || '').toLowerCase();
+  if (positionLower === 'bartender' && application.age21 === false) {
+    reasons.push('Applying for Bartender while under 21 (legal eligibility).');
+  }
+  // Availability deal-breakers (no Friday/Saturday) are best detected from the
+  // Q20 answer text; we ask the screener to flag and trust its `hold` verdict.
+  return reasons;
 }
 
 function buildUserPrompt({ application, questionnaire, roleWeights }) {
@@ -89,36 +130,69 @@ function buildUserPrompt({ application, questionnaire, roleWeights }) {
   const availabilityText = application.availability
     ? JSON.stringify(application.availability)
     : '(not provided)';
+  const answers = questionnaire.answers || {};
+
   const answerLines = QUESTIONS.map((q) => {
-    const text = (questionnaire.answers || {})[q.id] || '(no answer)';
-    return `Q${q.order} (${q.id}) [signals: ${q.scoringCategories.join(', ')}]: ${q.text}\nA: ${text}`;
+    const text = answers[q.id] || '(no answer)';
+    const lengthFlag = (q.id !== 'q20' && text && text.trim().length < MIN_ANSWER_LENGTH)
+      ? `\n  ⚠ SHORT ANSWER (${text.trim().length} chars) — cannot evidence a category above 2.`
+      : '';
+    const anchors = q.scoringAnchors
+      ? `\n  Anchors:\n    5 = ${q.scoringAnchors[5]}\n    3 = ${q.scoringAnchors[3]}\n    1 = ${q.scoringAnchors[1]}`
+      : '';
+    const notes = q.notes ? `\n  Note: ${q.notes}` : '';
+    return `Q${q.order} (${q.id}) [signals: ${q.scoringCategories.join(', ')}]: ${q.text}${anchors}${notes}\nA: ${text}${lengthFlag}`;
   }).join('\n\n');
+
   const weightLines = CATEGORIES
     .map((c) => `${c} (${CATEGORY_LABELS[c]}): ${roleWeights[c]}`)
     .join('\n');
+
+  // Application-level facts the screener should know up front.
+  const contextLines = [];
+  if (application.position === 'Bartender' && application.age21 === false) {
+    contextLines.push('⚠ DEAL-BREAKER: Bartender applicant has not confirmed they are 21+. Force recommendation to "hold".');
+  }
+  if (application.earliestStart) {
+    const start = new Date(application.earliestStart);
+    const daysOut = Math.round((start.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    if (Number.isFinite(daysOut) && daysOut > 60) {
+      contextLines.push(`⚠ HUMAN REVIEW: earliest start is ${daysOut} days out (>60 days). Flag for human review.`);
+    }
+  }
+  const contextBlock = contextLines.length
+    ? `\nApplication-level flags (use these directly):\n${contextLines.map((l) => `- ${l}`).join('\n')}\n`
+    : '';
+
   return `Evaluate this applicant for Dram & Draught.
 
 Application details:
 - Applicant role: ${application.position || '(unspecified)'}${application.positionOther ? ` — "${application.positionOther}"` : ''}
 - Normalized role key: ${role}
+- 21+ confirmed: ${application.age21 === true ? 'yes' : application.age21 === false ? 'NO' : 'unknown'}
+- Earliest start: ${application.earliestStart ? new Date(application.earliestStart).toISOString().slice(0, 10) : '(not provided)'}
 - Availability grid: ${availabilityText}
 - Q20 self-reported availability is included below in the answers.
-
+${contextBlock}
 Role-specific category weights (sum to 100):
 ${weightLines}
 
-Use this scoring rubric:
-1 = clear job-related concern
-2 = weak evidence or concern
-3 = acceptable but limited evidence
-4 = good evidence and likely alignment
-5 = strong evidence and strong alignment
+Scoring rubric (1–5 per category):
+1 = clear job-related concern (dismissive, can't meet shifts, blames, "not my job")
+2 = weak / vague / generic; possible concern
+3 = addresses the question with at least one concrete detail but lacks a specific example. Most candidates should NOT cluster here — push to 2 or 4 if evidence allows.
+4 = good specific evidence, clear alignment
+5 = strong specific evidence, real example, behavioral detail
+
+Short-answer floor: any answer below ${MIN_ANSWER_LENGTH} characters (excluding Q20) cannot evidence a category above 2. The user prompt above pre-flags these.
+
+Use the per-question anchors below each question to calibrate scores. Quote the applicant's own words when listing evidence or concerns.
 
 Questionnaire answers:
 
 ${answerLines}
 
-Return ONLY valid JSON matching the required schema. Score every category. Quote the applicant's own words when listing evidence or concerns. Suggest 3-5 interview follow-ups, especially for any category scored 3 or below.`;
+Return ONLY valid JSON matching the required schema. Score every category. Suggest 3–5 interview follow-ups, especially for any category scored 3 or below.`;
 }
 
 // Extract the JSON object from the model's text content. messages.create()
@@ -256,7 +330,7 @@ async function runAiEvaluation({ application, questionnaire }) {
 
   // Normalize and re-weight category scores using OUR weights, regardless of
   // what the AI claimed.
-  const normalizedCategoryScores = CATEGORIES.map((category) => {
+  let normalizedCategoryScores = CATEGORIES.map((category) => {
     const fromAi = (parsed.categoryScores || []).find((c) => c && c.category === category) || {};
     const score = Number.isInteger(fromAi.score) ? Math.max(1, Math.min(5, fromAi.score)) : 0;
     return {
@@ -269,24 +343,44 @@ async function runAiEvaluation({ application, questionnaire }) {
     };
   });
 
+  // Apply the short-answer floor deterministically (in addition to the
+  // prompt-level guidance to the screener).
+  const capResult = capCategoriesForShortAnswers(normalizedCategoryScores, questionnaire.answers);
+  normalizedCategoryScores = capResult.capped;
+
   const weightedScore = recomputeWeightedScore(normalizedCategoryScores, role);
 
-  // Merge AI-flagged human-review reasons with code-detected ones.
+  // Code-detected deal-breakers (hard).
+  const codeDealBreakers = detectDealBreakers(application);
+
+  // AI may surface deal-breakers in concerns (e.g. "cannot work Fridays").
+  const concerns = Array.isArray(parsed.jobRelatedConcerns) ? parsed.jobRelatedConcerns.map(String) : [];
+  const aiDealBreakers = concerns.filter((c) => /can(?:not|'t)\s+(work|meet|commit)|legal eligibility|underage|under 21|no friday|no saturday|cannot work (friday|saturday|weekends)/i.test(c));
+  const dealBreakers = Array.from(new Set([...codeDealBreakers, ...aiDealBreakers]));
+
+  // Merge human-review reasons: AI flags + code keyword scan + cap notes +
+  // borderline-band rule.
   const codeFlags = detectHumanReviewSignals(questionnaire.answers);
   const aiFlags = Array.isArray(parsed.humanReviewReasons) ? parsed.humanReviewReasons.map(String) : [];
-  const humanReviewReasons = Array.from(new Set([...aiFlags, ...codeFlags]));
+  const reviewFlags = [...aiFlags, ...codeFlags, ...capResult.notes];
+  // Any category < 2.0 triggers review.
+  if (normalizedCategoryScores.some((c) => c.score > 0 && c.score < 2)) {
+    reviewFlags.push('A category scored below 2 — needs manager review before any decision.');
+  }
+  // Borderline band around the recommend threshold.
+  const distanceFromThreshold = Math.abs(weightedScore - THRESHOLDS.recommend.weighted);
+  if (weightedScore >= THRESHOLDS.recommend.weighted - THRESHOLDS.reviewBand
+      && weightedScore <= THRESHOLDS.recommend.weighted + THRESHOLDS.reviewBand) {
+    reviewFlags.push(`Weighted score ${weightedScore.toFixed(2)} is within ±${THRESHOLDS.reviewBand} of the recommend threshold — borderline.`);
+  }
+  const humanReviewReasons = Array.from(new Set(reviewFlags));
   const humanReviewRequired = humanReviewReasons.length > 0 || parsed.humanReviewRequired === true;
-
-  // Detect a serious concern that should force a hold.
-  const concerns = Array.isArray(parsed.jobRelatedConcerns) ? parsed.jobRelatedConcerns.map(String) : [];
-  const hasSeriousConcern = concerns.some((c) => /can(?:not|'t)\s+(work|meet|commit)|legal eligibility|underage|under 21/i.test(c));
 
   const recommendation = determineRecommendation({
     weightedScore,
     categoryScores: normalizedCategoryScores,
     aiRecommendation: parsed.recommendation,
-    hasSeriousConcern,
-    availabilityCompatible: undefined,
+    dealBreakers,
   });
 
   const confidence = ['high', 'medium', 'low'].includes(parsed.confidence) ? parsed.confidence : 'medium';
@@ -300,7 +394,7 @@ async function runAiEvaluation({ application, questionnaire }) {
     humanReviewReasons,
     candidateSummary: String(parsed.candidateSummary || '').slice(0, 4000),
     overallRationale: String(parsed.overallRationale || '').slice(0, 4000),
-    jobRelatedConcerns: concerns,
+    jobRelatedConcerns: Array.from(new Set([...concerns, ...codeDealBreakers])),
     suggestedInterviewQuestions: Array.isArray(parsed.suggestedInterviewQuestions)
       ? parsed.suggestedInterviewQuestions.slice(0, 10).map(String)
       : [],
@@ -317,7 +411,9 @@ module.exports = {
   runAiEvaluation,
   normalizeRoleKey,
   detectHumanReviewSignals,
+  detectDealBreakers,
   recomputeWeightedScore,
   determineRecommendation,
+  capCategoriesForShortAnswers,
   MODEL,
 };

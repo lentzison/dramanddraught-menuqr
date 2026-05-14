@@ -750,9 +750,27 @@ function hiringConfigPage({ user }) {
       <h2>How the verdict is calculated</h2>
       <p style="color:var(--text); line-height:1.55; margin:0 0 12px;">Each applicant gets one of two verdicts:</p>
       <ul style="line-height:1.7; color:var(--text); padding-left:20px; margin:0 0 14px;">
-        <li><strong style="color:#4ade80;">Recommend for interview</strong> — weighted score &ge; 3.7 and no category below 3.0.</li>
-        <li><strong style="color:#bbb;">Don’t recommend</strong> — weighted score &lt; 3.7, any category below 2.5, or a serious concern (availability, eligibility).</li>
+        <li><strong style="color:#4ade80;">Recommend for interview</strong> — weighted score &ge; 3.5, every category &ge; 3.0, and no hard deal-breaker.</li>
+        <li><strong style="color:#bbb;">Don’t recommend</strong> — anything else, including any category &lt; 2.5 or an active deal-breaker.</li>
       </ul>
+      <h3 style="margin:14px 0 6px; font-size:0.95rem; color:var(--accent);">Hard deal-breakers (force "Don’t recommend")</h3>
+      <ul style="line-height:1.55; color:var(--text); padding-left:20px; margin:0 0 14px;">
+        <li>Cannot work any Friday or Saturday night.</li>
+        <li>Applying for Bartender while under 21.</li>
+        <li>Stated availability does not cover the role's required shifts.</li>
+      </ul>
+      <h3 style="margin:14px 0 6px; font-size:0.95rem; color:var(--accent);">Human-review triggers</h3>
+      <ul style="line-height:1.55; color:var(--text); padding-left:20px; margin:0 0 14px;">
+        <li>Any single category scores below 2.0.</li>
+        <li>Final weighted score is within ±0.15 of the recommend threshold (borderline).</li>
+        <li>Earliest start date is more than 60 days out.</li>
+        <li>Q20 availability is ambiguous ("depends", "flexible" with no specifics).</li>
+        <li>Two or more answers contradict each other.</li>
+        <li>Applicant mentions a current or former employee by name.</li>
+        <li>Applicant discloses protected or sensitive information.</li>
+      </ul>
+      <h3 style="margin:14px 0 6px; font-size:0.95rem; color:var(--accent);">Short-answer floor</h3>
+      <p style="margin:0 0 14px; color:var(--text); line-height:1.55;">Any answer under 15 characters (excluding Q20) cannot evidence a category score above 2. If a category's mapped questions are majority short-answered, the category is capped at 2 deterministically.</p>
       <p class="app-meta" style="margin:0;">Internally the rubric still tracks four buckets (strong callback / callback / maybe / hold) for analytics. Managers see only the two-state verdict. Managers always make the final call — the system never auto-rejects an applicant.</p>
     </div>
 

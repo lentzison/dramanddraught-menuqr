@@ -51,6 +51,14 @@ async function rerunAndPersistScreening(prisma, application, questionnaire) {
 
 const VALID_STATUSES = new Set(Object.keys(STATUS_LABELS));
 const VALID_INTERVIEW_TYPES = new Set(['in_person', 'phone', 'video']);
+const VALID_CONTACT_METHODS = new Set(['phone', 'text', 'in_person', 'email_manual', 'other']);
+const CONTACT_METHOD_LABELS = {
+  phone: 'phone call',
+  text: 'text message',
+  in_person: 'in person',
+  email_manual: 'manual email',
+  other: 'other',
+};
 
 // Mirror parseDateTimeLocal in adminEvents.js — preserves Eastern wall-clock time.
 function getEasternOffsetMinutes(year, month, day) {
@@ -402,6 +410,10 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
     const interviewerEmail = String(body.interviewerEmail || '').trim().slice(0, 200) || (user?.email || null);
     const locationDetail = String(body.locationDetail || '').trim().slice(0, 500) || null;
     const candidateNote = String(body.candidateNote || '').trim().slice(0, 1000) || null;
+    const skipEmail = body.skipEmail === '1' || body.skipEmail === 'on' || body.skipEmail === true;
+    const rawContactMethod = String(body.contactMethod || '').trim();
+    const contactMethod = VALID_CONTACT_METHODS.has(rawContactMethod) ? rawContactMethod : null;
+    const contactNote = String(body.contactNote || '').trim().slice(0, 1000) || null;
 
     const interview = await prisma.interview.create({
       data: {
@@ -413,8 +425,10 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
         locationDetail,
         interviewerEmail,
         candidateNote,
+        contactMethod,
+        contactNote,
         status: 'scheduled',
-        confirmationSentAt: new Date(),
+        confirmationSentAt: skipEmail ? null : new Date(),
       },
     });
 
@@ -436,13 +450,21 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
       resourceType: 'interview',
       resourceId: interview.id,
       resourceLabel: `${app.name} — ${app.position}`,
-      details: { scheduledAt, type, locationDetail },
+      details: { scheduledAt, type, locationDetail, skipEmail: !!skipEmail, contactMethod },
     }).catch(() => {});
 
-    // Confirmation emails (fire and forget).
-    sendInterviewConfirmation(app, interview).catch((err) => console.warn('[applicants] confirmation email failed:', err.message));
+    let flashText;
+    if (skipEmail) {
+      flashText = contactMethod
+        ? `Interview scheduled. Candidate already contacted via ${CONTACT_METHOD_LABELS[contactMethod]} — no email sent.`
+        : 'Interview scheduled. No confirmation email sent.';
+    } else {
+      // Confirmation emails (fire and forget).
+      sendInterviewConfirmation(app, interview).catch((err) => console.warn('[applicants] confirmation email failed:', err.message));
+      flashText = 'Interview scheduled. Confirmation email sent.';
+    }
 
-    flashRedirect(res, `/admin/applicants/${id}`, 'success', 'Interview scheduled. Confirmation email sent.');
+    flashRedirect(res, `/admin/applicants/${id}`, 'success', flashText);
     return true;
   }
 
@@ -460,12 +482,18 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
     }
     const body = await parseBody(req);
     const reason = String(body.reason || '').trim().slice(0, 500) || null;
+    const skipEmail = body.skipEmail === '1' || body.skipEmail === 'on' || body.skipEmail === true;
+    const rawContactMethod = String(body.contactMethod || '').trim();
+    const contactMethod = VALID_CONTACT_METHODS.has(rawContactMethod) ? rawContactMethod : null;
+    const contactNote = String(body.contactNote || '').trim().slice(0, 1000) || null;
+
     await prisma.interview.update({
       where: { id },
       data: {
         status: 'cancelled',
         cancelledAt: new Date(),
         cancellationReason: reason,
+        ...(skipEmail && (contactMethod || contactNote) ? { contactMethod, contactNote } : {}),
       },
     });
     writeAudit(prisma, req, user, {
@@ -473,11 +501,19 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
       resourceType: 'interview',
       resourceId: id,
       resourceLabel: `${interview.application?.name || ''}`,
-      details: { cancelled: true, reason },
+      details: { cancelled: true, reason, skipEmail: !!skipEmail, contactMethod },
     }).catch(() => {});
 
-    sendInterviewCancellation(interview.application, interview, reason).catch((err) => console.warn('[applicants] cancellation email failed:', err.message));
-    flashRedirect(res, `/admin/applicants/${interview.applicationId}`, 'success', 'Interview cancelled. Candidate emailed.');
+    let flashText;
+    if (skipEmail) {
+      flashText = contactMethod
+        ? `Interview cancelled. Candidate already notified via ${CONTACT_METHOD_LABELS[contactMethod]} — no email sent.`
+        : 'Interview cancelled. No cancellation email sent.';
+    } else {
+      sendInterviewCancellation(interview.application, interview, reason).catch((err) => console.warn('[applicants] cancellation email failed:', err.message));
+      flashText = 'Interview cancelled. Candidate emailed.';
+    }
+    flashRedirect(res, `/admin/applicants/${interview.applicationId}`, 'success', flashText);
     return true;
   }
 

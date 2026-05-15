@@ -464,6 +464,10 @@ model Interview {
   cancelledAt         DateTime?
   cancellationReason  String?
 
+  // How the candidate was reached, if the admin contacted them outside email.
+  contactMethod       String?  // "phone" | "text" | "in_person" | "email_manual" | "other"
+  contactNote         String?  // free-text detail (who, when, what was said)
+
   // Reminder bookkeeping (separate flags so 24h fires before 1h)
   reminderSent24h     Boolean  @default(false)
   reminderSent1h      Boolean  @default(false)

@@ -23,6 +23,14 @@ const DAYS_LABELS = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri'
 const SHIFT_LABELS = { day: 'Day', evening: 'Evening', late: 'Late' };
 const DAY_ORDER = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
+const CONTACT_METHOD_LABELS = {
+  phone: 'phone call',
+  text: 'text message',
+  in_person: 'in person',
+  email_manual: 'manual email',
+  other: 'other',
+};
+
 function statusBadge(status) {
   const label = STATUS_LABELS[status] || status;
   return `<span class="app-badge app-badge-${escHTML(status || 'new')}">${escHTML(label)}</span>`;
@@ -529,6 +537,10 @@ function renderAvailability(availability) {
 function renderInterview(interview) {
   const statusClass = interview.status === 'cancelled' ? 'app-interview-cancelled' : '';
   const typeLabel = interview.type === 'phone' ? 'Phone' : interview.type === 'video' ? 'Video' : 'In person';
+  const contactLabel = interview.contactMethod ? CONTACT_METHOD_LABELS[interview.contactMethod] || interview.contactMethod : null;
+  const emailSentLabel = interview.confirmationSentAt
+    ? 'Confirmation email sent'
+    : (contactLabel ? `Contacted via ${escHTML(contactLabel)} — no email sent` : 'No confirmation email sent');
   return `
     <div class="app-interview-card ${statusClass}">
       <strong>${escHTML(formatFriendly(interview.scheduledAt))}</strong>
@@ -536,15 +548,35 @@ function renderInterview(interview) {
       ${interview.locationDetail ? `<div class="app-meta">Where/how: ${escHTML(interview.locationDetail)}</div>` : ''}
       ${interview.interviewerEmail ? `<div class="app-meta">Interviewer: ${escHTML(interview.interviewerEmail)}</div>` : ''}
       ${interview.candidateNote ? `<div class="app-meta">Note to candidate: ${escHTML(interview.candidateNote)}</div>` : ''}
+      ${contactLabel ? `<div class="app-meta">Manual contact: ${escHTML(contactLabel)}${interview.contactNote ? ` — ${escHTML(interview.contactNote)}` : ''}</div>` : ''}
       ${interview.cancellationReason ? `<div class="app-meta">Cancelled: ${escHTML(interview.cancellationReason)}</div>` : ''}
       <div class="app-meta" style="margin-top:6px;">
+        ${emailSentLabel} &middot;
         ${interview.reminderSent24h ? '24h reminder sent' : '24h reminder pending'} &middot;
         ${interview.reminderSent1h ? '1h reminder sent' : '1h reminder pending'}
       </div>
       ${interview.status === 'scheduled' ? `
-        <form method="POST" action="/admin/applicants/interviews/${escHTML(interview.id)}/cancel" style="margin-top:8px;" onsubmit="return confirm('Cancel this interview? An email will be sent to the candidate.')">
-          <input type="text" name="reason" placeholder="Reason (shown to candidate)" style="width:240px; margin-right:8px;" />
-          <button type="submit" class="btn btn-secondary btn-sm">Cancel interview</button>
+        <form method="POST" action="/admin/applicants/interviews/${escHTML(interview.id)}/cancel" style="margin-top:8px;" onsubmit="return confirm(this.querySelector('input[name=skipEmail]')?.checked ? 'Cancel this interview without sending an email?' : 'Cancel this interview? An email will be sent to the candidate.')">
+          <div>
+            <input type="text" name="reason" placeholder="Reason (shown to candidate if emailed)" style="width:280px;" />
+          </div>
+          <label style="display:flex; align-items:center; gap:6px; margin-top:6px; font-size:0.85rem;">
+            <input type="checkbox" name="skipEmail" value="1" id="cancel-skip-${escHTML(interview.id)}" onchange="(function(cb){var w=document.getElementById('cancel-contact-${escHTML(interview.id)}'); if(w){w.style.display=cb.checked?'flex':'none';}})(this)" />
+            Don't email — I already let them know.
+          </label>
+          <div id="cancel-contact-${escHTML(interview.id)}" style="display:none; gap:6px; margin-top:6px; flex-wrap:wrap; align-items:center; font-size:0.85rem;">
+            <select name="contactMethod">
+              <option value="phone">Phone call</option>
+              <option value="text">Text message</option>
+              <option value="in_person">In person</option>
+              <option value="email_manual">Email (sent manually)</option>
+              <option value="other">Other</option>
+            </select>
+            <input type="text" name="contactNote" placeholder="Note (optional, e.g. 'called at 3pm')" style="width:260px;" />
+          </div>
+          <div style="margin-top:8px;">
+            <button type="submit" class="btn btn-secondary btn-sm">Cancel interview</button>
+          </div>
         </form>
       ` : ''}
     </div>
@@ -668,8 +700,35 @@ function applicantDetail({ application, interviews, user, flashMsg }) {
           <label>Note shown to candidate (optional)</label>
           <textarea name="candidateNote" placeholder="Anything they should bring or know."></textarea>
         </div>
+
+        <fieldset class="app-skip-email" style="margin-top:14px; padding:10px 12px; border:1px solid var(--border, #ddd); border-radius:6px;">
+          <legend style="font-size:0.85rem; padding:0 6px;">Already reached out?</legend>
+          <label style="display:flex; align-items:center; gap:8px;">
+            <input type="checkbox" name="skipEmail" value="1" id="schedule-skip-email" onchange="(function(cb){var w=document.getElementById('schedule-contact-wrap'); if(w){w.style.display=cb.checked?'block':'none';}})(this)" />
+            <span>Don't email the candidate — I already contacted them directly.</span>
+          </label>
+          <div id="schedule-contact-wrap" style="display:none; margin-top:10px;">
+            <div class="form-row">
+              <div>
+                <label>How did you reach them?</label>
+                <select name="contactMethod">
+                  <option value="phone">Phone call</option>
+                  <option value="text">Text message</option>
+                  <option value="in_person">In person</option>
+                  <option value="email_manual">Email (sent manually)</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+            </div>
+            <div style="margin-top:10px;">
+              <label>What was said / when (optional)</label>
+              <textarea name="contactNote" placeholder="Called at 2:15 PM, confirmed Thursday 4pm, asked about parking."></textarea>
+            </div>
+          </div>
+        </fieldset>
+
         <div style="margin-top:14px; text-align:right;">
-          <button type="submit" class="btn btn-primary">Schedule &amp; email candidate</button>
+          <button type="submit" class="btn btn-primary">Schedule interview</button>
         </div>
       </form>
     </div>

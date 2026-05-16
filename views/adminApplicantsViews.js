@@ -69,139 +69,409 @@ function toDateTimeLocal(value) {
 function applicantStyles() {
   return `
     <style>
-      .app-badge { display:inline-block; padding:3px 9px; border-radius:10px; font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; }
-      .app-badge-new              { background:rgba(96,165,250,0.18); color:#93c5fd; }
+      /* === Status & recommendation badges === */
+      .app-badge { display:inline-block; padding:4px 10px; border-radius:999px; font-size:0.7rem; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; }
+      .app-badge-lg { padding:6px 14px; font-size:0.78rem; }
+      .app-badge-new              { background:rgba(143,183,255,0.16); color:#a8c6ff; }
       .app-badge-reviewing        { background:rgba(168,85,247,0.18); color:#c4b5fd; }
-      .app-badge-interview_scheduled { background:rgba(251,191,36,0.18); color:#fcd34d; }
-      .app-badge-interviewed      { background:rgba(45,212,191,0.18); color:#5eead4; }
-      .app-badge-offer_extended   { background:rgba(212,175,55,0.22); color:#f5d76e; }
-      .app-badge-hired            { background:rgba(34,197,94,0.22); color:#4ade80; }
-      .app-badge-rejected         { background:rgba(239,68,68,0.18); color:#f87171; }
-      .app-badge-withdrawn        { background:rgba(150,150,150,0.18); color:#aaa; }
-      .app-row { display:flex; align-items:center; gap:14px; padding:14px 16px; border:1px solid var(--border); border-radius:12px; margin-bottom:10px; background:var(--card); }
+      .app-badge-interview_scheduled { background:rgba(242,166,90,0.18); color:#f5be86; }
+      .app-badge-interviewed      { background:rgba(98,210,143,0.18); color:#8eeab0; }
+      .app-badge-offer_extended   { background:rgba(240,199,102,0.20); color:var(--gold-strong); }
+      .app-badge-hired            { background:rgba(98,210,143,0.22); color:#a4f4c2; }
+      .app-badge-rejected         { background:rgba(255,123,123,0.18); color:#ffb3b3; }
+      .app-badge-withdrawn        { background:rgba(185,174,160,0.15); color:var(--text-muted); }
+
+      .ai-rec-badge { display:inline-block; padding:4px 10px; border-radius:999px; font-size:0.7rem; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; margin-left:6px; }
+      .ai-rec-recommend       { background:rgba(98,210,143,0.22); color:#a4f4c2; }
+      .ai-rec-dont_recommend  { background:rgba(185,174,160,0.16); color:var(--text-muted); }
+      .ai-rec-pending         { background:rgba(143,183,255,0.16); color:#a8c6ff; }
+      .ai-rec-error           { background:rgba(255,123,123,0.18); color:#ffb3b3; }
+      .ai-review-badge { display:inline-block; padding:4px 10px; border-radius:999px; font-size:0.7rem; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; margin-left:6px; background:rgba(242,166,90,0.18); color:var(--amber); }
+
+      /* === Applicants list (used by /admin/applicants) === */
+      .app-row { display:flex; align-items:center; gap:14px; padding:14px 16px; border:1px solid var(--line); border-radius:var(--radius); margin-bottom:10px; background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01)), var(--surface); }
       .app-row:hover { border-color:rgba(214,173,75,0.38); }
-      .app-row a.app-name { color:var(--text); font-weight:600; text-decoration:none; }
-      .app-row a.app-name:hover { color:var(--accent); }
-      .app-meta { color:var(--muted); font-size:0.85rem; margin-top:3px; }
-      .app-meta-dot { color:#555; margin:0 4px; }
+      .app-row a.app-name { color:var(--text); font-weight:700; text-decoration:none; }
+      .app-row a.app-name:hover { color:var(--gold-strong); }
+      .app-meta { color:var(--text-muted); font-size:0.85rem; margin-top:3px; }
+      .app-meta-dot { color:var(--text-soft); margin:0 4px; }
       .app-row-main { flex:1 1 auto; min-width:0; }
       .app-row-actions { flex:0 0 auto; }
       .app-filter-bar { display:flex; flex-wrap:wrap; gap:10px; margin-bottom:14px; align-items:flex-end; }
       .app-filter-bar select, .app-filter-bar input[type="search"] {
-        background:var(--bg-input, #15161a); color:var(--text); border:1px solid var(--border);
-        padding:8px 10px; border-radius:8px; font-size:0.9rem;
+        background: var(--bg-soft); color:var(--text); border:1px solid var(--line);
+        padding:8px 10px; border-radius:var(--radius); font-size:0.9rem;
       }
-      .app-filter-bar label { display:flex; flex-direction:column; gap:4px; font-size:0.75rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.05em; }
-      .app-pipeline { display:flex; flex-wrap:wrap; gap:6px; margin: 8px 0 18px; }
-      .app-pipeline form { display:inline-block; margin:0; }
-      .app-pipeline button {
-        background:var(--card); color:var(--text); border:1px solid var(--border);
-        padding:7px 12px; border-radius:999px; font-size:0.78rem; font-weight:600; cursor:pointer;
-      }
-      .app-pipeline button.is-current { background:var(--accent); color:#1a1410; border-color:var(--accent); }
-      .app-pipeline button.is-terminal { border-color:rgba(239,68,68,0.4); }
-      .app-pipeline button.is-terminal-positive { border-color:rgba(34,197,94,0.4); }
-      .app-pipeline button:hover { border-color:rgba(214,173,75,0.55); }
-      .app-grid { display:grid; grid-template-columns: 1fr 1fr; gap:10px 22px; }
-      @media (max-width: 760px) { .app-grid { grid-template-columns: 1fr; } }
-      .app-field { display:flex; flex-direction:column; gap:3px; }
-      .app-field span { font-size:0.7rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em; }
-      .app-field strong { color:var(--text); font-weight:600; }
-      .app-field.is-wide { grid-column: 1 / -1; }
-      .app-prose { white-space:pre-wrap; line-height:1.5; }
-      .app-availability table { border-collapse:collapse; font-size:0.85rem; }
-      .app-availability th, .app-availability td {
-        border:1px solid var(--border); padding:5px 9px; text-align:center; color:var(--muted);
-      }
-      .app-availability th { background:rgba(255,255,255,0.04); color:var(--text); font-weight:600; }
-      .app-availability td.has { background:rgba(212,175,55,0.18); color:var(--accent); font-weight:700; }
-      .app-section { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px 18px; margin-bottom:14px; }
-      .app-section h2 { font-size:1.05rem; margin:0 0 12px; color:var(--accent); }
-      .app-section .form-row { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
-      @media (max-width:560px){ .app-section .form-row { grid-template-columns: 1fr; } }
-      .app-section input, .app-section select, .app-section textarea {
-        background:var(--bg-input, #15161a); color:var(--text); border:1px solid var(--border);
-        padding:8px 10px; border-radius:8px; font-size:0.9rem; width:100%; box-sizing:border-box;
-      }
-      .app-section textarea { min-height:74px; resize:vertical; }
-      .app-section label { font-size:0.74rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em; display:block; margin-bottom:4px; }
-      .app-interview-card { border:1px solid var(--border); border-radius:10px; padding:12px 14px; margin-bottom:10px; }
-      .app-interview-card.app-interview-cancelled { opacity:0.6; }
-      .app-interview-meta { color:var(--muted); font-size:0.85rem; }
-      .app-flash { padding:10px 14px; border-radius:8px; margin-bottom:14px; font-size:0.9rem; }
-      .app-flash.success { background:rgba(34,197,94,0.18); color:#4ade80; }
-      .app-flash.error { background:rgba(239,68,68,0.16); color:#f87171; }
+      .app-filter-bar label { display:flex; flex-direction:column; gap:4px; font-size:0.72rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em; font-weight:800; }
 
-      /* Applicant screening — cleaned-up, GM-friendly layout */
-      .ai-card { border-radius:12px; padding:18px 20px; margin-bottom:14px; }
-      .ai-verdict { display:flex; flex-wrap:wrap; align-items:center; gap:14px; padding:18px 22px; border-radius:12px; margin-bottom:14px; border:1px solid var(--border); background:var(--card); }
+      /* === Flash messages === */
+      .app-flash { padding:11px 16px; border-radius:var(--radius); margin-bottom:16px; font-size:0.92rem; font-weight:600; }
+      .app-flash.success { background:rgba(98,210,143,0.16); color:#a4f4c2; border:1px solid rgba(98,210,143,0.32); }
+      .app-flash.error   { background:rgba(255,123,123,0.14); color:#ffb3b3; border:1px solid rgba(255,123,123,0.32); }
+
+      /* === Detail page: hero / header === */
+      .ap-hero {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 18px 24px;
+        align-items: start;
+        background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.01)), var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 22px 26px;
+        margin-bottom: 16px;
+      }
+      .ap-hero-left { min-width: 0; }
+      .ap-hero h1 { font-size: clamp(1.6rem, 2.6vw, 2.1rem); line-height: 1.1; margin: 4px 0 8px; }
+      .ap-hero .ap-meta-line { color: var(--text-muted); font-size: 0.92rem; }
+      .ap-hero .ap-meta-line .dot { color: var(--text-soft); margin: 0 6px; }
+      .ap-hero-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+      .ap-hero-actions .ap-action-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+      .ap-hero-status-line { display: flex; align-items: center; gap: 10px; margin-top: 6px; flex-wrap: wrap; }
+
+      /* === Dropdown menu (Change status) === */
+      .ap-menu { position: relative; }
+      .ap-menu summary { list-style: none; cursor: pointer; }
+      .ap-menu summary::-webkit-details-marker { display: none; }
+      .ap-menu-panel {
+        position: absolute; right: 0; top: calc(100% + 6px); z-index: 30;
+        background: var(--surface-2); border: 1px solid var(--line);
+        border-radius: var(--radius); box-shadow: var(--shadow);
+        min-width: 220px; padding: 6px;
+      }
+      .ap-menu-panel form { margin: 0; }
+      .ap-menu-panel button {
+        display: block; width: 100%; text-align: left;
+        padding: 9px 12px; border-radius: 6px;
+        background: transparent; color: var(--text); border: none;
+        font-size: 0.88rem; font-weight: 600; cursor: pointer;
+      }
+      .ap-menu-panel button:hover { background: rgba(255,255,255,0.06); }
+      .ap-menu-panel button.is-current { color: var(--text-muted); cursor: default; }
+      .ap-menu-panel button.is-current:hover { background: transparent; }
+      .ap-menu-panel button.is-danger { color: #ffb3b3; }
+      .ap-menu-panel hr { border: none; border-top: 1px solid var(--line); margin: 4px 0; }
+
+      /* === Pipeline stepper === */
+      .ap-stepper {
+        background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.01)), var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 18px 22px;
+        margin-bottom: 18px;
+      }
+      .ap-stepper-track {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 0;
+        position: relative;
+      }
+      .ap-step {
+        display: flex; flex-direction: column; align-items: center; gap: 8px;
+        position: relative; padding: 0 4px;
+        text-align: center;
+      }
+      .ap-step::after {
+        content: ''; position: absolute; top: 14px; left: calc(50% + 18px); right: calc(-50% + 18px);
+        height: 2px; background: var(--line); z-index: 0;
+      }
+      .ap-step:last-child::after { display: none; }
+      .ap-step.is-done::after { background: rgba(98,210,143,0.45); }
+      .ap-step-dot {
+        width: 30px; height: 30px; border-radius: 50%;
+        background: var(--surface-2); border: 2px solid var(--line);
+        display: inline-flex; align-items: center; justify-content: center;
+        font-size: 0.78rem; font-weight: 800; color: var(--text-muted);
+        z-index: 1; position: relative;
+      }
+      .ap-step.is-done .ap-step-dot { background: rgba(98,210,143,0.18); border-color: rgba(98,210,143,0.5); color: #a4f4c2; }
+      .ap-step.is-current .ap-step-dot { background: var(--gold-strong); border-color: var(--gold-strong); color: #1a1207; box-shadow: 0 0 0 4px rgba(240,199,102,0.18); }
+      .ap-step-label {
+        font-size: 0.78rem; font-weight: 700; color: var(--text-muted);
+        text-transform: uppercase; letter-spacing: 0.04em;
+      }
+      .ap-step.is-current .ap-step-label { color: var(--gold-strong); }
+      .ap-step.is-done .ap-step-label { color: var(--text); }
+      .ap-stepper-footer {
+        margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-soft);
+        display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
+        color: var(--text-muted); font-size: 0.82rem;
+      }
+      .ap-stepper-footer .terminal-note { color: var(--amber); font-weight: 700; }
+      .ap-stepper-footer .terminal-note.is-positive { color: #a4f4c2; }
+      .ap-stepper-footer .terminal-note.is-negative { color: #ffb3b3; }
+      .ap-decision-note { margin-top: 8px; padding: 10px 12px; background: rgba(255,255,255,0.03); border-left: 3px solid var(--gold-strong); border-radius: 4px; color: var(--text); font-size: 0.9rem; }
+      .ap-decision-note strong { color: var(--gold-strong); margin-right: 6px; }
+
+      /* === Two-column layout === */
+      .ap-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 320px;
+        gap: 18px;
+        align-items: start;
+      }
+      .ap-main { min-width: 0; }
+      .ap-rail { position: sticky; top: 84px; display: flex; flex-direction: column; gap: 14px; }
+      @media (max-width: 980px) {
+        .ap-grid { grid-template-columns: 1fr; }
+        .ap-rail { position: static; }
+      }
+
+      /* === Generic detail card === */
+      .ap-card {
+        background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.01)), var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 18px 20px;
+        margin-bottom: 14px;
+      }
+      .ap-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+      .ap-card-head h2 { margin: 0; font-size: 1rem; color: var(--gold-strong); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 800; }
+      .ap-card-head .ap-card-aside { color: var(--text-muted); font-size: 0.82rem; }
+
+      /* === Contact rail card === */
+      .ap-contact { display: grid; grid-template-columns: 1fr; gap: 0; }
+      .ap-contact-row {
+        display: grid; grid-template-columns: 70px 1fr auto;
+        align-items: center; gap: 8px;
+        padding: 8px 0; border-bottom: 1px solid var(--line-soft);
+      }
+      .ap-contact-row:last-child { border-bottom: none; }
+      .ap-contact-row .lbl { color: var(--text-muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 800; }
+      .ap-contact-row .val { color: var(--text); font-size: 0.92rem; word-break: break-word; min-width: 0; }
+      .ap-contact-row .val a { color: var(--text); }
+      .ap-contact-row .val a:hover { color: var(--gold-strong); }
+      .ap-copy {
+        flex: 0 0 auto;
+        background: rgba(255,255,255,0.05); border: 1px solid var(--line);
+        color: var(--text-muted); cursor: pointer;
+        font-size: 0.7rem; font-weight: 700;
+        padding: 4px 8px; border-radius: 6px;
+        text-transform: uppercase; letter-spacing: 0.05em;
+      }
+      .ap-copy:hover { color: var(--gold-strong); border-color: rgba(214,173,75,0.4); }
+      .ap-copy.is-copied { color: #a4f4c2; border-color: rgba(98,210,143,0.5); }
+
+      /* === Availability heat grid === */
+      .ap-avail-grid {
+        display: grid; grid-template-columns: 36px repeat(3, 1fr); gap: 4px;
+      }
+      .ap-avail-cell {
+        font-size: 0.66rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+        color: var(--text-muted); padding: 6px 0; text-align: center;
+        background: rgba(255,255,255,0.03); border-radius: 4px;
+        min-height: 22px;
+      }
+      .ap-avail-cell.is-day { color: var(--text); background: transparent; text-align: left; padding-left: 4px; align-self: center; }
+      .ap-avail-cell.is-head { background: transparent; color: var(--text-muted); font-size: 0.62rem; }
+      .ap-avail-cell.is-on { background: rgba(240,199,102,0.32); color: #1a1207; }
+      .ap-avail-cell.is-weekend.is-on { background: rgba(98,210,143,0.32); color: #0a2415; }
+
+      /* === Narrative blocks === */
+      .ap-narrative { display: flex; flex-direction: column; gap: 14px; }
+      .ap-narrative-block { padding: 12px 14px; background: rgba(255,255,255,0.025); border-left: 3px solid var(--line); border-radius: 4px; }
+      .ap-narrative-block.is-thin { border-left-color: var(--amber); }
+      .ap-narrative-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+      .ap-narrative-head .lbl { color: var(--gold-strong); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 800; }
+      .ap-narrative-head .ap-wc { color: var(--text-muted); font-size: 0.72rem; }
+      .ap-narrative-head .ap-wc.is-thin { color: var(--amber); font-weight: 700; }
+      .ap-narrative-block .body { color: var(--text); line-height: 1.55; white-space: pre-wrap; font-size: 0.94rem; }
+      .ap-narrative-block.is-empty .body { color: var(--text-muted); font-style: italic; }
+
+      /* === Interview timeline === */
+      .ap-timeline { position: relative; padding-left: 28px; }
+      .ap-timeline::before {
+        content: ''; position: absolute; left: 11px; top: 4px; bottom: 4px;
+        width: 2px; background: var(--line);
+      }
+      .ap-timeline-empty { color: var(--text-muted); font-style: italic; padding: 12px 0; }
+      .ap-tl-item { position: relative; margin-bottom: 16px; }
+      .ap-tl-item:last-child { margin-bottom: 0; }
+      .ap-tl-dot {
+        position: absolute; left: -22px; top: 6px;
+        width: 14px; height: 14px; border-radius: 50%;
+        background: var(--gold-strong); border: 2px solid var(--surface);
+        box-shadow: 0 0 0 2px var(--line);
+      }
+      .ap-tl-item.is-cancelled .ap-tl-dot { background: var(--text-soft); }
+      .ap-tl-item.is-completed .ap-tl-dot { background: #62d28f; }
+      .ap-tl-card {
+        background: rgba(255,255,255,0.03); border: 1px solid var(--line);
+        border-radius: var(--radius); padding: 12px 14px;
+      }
+      .ap-tl-item.is-cancelled .ap-tl-card { opacity: 0.65; }
+      .ap-tl-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+      .ap-tl-head .when { color: var(--text); font-weight: 700; font-size: 0.96rem; }
+      .ap-tl-head .pill { font-size: 0.66rem; padding: 2px 8px; border-radius: 999px; background: rgba(255,255,255,0.06); color: var(--text-muted); font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; }
+      .ap-tl-head .pill.is-scheduled { background: rgba(240,199,102,0.18); color: var(--gold-strong); }
+      .ap-tl-head .pill.is-cancelled { background: rgba(255,123,123,0.15); color: #ffb3b3; }
+      .ap-tl-head .pill.is-completed { background: rgba(98,210,143,0.18); color: #a4f4c2; }
+      .ap-tl-meta { color: var(--text-muted); font-size: 0.84rem; }
+      .ap-tl-meta + .ap-tl-meta { margin-top: 3px; }
+      .ap-tl-foot { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; color: var(--text-soft); font-size: 0.76rem; }
+      .ap-tl-foot .ap-tl-foot-item { display: inline-flex; align-items: center; gap: 4px; }
+      .ap-tl-cancel-toggle {
+        margin-top: 8px;
+      }
+      .ap-tl-cancel-toggle > summary {
+        list-style: none; cursor: pointer; color: #ffb3b3; font-size: 0.82rem; font-weight: 700;
+        display: inline-flex; align-items: center; gap: 4px;
+      }
+      .ap-tl-cancel-toggle > summary::-webkit-details-marker { display: none; }
+      .ap-tl-cancel-toggle > summary::before { content: '＋'; opacity: 0.7; }
+      .ap-tl-cancel-toggle[open] > summary::before { content: '−'; }
+      .ap-tl-cancel-toggle > .body { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
+
+      /* === Schedule form (collapsible) === */
+      .ap-schedule-toggle {
+        margin-top: 14px;
+      }
+      .ap-schedule-toggle > summary {
+        list-style: none; cursor: pointer;
+        display: inline-flex; align-items: center; gap: 6px;
+        background: linear-gradient(135deg, var(--gold-strong), var(--copper));
+        color: #17110a;
+        padding: 9px 16px; border-radius: var(--radius);
+        font-weight: 750; font-size: 0.9rem;
+        border: 1px solid rgba(255,255,255,0.14);
+        transition: transform 0.18s;
+      }
+      .ap-schedule-toggle > summary::-webkit-details-marker { display: none; }
+      .ap-schedule-toggle > summary:hover { transform: translateY(-1px); }
+      .ap-schedule-toggle[open] > summary { background: rgba(255,255,255,0.055); color: var(--text); border-color: var(--line); }
+      .ap-schedule-toggle > .body { margin-top: 14px; }
+
+      /* === Generic form-row used inside cards === */
+      .ap-form-row { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+      @media (max-width:560px){ .ap-form-row { grid-template-columns: 1fr; } }
+      .ap-form-block + .ap-form-block { margin-top: 12px; }
+      .ap-form-block label { display:block; font-size:0.74rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:4px; font-weight: 800; }
+      .ap-form-block input, .ap-form-block select, .ap-form-block textarea {
+        background: var(--bg-soft); color:var(--text); border:1px solid var(--line);
+        padding:9px 11px; border-radius:var(--radius); font-size:0.92rem; width:100%; box-sizing:border-box;
+        font-family: inherit;
+      }
+      .ap-form-block textarea { min-height:74px; resize:vertical; }
+
+      .ap-skip-email {
+        margin-top: 14px; padding: 12px 14px;
+        border: 1px dashed var(--line); border-radius: var(--radius);
+        background: rgba(255,255,255,0.02);
+      }
+      .ap-skip-email legend { font-size: 0.74rem; font-weight: 800; padding: 0 6px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+      .ap-skip-email label.toggle { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; color: var(--text); cursor: pointer; }
+      .ap-skip-email .body { display: none; margin-top: 12px; }
+      .ap-skip-email[data-open="1"] .body { display: block; }
+
+      /* === Notes (autosave) === */
+      .ap-notes { display: flex; flex-direction: column; gap: 8px; }
+      .ap-notes textarea { background: var(--bg-soft); color: var(--text); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 12px; font-family: inherit; font-size: 0.9rem; min-height: 120px; resize: vertical; }
+      .ap-notes-status { font-size: 0.74rem; color: var(--text-muted); min-height: 1em; }
+      .ap-notes-status.is-saving { color: var(--amber); }
+      .ap-notes-status.is-saved { color: #a4f4c2; }
+      .ap-notes-status.is-error { color: #ffb3b3; }
+
+      /* === Resume === */
+      .ap-resume { display: flex; align-items: center; gap: 10px; }
+      .ap-resume .ap-resume-empty { color: var(--text-muted); font-style: italic; }
+
+      /* === AI verdict hero === */
+      .ai-verdict {
+        display:grid; grid-template-columns: auto auto 1fr; align-items:center; gap:18px;
+        padding:18px 22px; border-radius: var(--radius); margin-bottom:14px;
+        border:1px solid var(--line); background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.01)), var(--surface);
+        border-left-width: 4px;
+      }
+      .ai-verdict.is-recommend { border-left-color: #62d28f; }
+      .ai-verdict.is-dont_recommend { border-left-color: var(--line); }
+      .ai-verdict.is-pending { border-left-color: var(--blue); }
+      .ai-verdict.is-error { border-left-color: var(--red); }
       .ai-verdict-pill {
         display:inline-flex; align-items:center; gap:8px;
         padding:8px 16px; border-radius:999px; font-weight:800;
-        text-transform:uppercase; letter-spacing:0.06em; font-size:0.82rem;
+        text-transform:uppercase; letter-spacing:0.06em; font-size:0.78rem; white-space: nowrap;
       }
-      .ai-verdict-pill.is-recommend       { background:rgba(34,197,94,0.22); color:#4ade80; }
-      .ai-verdict-pill.is-dont_recommend  { background:rgba(150,150,150,0.20); color:#bbb; }
-      .ai-verdict-pill.is-pending         { background:rgba(96,165,250,0.18); color:#93c5fd; }
-      .ai-verdict-pill.is-error           { background:rgba(239,68,68,0.18); color:#f87171; }
-      .ai-verdict-score { font-size:1.6rem; font-weight:800; color:var(--text); }
-      .ai-verdict-score small { display:block; font-size:0.62rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em; margin-top:2px; }
-      .ai-verdict-summary { flex:1 1 320px; color:var(--text); font-size:0.98rem; line-height:1.45; min-width:240px; }
-      .ai-verdict-confidence { color:var(--muted); font-size:0.78rem; text-transform:uppercase; letter-spacing:0.05em; }
+      .ai-verdict-pill.is-recommend       { background:rgba(98,210,143,0.22); color:#a4f4c2; }
+      .ai-verdict-pill.is-dont_recommend  { background:rgba(185,174,160,0.16); color:var(--text-muted); }
+      .ai-verdict-pill.is-pending         { background:rgba(143,183,255,0.16); color:#a8c6ff; }
+      .ai-verdict-pill.is-error           { background:rgba(255,123,123,0.18); color:#ffb3b3; }
+      .ai-verdict-score { font-size:1.8rem; font-weight:800; color:var(--text); line-height:1; text-align:center; }
+      .ai-verdict-score small { display:block; font-size:0.6rem; font-weight:800; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.07em; margin-top:4px; }
+      .ai-verdict-summary { color:var(--text); font-size:0.96rem; line-height:1.5; min-width:240px; }
+      .ai-verdict-confidence { color:var(--text-muted); font-size:0.74rem; text-transform:uppercase; letter-spacing:0.06em; font-weight: 800; margin-top: 6px; }
+      @media (max-width: 640px) {
+        .ai-verdict { grid-template-columns: 1fr; gap: 12px; }
+      }
 
-      .ai-watchout { background:rgba(212,175,55,0.10); border:1px solid rgba(212,175,55,0.40); border-radius:12px; padding:14px 18px; margin-bottom:14px; }
-      .ai-watchout h3 { margin:0 0 8px; color:#f5d76e; font-size:0.95rem; }
+      /* === AI watchouts / followups / categories === */
+      .ai-watchout { background:rgba(242,166,90,0.10); border:1px solid rgba(242,166,90,0.40); border-radius: var(--radius); padding:14px 18px; margin-bottom:14px; }
+      .ai-watchout h3 { margin:0 0 8px; color: var(--amber); font-size:0.92rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 800; }
       .ai-watchout ul { margin:0; padding-left:22px; line-height:1.55; }
-      .ai-watchout li { margin-bottom:4px; color:#f5e9c0; }
-      .ai-watchout-error { background:rgba(239,68,68,0.12); border-color:rgba(239,68,68,0.40); }
-      .ai-watchout-error h3 { color:#fca5a5; }
-      .ai-watchout-error li { color:#f4c5c5; }
+      .ai-watchout li { margin-bottom:4px; color: var(--text); }
+      .ai-watchout-error { background:rgba(255,123,123,0.12); border-color:rgba(255,123,123,0.40); }
+      .ai-watchout-error h3 { color:#ffb3b3; }
+      .ai-watchout-error li { color: var(--text); }
 
-      .ai-followups { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px 18px; margin-bottom:14px; }
-      .ai-followups h3 { margin:0 0 10px; color:var(--accent); font-size:0.95rem; }
-      .ai-followups ol { margin:0; padding-left:22px; line-height:1.5; }
+      .ai-followups { background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.01)), var(--surface); border:1px solid var(--line); border-radius: var(--radius); padding:14px 18px; margin-bottom:14px; }
+      .ai-followups h3 { margin:0 0 10px; color: var(--gold-strong); font-size:0.92rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 800; }
+      .ai-followups ol { margin:0; padding-left:22px; line-height:1.55; }
       .ai-followups li { margin-bottom:6px; color:var(--text); font-size:0.94rem; }
 
-      .ai-cats { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px 18px; margin-bottom:14px; }
-      .ai-cats h3 { margin:0 0 10px; color:var(--accent); font-size:0.95rem; }
-      .ai-cat-row { display:flex; align-items:center; gap:12px; padding:8px 0; border-bottom:1px solid var(--border); }
+      .ai-cats { background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.01)), var(--surface); border:1px solid var(--line); border-radius: var(--radius); padding:14px 18px; margin-bottom:14px; }
+      .ai-cats h3 { margin:0 0 10px; color: var(--gold-strong); font-size:0.92rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 800; }
+      .ai-cat-row { display:flex; align-items:center; gap:12px; padding:8px 0; border-bottom:1px solid var(--line-soft); }
       .ai-cat-row:last-child { border-bottom:none; }
       .ai-cat-row .label { flex:0 0 180px; color:var(--text); font-weight:600; font-size:0.92rem; }
       .ai-cat-row .meter {
         flex:1 1 auto; height:8px; border-radius:4px;
         background:rgba(255,255,255,0.06); overflow:hidden; min-width:80px;
       }
-      .ai-cat-row .meter > span { display:block; height:100%; background:linear-gradient(90deg, #4ade80, #d4af37); }
+      .ai-cat-row .meter > span { display:block; height:100%; background:linear-gradient(90deg, #62d28f, var(--gold-strong)); }
       .ai-cat-row .num { flex:0 0 46px; text-align:right; color:var(--text); font-weight:700; font-size:0.95rem; }
-      .ai-cat-row .num small { color:var(--muted); font-weight:500; font-size:0.7rem; margin-left:4px; }
-      .ai-cat-detail { padding:6px 0 8px 14px; border-left:2px solid rgba(212,175,55,0.25); margin:4px 0 12px 0; }
-      .ai-cat-detail .why { color:var(--muted); font-size:0.86rem; line-height:1.5; margin-bottom:8px; }
-      .ai-cat-detail h4 { margin:8px 0 4px; font-size:0.74rem; color:var(--accent); text-transform:uppercase; letter-spacing:0.06em; }
+      .ai-cat-row .num small { color:var(--text-muted); font-weight:500; font-size:0.7rem; margin-left:4px; }
+      .ai-cat-detail { padding:6px 0 8px 14px; border-left:2px solid rgba(240,199,102,0.25); margin:4px 0 12px 0; }
+      .ai-cat-detail .why { color:var(--text-muted); font-size:0.86rem; line-height:1.5; margin-bottom:8px; }
+      .ai-cat-detail h4 { margin:8px 0 4px; font-size:0.7rem; color: var(--gold-strong); text-transform:uppercase; letter-spacing:0.06em; font-weight: 800; }
       .ai-cat-detail ul { margin:0 0 6px; padding-left:18px; }
       .ai-cat-detail li { font-size:0.86rem; line-height:1.45; margin-bottom:3px; color:var(--text); }
-      .ai-cat-detail .concerns li { color:#f4c5c5; }
-      details.ai-cat-toggle > summary { cursor:pointer; color:var(--accent); font-size:0.78rem; padding:6px 0; list-style:none; }
+      .ai-cat-detail .concerns li { color:#ffb3b3; }
+      details.ai-cat-toggle > summary { cursor:pointer; color: var(--gold-strong); font-size:0.78rem; padding:6px 0; list-style:none; }
       details.ai-cat-toggle > summary::-webkit-details-marker { display:none; }
       details.ai-cat-toggle > summary::before { content:'▸ '; }
       details.ai-cat-toggle[open] > summary::before { content:'▾ '; }
 
-      details.ai-collapse { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px 18px; margin-bottom:14px; }
-      details.ai-collapse > summary { cursor:pointer; color:var(--text); font-weight:600; font-size:0.95rem; list-style:none; }
+      details.ai-collapse { background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.01)), var(--surface); border:1px solid var(--line); border-radius: var(--radius); padding:14px 18px; margin-bottom:14px; }
+      details.ai-collapse > summary { cursor:pointer; color:var(--text); font-weight:700; font-size:0.94rem; list-style:none; }
       details.ai-collapse > summary::-webkit-details-marker { display:none; }
-      details.ai-collapse > summary::before { content:'▸ '; color:var(--accent); }
-      details.ai-collapse[open] > summary::before { content:'▾ '; color:var(--accent); }
-      details.ai-collapse[open] > summary { padding-bottom:10px; border-bottom:1px solid var(--border); margin-bottom:14px; }
-      details.ai-collapse .answer-q { color:var(--muted); font-size:0.78rem; text-transform:uppercase; letter-spacing:0.05em; margin:14px 0 4px; }
+      details.ai-collapse > summary::before { content:'▸ '; color: var(--gold-strong); }
+      details.ai-collapse[open] > summary::before { content:'▾ '; color: var(--gold-strong); }
+      details.ai-collapse[open] > summary { padding-bottom:10px; border-bottom:1px solid var(--line-soft); margin-bottom:14px; }
+      details.ai-collapse .answer-q { color:var(--text-muted); font-size:0.74rem; text-transform:uppercase; letter-spacing:0.06em; font-weight: 800; margin:14px 0 4px; }
       details.ai-collapse .answer-q:first-of-type { margin-top:0; }
       details.ai-collapse .answer-a { color:var(--text); font-size:0.92rem; line-height:1.55; white-space:pre-wrap; }
 
-      .ai-meta { color:var(--muted); font-size:0.72rem; margin-top:8px; padding:8px 14px; }
-      .ai-rec-badge { display:inline-block; padding:3px 9px; border-radius:10px; font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin-left:6px; }
-      .ai-rec-recommend       { background:rgba(34,197,94,0.22); color:#4ade80; }
-      .ai-rec-dont_recommend  { background:rgba(150,150,150,0.20); color:#bbb; }
-      .ai-rec-pending         { background:rgba(96,165,250,0.18); color:#93c5fd; }
-      .ai-rec-error           { background:rgba(239,68,68,0.18); color:#f87171; }
-      .ai-review-badge { display:inline-block; padding:3px 9px; border-radius:10px; font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin-left:6px; background:rgba(212,175,55,0.22); color:#f5d76e; }
+      .ai-meta { color:var(--text-muted); font-size:0.74rem; margin-top:6px; padding:4px 2px; line-height: 1.5; }
+
+      /* === Keyboard shortcut hint === */
+      .ap-kbd { display:inline-block; padding: 1px 6px; border:1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; background: rgba(255,255,255,0.05); font-family: 'SF Mono', Menlo, monospace; font-size: 0.72rem; color: var(--text); }
+      .ap-shortcut-hint { color: var(--text-muted); font-size: 0.78rem; margin-top: 8px; }
+
+      /* === Print styles === */
+      @media print {
+        body { background: white !important; color: black !important; }
+        .admin-nav, .ap-hero-actions, .ap-tl-cancel-toggle, .ap-schedule-toggle, .ap-menu, .ap-copy, .ap-shortcut-hint, .ap-notes form button, form { color: black !important; }
+        .ap-stepper, .ap-card, .ap-hero, .ai-verdict, .ai-followups, .ai-cats, .ai-watchout, details.ai-collapse {
+          background: white !important; border: 1px solid #ccc !important; color: black !important; box-shadow: none !important;
+        }
+        details, details.ai-collapse, details.ai-cat-toggle { display: block; }
+        details > summary { display: none; }
+        .ap-rail { position: static; }
+        .ap-grid { grid-template-columns: 1fr; }
+        .ap-tl-cancel-toggle, .ap-schedule-toggle { display: none; }
+        h1, h2, h3, h4, .ap-card-head h2, .ap-narrative-head .lbl { color: black !important; }
+        .app-badge, .ai-rec-badge, .ai-verdict-pill, .pill { color: #333 !important; background: #eee !important; border: 1px solid #ccc !important; }
+        a { color: black !important; text-decoration: none !important; }
+      }
     </style>
   `;
 }
@@ -251,14 +521,16 @@ function aiEvaluationPanel(application) {
         ? ` Reminder email sent on ${escHTML(formatFriendly(application.questionnaireInviteSentAt))}.`
         : '';
       return `
-        <div class="ai-verdict">
+        <div class="ai-verdict is-pending">
           <span class="ai-verdict-pill is-pending">Awaiting questionnaire</span>
+          <span></span>
           <div class="ai-verdict-summary">The applicant has not yet completed the hospitality questionnaire. Screening runs automatically once they submit it.${inviteNote}</div>
         </div>`;
     }
     return `
-      <div class="ai-verdict">
+      <div class="ai-verdict is-pending">
         <span class="ai-verdict-pill is-pending">Evaluating…</span>
+        <span></span>
         <div class="ai-verdict-summary">Questionnaire submitted; screening is still in flight. Refresh in a moment.</div>
       </div>`;
   }
@@ -289,11 +561,13 @@ function aiEvaluationPanel(application) {
   // Verdict card — the one line a GM needs to read
   const bucket = verdictBucketFor(rec);
   const verdict = `
-    <div class="ai-verdict">
-      <span class="ai-verdict-pill is-${escHTML(bucket)}">${escHTML(VERDICT_LABELS[bucket])}</span>
+    <div class="ai-verdict is-${escHTML(bucket)}">
+      <div>
+        <span class="ai-verdict-pill is-${escHTML(bucket)}">${escHTML(VERDICT_LABELS[bucket])}</span>
+        <div class="ai-verdict-confidence">Confidence: ${escHTML(confidenceLabel)}</div>
+      </div>
       <div class="ai-verdict-score">${escHTML(scoreLabel)}<small>Score / 5</small></div>
-      <div class="ai-verdict-confidence">Confidence: ${escHTML(confidenceLabel)}</div>
-      ${summary ? `<div class="ai-verdict-summary">${escHTML(summary)}</div>` : ''}
+      <div class="ai-verdict-summary">${summary ? escHTML(summary) : ''}</div>
     </div>`;
 
   // Watch outs — only render when there's something the GM needs to know
@@ -509,78 +783,251 @@ function applicantsList({ applications, locations, filters, counts, user, flashM
   `, user);
 }
 
-function pipelineButton(application, target, kind) {
-  const isCurrent = application.status === target;
-  const cls = ['', isCurrent ? 'is-current' : '', kind === 'positive' ? 'is-terminal-positive' : kind === 'negative' ? 'is-terminal' : ''].filter(Boolean).join(' ');
+// Steps shown in the pipeline stepper. "hired" is the implicit final state — shown
+// only on the stepper-footer terminal note (or via the change-status menu).
+const STEPPER_STEPS = [
+  { key: 'new', label: 'New' },
+  { key: 'reviewing', label: 'Reviewing' },
+  { key: 'interview_scheduled', label: 'Interview' },
+  { key: 'interviewed', label: 'Interviewed' },
+  { key: 'offer_extended', label: 'Offer' },
+];
+
+// Map current status → next linear step (label shown on the primary advance button).
+// `null` means there's no auto-advance — terminal status or requires manual scheduling.
+const NEXT_STEP = {
+  new: { status: 'reviewing', label: 'Move to Reviewing' },
+  reviewing: { status: null, label: 'Schedule interview', scrollTo: 'schedule-interview' },
+  interview_scheduled: { status: 'interviewed', label: 'Mark interviewed' },
+  interviewed: { status: 'offer_extended', label: 'Extend offer' },
+  offer_extended: { status: 'hired', label: 'Mark hired' },
+  hired: null,
+  rejected: null,
+  withdrawn: null,
+};
+
+function renderStepper(application) {
+  const current = application.status;
+  const currentIdx = STEPPER_STEPS.findIndex(s => s.key === current);
+  const isTerminal = TERMINAL_STATUSES.has(current);
+  // For 'hired', treat the whole row as complete.
+  const stepsHtml = STEPPER_STEPS.map((step, idx) => {
+    let cls = '';
+    if (current === 'hired') {
+      cls = idx === STEPPER_STEPS.length - 1 ? 'is-done is-current' : 'is-done';
+    } else if (isTerminal) {
+      // For rejected / withdrawn, fade everything; mark the step they last reached as current.
+      cls = idx < currentIdx ? 'is-done' : '';
+    } else if (currentIdx === -1) {
+      cls = '';
+    } else if (idx < currentIdx) {
+      cls = 'is-done';
+    } else if (idx === currentIdx) {
+      cls = 'is-current';
+    }
+    return `
+      <div class="ap-step ${cls}">
+        <span class="ap-step-dot">${cls.includes('is-done') && !cls.includes('is-current') ? '✓' : (idx + 1)}</span>
+        <span class="ap-step-label">${escHTML(step.label)}</span>
+      </div>`;
+  }).join('');
+
+  let terminalNote = '';
+  if (current === 'hired') terminalNote = '<span class="terminal-note is-positive">Hired ★</span>';
+  else if (current === 'rejected') terminalNote = '<span class="terminal-note is-negative">Rejected</span>';
+  else if (current === 'withdrawn') terminalNote = '<span class="terminal-note">Withdrawn</span>';
+
+  const decisionLine = application.decisionBy
+    ? `Last moved by <strong style="color:var(--text);">${escHTML(application.decisionBy)}</strong> on ${escHTML(formatFriendly(application.decisionAt))}`
+    : 'No status changes yet';
+
   return `
-    <form method="POST" action="/admin/applicants/${escHTML(application.id)}/status">
-      <input type="hidden" name="status" value="${escHTML(target)}" />
-      <button type="submit" class="${cls}" ${isCurrent ? 'disabled' : ''}>${escHTML(STATUS_LABELS[target])}</button>
-    </form>
-  `;
+    <div class="ap-stepper">
+      <div class="ap-stepper-track">${stepsHtml}</div>
+      <div class="ap-stepper-footer">
+        ${terminalNote}
+        <span>${decisionLine}</span>
+      </div>
+      ${application.decisionNote ? `<div class="ap-decision-note"><strong>Note:</strong>${escHTML(application.decisionNote)}</div>` : ''}
+    </div>`;
+}
+
+function renderHeroActions(application) {
+  const next = NEXT_STEP[application.status];
+  const allOptions = [
+    ...STEPPER_STEPS.map(s => s.key),
+    'hired',
+    'rejected',
+    'withdrawn',
+  ];
+
+  let primary = '';
+  if (next) {
+    if (next.status) {
+      primary = `
+        <form method="POST" action="/admin/applicants/${escHTML(application.id)}/status" style="margin:0;">
+          <input type="hidden" name="status" value="${escHTML(next.status)}" />
+          <button type="submit" class="btn btn-primary" id="ap-advance-btn">${escHTML(next.label)} →</button>
+        </form>`;
+    } else if (next.scrollTo) {
+      primary = `<a href="#${escHTML(next.scrollTo)}" class="btn btn-primary" id="ap-advance-btn">${escHTML(next.label)} →</a>`;
+    }
+  }
+
+  const menuOptions = allOptions.map((opt) => {
+    const isCurrent = opt === application.status;
+    const isDanger = opt === 'rejected' || opt === 'withdrawn';
+    const label = STATUS_LABELS[opt] || opt;
+    if (isCurrent) {
+      return `<button type="button" class="is-current" disabled>${escHTML(label)} (current)</button>`;
+    }
+    return `
+      <form method="POST" action="/admin/applicants/${escHTML(application.id)}/status">
+        <input type="hidden" name="status" value="${escHTML(opt)}" />
+        <button type="submit" class="${isDanger ? 'is-danger' : ''}">${escHTML(label)}</button>
+      </form>`;
+  }).join('<hr />');
+
+  return `
+    <div class="ap-hero-actions">
+      <div class="ap-action-row">
+        ${primary}
+        <details class="ap-menu">
+          <summary class="btn btn-secondary">Change status ▾</summary>
+          <div class="ap-menu-panel">${menuOptions}</div>
+        </details>
+      </div>
+      <a href="/admin/applicants" class="btn btn-secondary btn-sm">&larr; All applicants</a>
+    </div>`;
 }
 
 function renderAvailability(availability) {
-  if (!availability || typeof availability !== 'object') return '<p class="app-meta">No availability provided.</p>';
-  const headRow = `<tr><th></th>${Object.keys(SHIFT_LABELS).map(s => `<th>${escHTML(SHIFT_LABELS[s])}</th>`).join('')}</tr>`;
-  const rows = DAY_ORDER.map((d) => {
+  if (!availability || typeof availability !== 'object') {
+    return '<p class="app-meta">No availability provided.</p>';
+  }
+  const shiftKeys = Object.keys(SHIFT_LABELS);
+  // Header row: empty corner cell + shift labels.
+  const headerCells = [
+    `<span class="ap-avail-cell is-head" aria-hidden="true"></span>`,
+    ...shiftKeys.map(s => `<span class="ap-avail-cell is-head">${escHTML(SHIFT_LABELS[s])}</span>`),
+  ].join('');
+  const bodyCells = DAY_ORDER.map((d) => {
     const shifts = availability[d];
-    const cells = Object.keys(SHIFT_LABELS).map((s) => {
-      const has = Array.isArray(shifts) && shifts.includes(s);
-      return `<td class="${has ? 'has' : ''}">${has ? '✓' : ''}</td>`;
-    }).join('');
-    return `<tr><th>${escHTML(DAYS_LABELS[d])}</th>${cells}</tr>`;
+    const isWeekend = d === 'fri' || d === 'sat';
+    const rowCells = [
+      `<span class="ap-avail-cell is-day">${escHTML(DAYS_LABELS[d])}</span>`,
+      ...shiftKeys.map((s) => {
+        const has = Array.isArray(shifts) && shifts.includes(s);
+        const cls = ['ap-avail-cell', has ? 'is-on' : '', isWeekend ? 'is-weekend' : ''].filter(Boolean).join(' ');
+        return `<span class="${cls}" title="${escHTML(DAYS_LABELS[d])} · ${escHTML(SHIFT_LABELS[s])}${has ? '' : ' (unavailable)'}">${has ? '●' : '·'}</span>`;
+      }),
+    ].join('');
+    return rowCells;
   }).join('');
-  return `<div class="app-availability"><table>${headRow}${rows}</table></div>`;
+  return `<div class="ap-avail-grid">${headerCells}${bodyCells}</div>`;
 }
 
 function renderInterview(interview) {
-  const statusClass = interview.status === 'cancelled' ? 'app-interview-cancelled' : '';
   const typeLabel = interview.type === 'phone' ? 'Phone' : interview.type === 'video' ? 'Video' : 'In person';
   const contactLabel = interview.contactMethod ? CONTACT_METHOD_LABELS[interview.contactMethod] || interview.contactMethod : null;
-  const emailSentLabel = interview.confirmationSentAt
-    ? 'Confirmation email sent'
-    : (contactLabel ? `Contacted via ${escHTML(contactLabel)} — no email sent` : 'No confirmation email sent');
+  const stateClass = interview.status === 'cancelled' ? 'is-cancelled'
+    : interview.status === 'completed' ? 'is-completed'
+    : 'is-scheduled';
+  const statePill = interview.status === 'cancelled' ? '<span class="pill is-cancelled">Cancelled</span>'
+    : interview.status === 'completed' ? '<span class="pill is-completed">Completed</span>'
+    : interview.status === 'no_show' ? '<span class="pill is-cancelled">No-show</span>'
+    : '<span class="pill is-scheduled">Scheduled</span>';
+
+  const emailStatus = interview.confirmationSentAt
+    ? '✉️ Confirmation sent'
+    : (contactLabel ? `📞 Contacted via ${escHTML(contactLabel)}` : '✉️ No email sent');
+
   return `
-    <div class="app-interview-card ${statusClass}">
-      <strong>${escHTML(formatFriendly(interview.scheduledAt))}</strong>
-      <span class="app-meta"> &middot; ${escHTML(typeLabel)} &middot; ${interview.durationMinutes} min &middot; ${escHTML(interview.status)}</span>
-      ${interview.locationDetail ? `<div class="app-meta">Where/how: ${escHTML(interview.locationDetail)}</div>` : ''}
-      ${interview.interviewerEmail ? `<div class="app-meta">Interviewer: ${escHTML(interview.interviewerEmail)}</div>` : ''}
-      ${interview.candidateNote ? `<div class="app-meta">Note to candidate: ${escHTML(interview.candidateNote)}</div>` : ''}
-      ${contactLabel ? `<div class="app-meta">Manual contact: ${escHTML(contactLabel)}${interview.contactNote ? ` — ${escHTML(interview.contactNote)}` : ''}</div>` : ''}
-      ${interview.cancellationReason ? `<div class="app-meta">Cancelled: ${escHTML(interview.cancellationReason)}</div>` : ''}
-      <div class="app-meta" style="margin-top:6px;">
-        ${emailSentLabel} &middot;
-        ${interview.reminderSent24h ? '24h reminder sent' : '24h reminder pending'} &middot;
-        ${interview.reminderSent1h ? '1h reminder sent' : '1h reminder pending'}
+    <div class="ap-tl-item ${stateClass}">
+      <span class="ap-tl-dot"></span>
+      <div class="ap-tl-card">
+        <div class="ap-tl-head">
+          <span class="when">${escHTML(formatFriendly(interview.scheduledAt))}</span>
+          ${statePill}
+          <span class="pill">${escHTML(typeLabel)} · ${interview.durationMinutes}m</span>
+        </div>
+        ${interview.locationDetail ? `<div class="ap-tl-meta"><strong style="color:var(--text);">Where:</strong> ${escHTML(interview.locationDetail)}</div>` : ''}
+        ${interview.interviewerEmail ? `<div class="ap-tl-meta"><strong style="color:var(--text);">Interviewer:</strong> ${escHTML(interview.interviewerEmail)}</div>` : ''}
+        ${interview.candidateNote ? `<div class="ap-tl-meta"><strong style="color:var(--text);">Note to candidate:</strong> ${escHTML(interview.candidateNote)}</div>` : ''}
+        ${contactLabel && interview.contactNote ? `<div class="ap-tl-meta"><strong style="color:var(--text);">Contact note:</strong> ${escHTML(interview.contactNote)}</div>` : ''}
+        ${interview.cancellationReason ? `<div class="ap-tl-meta"><strong style="color:#ffb3b3;">Cancelled:</strong> ${escHTML(interview.cancellationReason)}</div>` : ''}
+
+        <div class="ap-tl-foot">
+          <span class="ap-tl-foot-item">${emailStatus}</span>
+          <span>·</span>
+          <span class="ap-tl-foot-item">${interview.reminderSent24h ? '✓' : '○'} 24h reminder</span>
+          <span>·</span>
+          <span class="ap-tl-foot-item">${interview.reminderSent1h ? '✓' : '○'} 1h reminder</span>
+        </div>
+
+        ${interview.status === 'scheduled' ? `
+        <details class="ap-tl-cancel-toggle">
+          <summary>Cancel this interview</summary>
+          <div class="body">
+            <form method="POST" action="/admin/applicants/interviews/${escHTML(interview.id)}/cancel" onsubmit="return confirm(this.querySelector('input[name=skipEmail]')?.checked ? 'Cancel this interview without emailing the candidate?' : 'Cancel this interview? An email will be sent to the candidate.')">
+              <div class="ap-form-block">
+                <label>Reason (shown to candidate if emailed)</label>
+                <input type="text" name="reason" placeholder="e.g. Manager unavailable, need to reschedule" />
+              </div>
+              <fieldset class="ap-skip-email" data-skip-email>
+                <legend>Already let them know?</legend>
+                <label class="toggle">
+                  <input type="checkbox" name="skipEmail" value="1" data-skip-email-toggle />
+                  <span>Don't email — I already told them.</span>
+                </label>
+                <div class="body">
+                  <div class="ap-form-row">
+                    <div class="ap-form-block">
+                      <label>How</label>
+                      <select name="contactMethod">
+                        <option value="phone">Phone call</option>
+                        <option value="text">Text message</option>
+                        <option value="in_person">In person</option>
+                        <option value="email_manual">Email (sent manually)</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+                    <div class="ap-form-block">
+                      <label>Note (optional)</label>
+                      <input type="text" name="contactNote" placeholder="Called at 3pm, said no hard feelings." />
+                    </div>
+                  </div>
+                </div>
+              </fieldset>
+              <div style="margin-top:12px; text-align:right;">
+                <button type="submit" class="btn btn-danger btn-sm">Cancel interview</button>
+              </div>
+            </form>
+          </div>
+        </details>` : ''}
       </div>
-      ${interview.status === 'scheduled' ? `
-        <form method="POST" action="/admin/applicants/interviews/${escHTML(interview.id)}/cancel" style="margin-top:8px;" onsubmit="return confirm(this.querySelector('input[name=skipEmail]')?.checked ? 'Cancel this interview without sending an email?' : 'Cancel this interview? An email will be sent to the candidate.')">
-          <div>
-            <input type="text" name="reason" placeholder="Reason (shown to candidate if emailed)" style="width:280px;" />
-          </div>
-          <label style="display:flex; align-items:center; gap:6px; margin-top:6px; font-size:0.85rem;">
-            <input type="checkbox" name="skipEmail" value="1" id="cancel-skip-${escHTML(interview.id)}" onchange="(function(cb){var w=document.getElementById('cancel-contact-${escHTML(interview.id)}'); if(w){w.style.display=cb.checked?'flex':'none';}})(this)" />
-            Don't email — I already let them know.
-          </label>
-          <div id="cancel-contact-${escHTML(interview.id)}" style="display:none; gap:6px; margin-top:6px; flex-wrap:wrap; align-items:center; font-size:0.85rem;">
-            <select name="contactMethod">
-              <option value="phone">Phone call</option>
-              <option value="text">Text message</option>
-              <option value="in_person">In person</option>
-              <option value="email_manual">Email (sent manually)</option>
-              <option value="other">Other</option>
-            </select>
-            <input type="text" name="contactNote" placeholder="Note (optional, e.g. 'called at 3pm')" style="width:260px;" />
-          </div>
-          <div style="margin-top:8px;">
-            <button type="submit" class="btn btn-secondary btn-sm">Cancel interview</button>
-          </div>
-        </form>
-      ` : ''}
-    </div>
-  `;
+    </div>`;
+}
+
+function wordCount(s) {
+  if (!s || typeof s !== 'string') return 0;
+  return s.trim().split(/\s+/).filter(Boolean).length;
+}
+
+function renderNarrative(label, value) {
+  const empty = !value || !value.trim();
+  const wc = wordCount(value);
+  const thin = !empty && wc < 12;
+  const cls = ['ap-narrative-block', empty ? 'is-empty' : '', thin ? 'is-thin' : ''].filter(Boolean).join(' ');
+  const wcCls = ['ap-wc', thin ? 'is-thin' : ''].filter(Boolean).join(' ');
+  return `
+    <div class="${cls}">
+      <div class="ap-narrative-head">
+        <span class="lbl">${escHTML(label)}</span>
+        <span class="${wcCls}">${empty ? 'no answer' : `${wc} word${wc === 1 ? '' : 's'}${thin ? ' · brief' : ''}`}</span>
+      </div>
+      <div class="body">${empty ? '—' : escHTML(value)}</div>
+    </div>`;
 }
 
 function applicantDetail({ application, interviews, user, flashMsg }) {
@@ -590,158 +1037,350 @@ function applicantDetail({ application, interviews, user, flashMsg }) {
     ? `${application.position} (${application.positionOther})`
     : application.position;
 
-  // Pipeline buttons. Always include the terminal ones at the end.
-  const pipelineHtml = [
-    ...PIPELINE_ORDER.map(s => pipelineButton(application, s, s === 'hired' ? 'positive' : 'neutral')),
-    pipelineButton(application, 'rejected', 'negative'),
-    pipelineButton(application, 'withdrawn', 'negative'),
-  ].join('');
+  // Last contacted: most recent interview that has a contactMethod OR a confirmationSentAt.
+  const lastContact = (interviews || []).reduce((acc, iv) => {
+    if (iv.contactMethod || iv.confirmationSentAt) {
+      const stamp = iv.contactMethod ? iv.createdAt : iv.confirmationSentAt;
+      if (!acc || new Date(stamp) > new Date(acc.stamp)) {
+        return {
+          method: iv.contactMethod ? (CONTACT_METHOD_LABELS[iv.contactMethod] || iv.contactMethod) : 'email confirmation',
+          stamp,
+        };
+      }
+    }
+    return acc;
+  }, null);
 
   const resumeBlock = application.resumeFileName
-    ? `<a class="btn btn-secondary btn-sm" href="/admin/applicants/${escHTML(application.id)}/resume" target="_blank">Download resume (${escHTML(application.resumeFileName)})</a>`
-    : '<span class="app-meta">No resume attached</span>';
+    ? `<a class="btn btn-secondary btn-sm" href="/admin/applicants/${escHTML(application.id)}/resume" target="_blank">Download resume</a>
+       <span class="app-meta" style="font-size:0.78rem;">${escHTML(application.resumeFileName)}</span>`
+    : '<span class="ap-resume-empty">No resume attached</span>';
+
+  // Contact rail card
+  const contactCard = `
+    <div class="ap-card" style="margin-bottom:0;">
+      <div class="ap-card-head"><h2>Contact</h2></div>
+      <div class="ap-contact">
+        <div class="ap-contact-row">
+          <span class="lbl">Email</span>
+          <span class="val"><a href="mailto:${escHTML(application.email)}">${escHTML(application.email)}</a></span>
+          <button type="button" class="ap-copy" data-copy="${escHTML(application.email)}">Copy</button>
+        </div>
+        <div class="ap-contact-row">
+          <span class="lbl">Phone</span>
+          <span class="val">${application.phone ? `<a href="tel:${escHTML(application.phone)}">${escHTML(application.phone)}</a>` : '—'}</span>
+          ${application.phone ? `<button type="button" class="ap-copy" data-copy="${escHTML(application.phone)}">Copy</button>` : '<span></span>'}
+        </div>
+        <div class="ap-contact-row">
+          <span class="lbl">21+</span>
+          <span class="val">${application.age21 ? 'Yes' : 'No'}</span>
+          <span></span>
+        </div>
+        <div class="ap-contact-row">
+          <span class="lbl">Starts</span>
+          <span class="val">${escHTML(formatDateOnly(application.earliestStart) || '—')}</span>
+          <span></span>
+        </div>
+        <div class="ap-contact-row">
+          <span class="lbl">Years exp</span>
+          <span class="val">${application.yearsExperience != null ? application.yearsExperience : '—'}</span>
+          <span></span>
+        </div>
+        ${application.referredBy ? `
+        <div class="ap-contact-row">
+          <span class="lbl">Referred</span>
+          <span class="val">${escHTML(application.referredBy)}</span>
+          <span></span>
+        </div>` : ''}
+        ${application.certifications ? `
+        <div class="ap-contact-row">
+          <span class="lbl">Certs</span>
+          <span class="val">${escHTML(application.certifications)}</span>
+          <span></span>
+        </div>` : ''}
+        ${lastContact ? `
+        <div class="ap-contact-row">
+          <span class="lbl">Last contact</span>
+          <span class="val">${escHTML(lastContact.method)} · ${escHTML(formatFriendly(lastContact.stamp))}</span>
+          <span></span>
+        </div>` : ''}
+      </div>
+    </div>`;
+
+  const availabilityCard = `
+    <div class="ap-card" style="margin-bottom:0;">
+      <div class="ap-card-head"><h2>Availability</h2></div>
+      ${renderAvailability(application.availability)}
+    </div>`;
+
+  const resumeCard = `
+    <div class="ap-card" style="margin-bottom:0;">
+      <div class="ap-card-head"><h2>Resume</h2></div>
+      <div class="ap-resume">${resumeBlock}</div>
+    </div>`;
+
+  const notesCard = `
+    <div class="ap-card" style="margin-bottom:0;">
+      <div class="ap-card-head">
+        <h2>Internal notes</h2>
+        <span class="ap-card-aside ap-notes-status" data-notes-status></span>
+      </div>
+      <form class="ap-notes" data-notes-form action="/admin/applicants/${escHTML(application.id)}/notes" method="POST">
+        <textarea name="internalNotes" placeholder="Private notes — autosaves as you type." data-notes-input>${escHTML(application.internalNotes || '')}</textarea>
+        <noscript><div style="text-align:right;"><button type="submit" class="btn btn-secondary btn-sm">Save notes</button></div></noscript>
+      </form>
+    </div>`;
+
+  // Narrative blocks (left column)
+  const narrativeCard = `
+    <div class="ap-card">
+      <div class="ap-card-head"><h2>Narrative</h2></div>
+      <div class="ap-narrative">
+        ${renderNarrative('Most recent employers', application.priorEmployers)}
+        ${renderNarrative('Spirit knowledge / specialties', application.spiritKnowledge)}
+        ${renderNarrative('Why D&D?', application.whyDD)}
+      </div>
+    </div>`;
+
+  // Interview timeline + collapsible schedule form
+  const interviewItems = (interviews || []).length === 0
+    ? '<div class="ap-timeline-empty">No interviews scheduled yet.</div>'
+    : interviews.map(renderInterview).join('');
+
+  const interviewsCard = `
+    <div class="ap-card" id="schedule-interview">
+      <div class="ap-card-head"><h2>Interviews</h2></div>
+      <div class="ap-timeline">${interviewItems}</div>
+
+      <details class="ap-schedule-toggle">
+        <summary>+ Schedule new interview</summary>
+        <div class="body">
+          <form method="POST" action="/admin/applicants/${escHTML(application.id)}/interviews">
+            <div class="ap-form-row">
+              <div class="ap-form-block">
+                <label>Date &amp; time (Eastern)</label>
+                <input type="datetime-local" name="scheduledAt" required />
+              </div>
+              <div class="ap-form-block">
+                <label>Duration (minutes)</label>
+                <input type="number" name="durationMinutes" min="15" max="240" value="30" />
+              </div>
+            </div>
+            <div class="ap-form-row" style="margin-top:12px;">
+              <div class="ap-form-block">
+                <label>Type</label>
+                <select name="type">
+                  <option value="in_person">In person</option>
+                  <option value="phone">Phone</option>
+                  <option value="video">Video</option>
+                </select>
+              </div>
+              <div class="ap-form-block">
+                <label>Interviewer email</label>
+                <input type="email" name="interviewerEmail" placeholder="${escHTML(user?.email || '')}" />
+              </div>
+            </div>
+            <div class="ap-form-block" style="margin-top:12px;">
+              <label>Where / link (address, phone number, or meeting URL)</label>
+              <input type="text" name="locationDetail" placeholder="486 N Patterson Ave  •  https://meet.google.com/...  •  (919) 555-0123" />
+            </div>
+            <div class="ap-form-block" style="margin-top:12px;">
+              <label>Note shown to candidate (optional)</label>
+              <textarea name="candidateNote" placeholder="Anything they should bring or know."></textarea>
+            </div>
+
+            <fieldset class="ap-skip-email" data-skip-email>
+              <legend>Already reached out?</legend>
+              <label class="toggle">
+                <input type="checkbox" name="skipEmail" value="1" data-skip-email-toggle />
+                <span>Don't email the candidate — I already contacted them directly.</span>
+              </label>
+              <div class="body">
+                <div class="ap-form-row">
+                  <div class="ap-form-block">
+                    <label>How did you reach them?</label>
+                    <select name="contactMethod">
+                      <option value="phone">Phone call</option>
+                      <option value="text">Text message</option>
+                      <option value="in_person">In person</option>
+                      <option value="email_manual">Email (sent manually)</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="ap-form-block" style="margin-top:12px;">
+                  <label>What was said / when (optional)</label>
+                  <textarea name="contactNote" placeholder="Called at 2:15 PM, confirmed Thursday 4pm, asked about parking."></textarea>
+                </div>
+              </div>
+            </fieldset>
+
+            <div style="margin-top:14px; text-align:right;">
+              <button type="submit" class="btn btn-primary">Schedule interview</button>
+            </div>
+          </form>
+        </div>
+      </details>
+    </div>`;
 
   return adminLayout(`Applicant — ${application.name}`, `
     ${applicantStyles()}
-    <div class="page-header">
-      <div>
+
+    <div class="ap-hero">
+      <div class="ap-hero-left">
         <div class="admin-kicker">Applicant</div>
         <h1>${escHTML(application.name)}</h1>
-        <p class="page-subtitle">${escHTML(positionLabel || '')} &middot; ${escHTML(locName)} &middot; Applied ${escHTML(formatFriendly(application.createdAt))}</p>
+        <div class="ap-meta-line">
+          <span>${escHTML(positionLabel || '—')}</span>
+          <span class="dot">•</span>
+          <span>${escHTML(locName || '—')}</span>
+          <span class="dot">•</span>
+          <span>Applied ${escHTML(formatFriendly(application.createdAt))}</span>
+        </div>
+        <div class="ap-hero-status-line">
+          <span class="app-badge app-badge-lg app-badge-${escHTML(application.status || 'new')}">${escHTML(STATUS_LABELS[application.status] || application.status)}</span>
+          ${aiRecBadge(application)}
+          ${application.aiEvaluation && application.aiEvaluation.humanReviewRequired ? '<span class="ai-review-badge">Human review</span>' : ''}
+        </div>
+        <div class="ap-shortcut-hint">
+          Shortcuts: <span class="ap-kbd">A</span> advance · <span class="ap-kbd">R</span> reject · <span class="ap-kbd">N</span> focus notes · <span class="ap-kbd">/</span> back to list
+        </div>
       </div>
-      <a href="/admin/applicants" class="btn btn-secondary">&larr; Back to list</a>
+      ${renderHeroActions(application)}
     </div>
+
     ${flash}
 
-    <div class="app-section">
-      <h2>Pipeline</h2>
-      <div>${statusBadge(application.status)} ${application.decisionBy ? `<span class="app-meta">last changed by ${escHTML(application.decisionBy)} on ${escHTML(formatFriendly(application.decisionAt))}</span>` : ''}</div>
-      <div class="app-pipeline">${pipelineHtml}</div>
-      ${application.decisionNote ? `<div class="app-meta"><strong>Note on last decision:</strong> ${escHTML(application.decisionNote)}</div>` : ''}
-    </div>
+    ${renderStepper(application)}
 
-    ${aiEvaluationPanel(application)}
-    ${questionnaireAnswersPanel(application)}
-
-    <div class="app-section">
-      <h2>Contact &amp; basics</h2>
-      <div class="app-grid">
-        <div class="app-field"><span>Email</span><strong><a href="mailto:${escHTML(application.email)}">${escHTML(application.email)}</a></strong></div>
-        <div class="app-field"><span>Phone</span><strong>${application.phone ? `<a href="tel:${escHTML(application.phone)}">${escHTML(application.phone)}</a>` : '—'}</strong></div>
-        <div class="app-field"><span>21+</span><strong>${application.age21 ? 'Yes' : 'No'}</strong></div>
-        <div class="app-field"><span>Earliest start</span><strong>${escHTML(formatDateOnly(application.earliestStart) || '—')}</strong></div>
-        <div class="app-field"><span>Years experience</span><strong>${application.yearsExperience != null ? application.yearsExperience : '—'}</strong></div>
-        <div class="app-field"><span>Referred by</span><strong>${escHTML(application.referredBy || '—')}</strong></div>
-        <div class="app-field is-wide"><span>Certifications</span><strong>${escHTML(application.certifications || '—')}</strong></div>
+    <div class="ap-grid">
+      <div class="ap-main">
+        ${aiEvaluationPanel(application)}
+        ${questionnaireAnswersPanel(application)}
+        ${narrativeCard}
+        ${interviewsCard}
       </div>
+      <aside class="ap-rail">
+        ${contactCard}
+        ${availabilityCard}
+        ${resumeCard}
+        ${notesCard}
+      </aside>
     </div>
 
-    <div class="app-section">
-      <h2>Availability</h2>
-      ${renderAvailability(application.availability)}
-    </div>
+    <script>
+      (function () {
+        var ROOT = document;
 
-    <div class="app-section">
-      <h2>Experience &amp; narrative</h2>
-      <div class="app-field is-wide" style="margin-bottom:10px;">
-        <span>Most recent employers</span>
-        <strong class="app-prose">${escHTML(application.priorEmployers || '—')}</strong>
-      </div>
-      <div class="app-field is-wide" style="margin-bottom:10px;">
-        <span>Spirit knowledge / specialties</span>
-        <strong class="app-prose">${escHTML(application.spiritKnowledge || '—')}</strong>
-      </div>
-      <div class="app-field is-wide">
-        <span>Why D&amp;D?</span>
-        <strong class="app-prose">${escHTML(application.whyDD || '—')}</strong>
-      </div>
-    </div>
+        // ---- Skip-email fieldset toggle (works for any data-skip-email block) ----
+        ROOT.querySelectorAll('[data-skip-email-toggle]').forEach(function (cb) {
+          var fs = cb.closest('[data-skip-email]');
+          if (!fs) return;
+          var sync = function () { fs.setAttribute('data-open', cb.checked ? '1' : '0'); };
+          cb.addEventListener('change', sync);
+          sync();
+        });
 
-    <div class="app-section">
-      <h2>Resume</h2>
-      ${resumeBlock}
-    </div>
+        // ---- Copy buttons (email / phone) ----
+        ROOT.querySelectorAll('.ap-copy').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var val = btn.getAttribute('data-copy') || '';
+            var original = btn.textContent;
+            var done = function () {
+              btn.textContent = 'Copied!';
+              btn.classList.add('is-copied');
+              setTimeout(function () { btn.textContent = original; btn.classList.remove('is-copied'); }, 1400);
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(val).then(done, function () {});
+            } else {
+              try {
+                var t = document.createElement('textarea');
+                t.value = val; document.body.appendChild(t); t.select(); document.execCommand('copy');
+                document.body.removeChild(t); done();
+              } catch (e) {}
+            }
+          });
+        });
 
-    <div class="app-section">
-      <h2>Interviews</h2>
-      ${(interviews || []).length === 0 ? '<p class="app-meta">No interviews scheduled yet.</p>' : interviews.map(renderInterview).join('')}
+        // ---- Internal notes autosave (debounced, posts form-encoded body) ----
+        var notesForm = ROOT.querySelector('[data-notes-form]');
+        var notesInput = ROOT.querySelector('[data-notes-input]');
+        var notesStatus = ROOT.querySelector('[data-notes-status]');
+        if (notesForm && notesInput) {
+          var lastSaved = notesInput.value;
+          var timer = null;
+          var setStatus = function (text, cls) {
+            if (!notesStatus) return;
+            notesStatus.textContent = text;
+            notesStatus.classList.remove('is-saving', 'is-saved', 'is-error');
+            if (cls) notesStatus.classList.add(cls);
+          };
+          var save = function () {
+            var val = notesInput.value;
+            if (val === lastSaved) return;
+            setStatus('Saving…', 'is-saving');
+            var body = new URLSearchParams();
+            body.set('internalNotes', val);
+            fetch(notesForm.action, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: body.toString(),
+              credentials: 'same-origin',
+              redirect: 'manual',
+            }).then(function () {
+              lastSaved = val;
+              setStatus('Saved ✓', 'is-saved');
+              setTimeout(function () { if (notesStatus.textContent === 'Saved ✓') setStatus('', null); }, 2500);
+            }).catch(function () {
+              setStatus('Save failed', 'is-error');
+            });
+          };
+          notesInput.addEventListener('input', function () {
+            if (timer) clearTimeout(timer);
+            setStatus('Editing…', 'is-saving');
+            timer = setTimeout(save, 800);
+          });
+          notesInput.addEventListener('blur', function () {
+            if (timer) { clearTimeout(timer); timer = null; }
+            save();
+          });
+        }
 
-      <h3 style="font-size:0.95rem; color:var(--text); margin:18px 0 8px;">Schedule a new interview</h3>
-      <form method="POST" action="/admin/applicants/${escHTML(application.id)}/interviews">
-        <div class="form-row">
-          <div>
-            <label>Date &amp; time (Eastern)</label>
-            <input type="datetime-local" name="scheduledAt" required />
-          </div>
-          <div>
-            <label>Duration (minutes)</label>
-            <input type="number" name="durationMinutes" min="15" max="240" value="30" />
-          </div>
-        </div>
-        <div class="form-row" style="margin-top:10px;">
-          <div>
-            <label>Type</label>
-            <select name="type">
-              <option value="in_person">In person</option>
-              <option value="phone">Phone</option>
-              <option value="video">Video</option>
-            </select>
-          </div>
-          <div>
-            <label>Interviewer email</label>
-            <input type="email" name="interviewerEmail" placeholder="${escHTML(user?.email || '')}" />
-          </div>
-        </div>
-        <div style="margin-top:10px;">
-          <label>Where / link (address, phone number, or meeting URL)</label>
-          <input type="text" name="locationDetail" placeholder="486 N Patterson Ave, Winston-Salem  •  https://meet.google.com/...  •  (919) 555-0123" />
-        </div>
-        <div style="margin-top:10px;">
-          <label>Note shown to candidate (optional)</label>
-          <textarea name="candidateNote" placeholder="Anything they should bring or know."></textarea>
-        </div>
+        // ---- Keyboard shortcuts ----
+        ROOT.addEventListener('keydown', function (e) {
+          var tag = (e.target && e.target.tagName) || '';
+          if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable)) return;
+          if (e.metaKey || e.ctrlKey || e.altKey) return;
+          var key = e.key.toLowerCase();
+          if (key === 'a') {
+            var advance = document.getElementById('ap-advance-btn');
+            if (advance) { e.preventDefault(); advance.click(); }
+          } else if (key === 'r') {
+            // Pick the reject form from the change-status dropdown.
+            var rejectBtn = document.querySelector('.ap-menu-panel form input[name="status"][value="rejected"]');
+            if (rejectBtn) {
+              if (confirm('Move this applicant to "Rejected"?')) {
+                e.preventDefault(); rejectBtn.form.submit();
+              }
+            }
+          } else if (key === 'n') {
+            if (notesInput) { e.preventDefault(); notesInput.focus(); notesInput.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+          } else if (key === '/') {
+            e.preventDefault();
+            window.location.href = '/admin/applicants';
+          }
+        });
 
-        <fieldset class="app-skip-email" style="margin-top:14px; padding:10px 12px; border:1px solid var(--border, #ddd); border-radius:6px;">
-          <legend style="font-size:0.85rem; padding:0 6px;">Already reached out?</legend>
-          <label style="display:flex; align-items:center; gap:8px;">
-            <input type="checkbox" name="skipEmail" value="1" id="schedule-skip-email" onchange="(function(cb){var w=document.getElementById('schedule-contact-wrap'); if(w){w.style.display=cb.checked?'block':'none';}})(this)" />
-            <span>Don't email the candidate — I already contacted them directly.</span>
-          </label>
-          <div id="schedule-contact-wrap" style="display:none; margin-top:10px;">
-            <div class="form-row">
-              <div>
-                <label>How did you reach them?</label>
-                <select name="contactMethod">
-                  <option value="phone">Phone call</option>
-                  <option value="text">Text message</option>
-                  <option value="in_person">In person</option>
-                  <option value="email_manual">Email (sent manually)</option>
-                  <option value="other">Other</option>
-                </select>
-              </div>
-            </div>
-            <div style="margin-top:10px;">
-              <label>What was said / when (optional)</label>
-              <textarea name="contactNote" placeholder="Called at 2:15 PM, confirmed Thursday 4pm, asked about parking."></textarea>
-            </div>
-          </div>
-        </fieldset>
-
-        <div style="margin-top:14px; text-align:right;">
-          <button type="submit" class="btn btn-primary">Schedule interview</button>
-        </div>
-      </form>
-    </div>
-
-    <div class="app-section">
-      <h2>Internal notes</h2>
-      <form method="POST" action="/admin/applicants/${escHTML(application.id)}/notes">
-        <textarea name="internalNotes" style="min-height:100px;">${escHTML(application.internalNotes || '')}</textarea>
-        <div style="margin-top:10px; text-align:right;">
-          <button type="submit" class="btn btn-secondary btn-sm">Save notes</button>
-        </div>
-      </form>
-    </div>
+        // ---- Close change-status menu when clicking outside ----
+        var menu = ROOT.querySelector('details.ap-menu');
+        if (menu) {
+          document.addEventListener('click', function (e) {
+            if (menu.open && !menu.contains(e.target)) menu.removeAttribute('open');
+          });
+        }
+      })();
+    </script>
   `, user);
 }
 

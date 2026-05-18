@@ -31,6 +31,9 @@ const CONTACT_METHOD_LABELS = {
   other: 'other',
 };
 
+// Same as escHTML but tolerates non-string inputs (null/undefined/numbers).
+function escAttr(s) { return escHTML(String(s == null ? '' : s)); }
+
 function statusBadge(status) {
   const label = STATUS_LABELS[status] || status;
   return `<span class="app-badge app-badge-${escHTML(status || 'new')}">${escHTML(label)}</span>`;
@@ -456,6 +459,266 @@ function applicantStyles() {
       .ap-kbd { display:inline-block; padding: 1px 6px; border:1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; background: rgba(255,255,255,0.05); font-family: 'SF Mono', Menlo, monospace; font-size: 0.72rem; color: var(--text); }
       .ap-shortcut-hint { color: var(--text-muted); font-size: 0.78rem; margin-top: 8px; }
 
+      /* ============================================================ */
+      /* ====== Applicants LIST page (/admin/applicants) ============== */
+      /* ============================================================ */
+
+      .al-hero {
+        display: grid; grid-template-columns: 1fr auto;
+        gap: 18px 24px; align-items: start;
+        background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.01)), var(--surface);
+        border: 1px solid var(--line); border-radius: var(--radius);
+        padding: 22px 26px; margin-bottom: 16px;
+      }
+      .al-hero h1 { font-size: clamp(1.5rem, 2.6vw, 2rem); line-height: 1.1; margin: 4px 0 8px; }
+      .al-hero .meta-line { color: var(--text-muted); font-size: 0.92rem; }
+      .al-hero-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+      .al-hero-actions .row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
+      /* === Status chip rail (replaces stat tiles + status dropdown) === */
+      .al-chip-rail { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+      .al-chip {
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 8px 14px; border-radius: 999px;
+        background: rgba(255,255,255,0.045); border: 1px solid var(--line);
+        color: var(--text-muted); font-size: 0.86rem; font-weight: 700;
+        cursor: pointer; text-decoration: none; transition: all 0.15s;
+      }
+      .al-chip:hover { color: var(--text); border-color: rgba(240,199,102,0.4); text-decoration: none; }
+      .al-chip .count {
+        font-size: 0.72rem; font-weight: 800;
+        padding: 1px 8px; border-radius: 999px;
+        background: rgba(255,255,255,0.06); color: var(--text-muted);
+      }
+      .al-chip.is-active {
+        background: var(--gold-strong); color: #17110a;
+        border-color: var(--gold-strong);
+      }
+      .al-chip.is-active .count { background: rgba(0,0,0,0.18); color: #17110a; }
+      .al-chip.is-toggle.is-active { background: rgba(240,199,102,0.22); color: var(--gold-strong); border-color: var(--gold-strong); }
+      .al-chip.is-toggle.is-active .count { background: rgba(240,199,102,0.18); color: var(--gold-strong); }
+      .al-chip.is-danger.is-active { background: rgba(242,166,90,0.22); color: var(--amber); border-color: var(--amber); }
+
+      /* === Toolbar (search + sort + group + more filters) === */
+      .al-toolbar {
+        display: grid; grid-template-columns: 1fr auto auto auto;
+        gap: 10px; align-items: center;
+        margin: 12px 0 6px;
+      }
+      @media (max-width: 760px) {
+        .al-toolbar { grid-template-columns: 1fr 1fr; }
+      }
+      .al-search {
+        position: relative;
+      }
+      .al-search input {
+        width: 100%; box-sizing: border-box;
+        background: var(--bg-soft); color: var(--text);
+        border: 1px solid var(--line); border-radius: var(--radius);
+        padding: 9px 12px 9px 36px; font-size: 0.92rem; font-family: inherit;
+        background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23b9aea0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><circle cx='11' cy='11' r='8'/><line x1='21' y1='21' x2='16.65' y2='16.65'/></svg>");
+        background-repeat: no-repeat; background-position: 12px center;
+      }
+      .al-select {
+        background: var(--bg-soft); color: var(--text);
+        border: 1px solid var(--line); border-radius: var(--radius);
+        padding: 9px 12px; font-size: 0.86rem; font-family: inherit;
+      }
+      .al-select-label {
+        display: inline-flex; align-items: center; gap: 6px;
+        color: var(--text-muted); font-size: 0.72rem; font-weight: 800;
+        text-transform: uppercase; letter-spacing: 0.06em;
+      }
+      details.al-more {
+        background: rgba(255,255,255,0.025); border: 1px solid var(--line);
+        border-radius: var(--radius); padding: 4px 12px;
+        margin-bottom: 14px;
+      }
+      details.al-more > summary {
+        list-style: none; cursor: pointer; padding: 8px 0;
+        color: var(--text-muted); font-size: 0.84rem; font-weight: 700;
+        display: inline-flex; align-items: center; gap: 6px;
+      }
+      details.al-more > summary::-webkit-details-marker { display: none; }
+      details.al-more > summary::before { content: '＋'; opacity: 0.6; }
+      details.al-more[open] > summary::before { content: '−'; }
+      details.al-more[open] > summary { color: var(--gold-strong); }
+      details.al-more > .body {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 12px; padding: 8px 0 14px;
+      }
+      details.al-more label { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 800; display: block; margin-bottom: 4px; }
+      details.al-more select { width: 100%; }
+
+      /* === List + groups === */
+      .al-list { display: flex; flex-direction: column; gap: 10px; }
+      .al-result-meta { color: var(--text-muted); font-size: 0.82rem; margin-bottom: 8px; }
+      .al-result-meta strong { color: var(--text); }
+
+      .al-group-header {
+        display: flex; align-items: baseline; gap: 10px;
+        margin: 18px 0 8px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid var(--line-soft);
+      }
+      .al-group-header:first-child { margin-top: 4px; }
+      .al-group-header h2 {
+        margin: 0; font-size: 0.84rem; color: var(--gold-strong);
+        text-transform: uppercase; letter-spacing: 0.07em; font-weight: 800;
+      }
+      .al-group-header .count { color: var(--text-muted); font-size: 0.78rem; font-weight: 700; }
+
+      /* === Applicant card row === */
+      .al-card {
+        position: relative;
+        display: grid;
+        grid-template-columns: 30px 44px 1fr 200px auto;
+        gap: 14px; align-items: center;
+        padding: 12px 16px 12px 12px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.01)), var(--surface);
+        border: 1px solid var(--line); border-radius: var(--radius);
+        text-decoration: none; color: var(--text);
+        transition: border-color 0.18s, transform 0.18s, box-shadow 0.18s;
+      }
+      .al-card:hover {
+        border-color: rgba(240,199,102,0.45);
+        transform: translateY(-1px);
+        box-shadow: 0 10px 22px rgba(0,0,0,0.28);
+        text-decoration: none;
+      }
+      .al-card::before {
+        content: '';
+        position: absolute; left: 0; top: 8px; bottom: 8px; width: 4px;
+        background: var(--ribbon, var(--line)); border-radius: 4px;
+      }
+      .al-card[data-ribbon="recommend"]      { --ribbon: #62d28f; }
+      .al-card[data-ribbon="review"]         { --ribbon: var(--amber); }
+      .al-card[data-ribbon="pending"]        { --ribbon: var(--blue); }
+      .al-card[data-ribbon="dont_recommend"] { --ribbon: var(--line); }
+      .al-card[data-ribbon="error"]          { --ribbon: var(--red); }
+      .al-card[data-ribbon="hired"]          { --ribbon: #62d28f; }
+      .al-card[data-ribbon="rejected"]       { --ribbon: var(--red); }
+      .al-card[data-ribbon="withdrawn"]      { --ribbon: var(--text-soft); }
+      .al-card.is-focused { box-shadow: 0 0 0 2px var(--gold-strong) inset; border-color: var(--gold-strong); }
+      .al-card.is-selected { border-color: var(--gold-strong); background: linear-gradient(180deg, rgba(240,199,102,0.05), rgba(240,199,102,0.02)), var(--surface); }
+
+      .al-card-cb {
+        display: inline-flex; align-items: center; justify-content: center;
+        padding-left: 6px;
+      }
+      .al-card-cb input { accent-color: var(--gold-strong); width: 16px; height: 16px; cursor: pointer; }
+
+      .al-avatar {
+        width: 44px; height: 44px; border-radius: 50%;
+        background: linear-gradient(135deg, var(--surface-2), var(--surface-3));
+        border: 1px solid var(--line);
+        display: inline-flex; align-items: center; justify-content: center;
+        color: var(--gold-strong); font-weight: 800; font-size: 0.92rem;
+        text-transform: uppercase; letter-spacing: 0.04em;
+      }
+
+      .al-card-body { min-width: 0; }
+      .al-card-row1 {
+        display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+        margin-bottom: 4px;
+      }
+      .al-card-name { font-weight: 800; color: var(--text); font-size: 1.02rem; }
+      .al-card-meta {
+        color: var(--text-muted); font-size: 0.84rem;
+        display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+      }
+      .al-card-meta .dot { color: var(--text-soft); margin: 0 2px; }
+
+      .al-score {
+        display: flex; flex-direction: column; gap: 4px; min-width: 0;
+      }
+      .al-score-line {
+        display: flex; align-items: baseline; gap: 6px;
+        font-size: 0.86rem;
+      }
+      .al-score-num { font-weight: 800; color: var(--text); font-size: 1.02rem; }
+      .al-score-of { color: var(--text-muted); font-size: 0.74rem; }
+      .al-score-conf { color: var(--text-muted); font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; margin-left: auto; }
+      .al-score-bar {
+        position: relative;
+        height: 6px; border-radius: 3px;
+        background: rgba(255,255,255,0.06); overflow: hidden;
+      }
+      .al-score-bar > span {
+        display: block; height: 100%;
+        background: linear-gradient(90deg, #62d28f, var(--gold-strong));
+      }
+      .al-score-pending { color: var(--text-muted); font-size: 0.82rem; font-style: italic; }
+
+      .al-card-actions {
+        display: flex; gap: 4px;
+        opacity: 0; transition: opacity 0.18s;
+      }
+      .al-card:hover .al-card-actions,
+      .al-card:focus-within .al-card-actions { opacity: 1; }
+      .al-card-actions .icon-btn {
+        width: 32px; height: 32px; padding: 0;
+        display: inline-flex; align-items: center; justify-content: center;
+        background: rgba(255,255,255,0.05); border: 1px solid var(--line);
+        border-radius: 6px; color: var(--text); cursor: pointer;
+        font-size: 1rem; line-height: 1; text-decoration: none;
+      }
+      .al-card-actions .icon-btn:hover { background: rgba(255,255,255,0.08); border-color: var(--gold-strong); color: var(--gold-strong); }
+      .al-card-actions .icon-btn.is-success:hover { color: #a4f4c2; border-color: rgba(98,210,143,0.5); background: rgba(98,210,143,0.1); }
+      .al-card-actions .icon-btn.is-danger:hover  { color: #ffb3b3; border-color: rgba(255,123,123,0.5); background: rgba(255,123,123,0.1); }
+
+      @media (max-width: 760px) {
+        .al-card { grid-template-columns: 22px 36px 1fr; row-gap: 6px; }
+        .al-score { grid-column: 2 / -1; }
+        .al-card-actions { grid-column: 1 / -1; justify-content: flex-end; opacity: 1; }
+      }
+
+      /* === Floating bulk action bar === */
+      .al-bulk-bar {
+        position: sticky; bottom: 16px; z-index: 25;
+        margin-top: 14px;
+        display: none; align-items: center; gap: 10px; flex-wrap: wrap;
+        padding: 12px 16px;
+        background: linear-gradient(180deg, var(--surface-2), var(--surface));
+        border: 1px solid var(--gold-strong); border-radius: var(--radius);
+        box-shadow: 0 12px 32px rgba(0,0,0,0.45);
+      }
+      .al-bulk-bar.is-visible { display: flex; }
+      .al-bulk-bar .count { color: var(--gold-strong); font-weight: 800; }
+      .al-bulk-bar select {
+        background: var(--bg-soft); color: var(--text);
+        border: 1px solid var(--line); padding: 6px 10px;
+        border-radius: 6px; font-size: 0.86rem;
+      }
+
+      /* === Empty state === */
+      .al-empty {
+        text-align: center;
+        padding: 36px 22px;
+        border: 1px dashed rgba(255, 255, 255, 0.18);
+        border-radius: var(--radius);
+        background: rgba(255,255,255,0.02);
+        color: var(--text-muted); line-height: 1.55;
+      }
+      .al-empty strong { color: var(--text); display: block; margin-bottom: 6px; font-size: 1.02rem; }
+
+      /* === Saved views === */
+      .al-saved {
+        display: flex; flex-wrap: wrap; gap: 8px;
+        margin: 6px 0 18px;
+        align-items: center;
+        font-size: 0.82rem;
+        color: var(--text-muted);
+      }
+      .al-saved .lbl { font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.7rem; }
+      .al-saved a {
+        display: inline-flex; align-items: center; gap: 4px;
+        padding: 5px 11px; border-radius: 999px;
+        background: rgba(255,255,255,0.04); border: 1px solid var(--line);
+        color: var(--text); font-size: 0.8rem; font-weight: 700; text-decoration: none;
+      }
+      .al-saved a:hover { border-color: var(--gold-strong); color: var(--gold-strong); }
+
       /* === Print styles === */
       @media print {
         body { background: white !important; color: black !important; }
@@ -660,126 +923,456 @@ function questionnaireAnswersPanel(application) {
     </details>`;
 }
 
-function applicantsList({ applications, locations, filters, counts, user, flashMsg, canSeeMultipleLocations, pendingInviteCount = 0, failedScreeningCount = 0 }) {
-  const positionOptions = ['', ...POSITIONS].map((p) => {
-    const sel = filters.position === p ? ' selected' : '';
-    const label = p === '' ? 'All positions' : p;
-    return `<option value="${escHTML(p)}"${sel}>${escHTML(label)}</option>`;
-  }).join('');
+// Initials for an avatar circle.
+function initialsOf(name) {
+  if (!name) return '?';
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
 
-  const statusOptions = ['', ...Object.keys(STATUS_LABELS)].map((s) => {
-    const sel = filters.status === s ? ' selected' : '';
-    const label = s === '' ? 'All statuses' : STATUS_LABELS[s];
-    return `<option value="${escHTML(s)}"${sel}>${escHTML(label)}</option>`;
+// Decide which color ribbon the card should show. Terminal statuses (hired,
+// rejected, withdrawn) override the recommendation since the decision is final.
+function ribbonKey(a) {
+  if (a.status === 'hired') return 'hired';
+  if (a.status === 'rejected') return 'rejected';
+  if (a.status === 'withdrawn') return 'withdrawn';
+  const ev = a.aiEvaluation;
+  if (!ev) return 'pending';
+  if (ev.errorDetail) return 'error';
+  if (ev.humanReviewRequired) return 'review';
+  return verdictBucketFor(ev.recommendation);
+}
+
+// Short, friendly "applied {N} {unit} ago" — saves horizontal space vs. the
+// full friendly timestamp in the existing helper.
+function timeAgo(value) {
+  if (!value) return '';
+  const d = value instanceof Date ? value : new Date(value);
+  if (isNaN(d.getTime())) return '';
+  const sec = Math.max(0, Math.floor((Date.now() - d.getTime()) / 1000));
+  if (sec < 60) return 'just now';
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day < 30) return `${day}d ago`;
+  const mo = Math.floor(day / 30);
+  if (mo < 12) return `${mo}mo ago`;
+  return `${Math.floor(mo / 12)}y ago`;
+}
+
+// Build a URL with the current filters merged with overrides. Used to make the
+// chip rail "toggle" the corresponding param without losing the other filters.
+function buildListUrl(filters, overrides) {
+  const merged = { ...filters, ...overrides };
+  const params = new URLSearchParams();
+  Object.entries(merged).forEach(([k, v]) => {
+    if (v == null || v === '' || v === 'none' || (k === 'sort' && v === 'newest')) return;
+    // Map view-side keys to URL keys
+    const urlKey = k === 'aiRec' ? 'ai_rec'
+      : k === 'hasInterview' ? 'has_interview'
+      : k;
+    params.set(urlKey, String(v));
+  });
+  const qs = params.toString();
+  return qs ? `/admin/applicants?${qs}` : '/admin/applicants';
+}
+
+function renderApplicantCard(a) {
+  const ribbon = ribbonKey(a);
+  const locName = a.location?.name || '';
+  const positionLabel = a.position === 'Other' && a.positionOther
+    ? `${a.position} (${a.positionOther})`
+    : (a.position || '—');
+
+  const ev = a.aiEvaluation;
+  const score = ev && typeof ev.weightedScore === 'number' ? ev.weightedScore : null;
+  const scoreHtml = score != null ? `
+    <div class="al-score-line">
+      <span class="al-score-num">${score.toFixed(1)}</span>
+      <span class="al-score-of">/ 5</span>
+      ${ev.confidence ? `<span class="al-score-conf">${escHTML(ev.confidence)}</span>` : ''}
+    </div>
+    <div class="al-score-bar"><span style="width:${Math.max(0, Math.min(100, score * 20))}%;"></span></div>
+  ` : `<div class="al-score-pending">${ev && ev.errorDetail ? 'Screening error' : (a.questionnaire ? 'Evaluating…' : 'Quiz pending')}</div>`;
+
+  // The advance-to-next status, if any (mirrors NEXT_STEP on the detail page).
+  const next = NEXT_STEP[a.status];
+
+  return `
+    <div class="al-card" data-ribbon="${escAttr(ribbon)}" data-applicant-id="${escAttr(a.id)}" data-status="${escAttr(a.status)}" tabindex="-1">
+      <label class="al-card-cb" title="Select" onclick="event.stopPropagation();">
+        <input type="checkbox" data-bulk-cb value="${escAttr(a.id)}" />
+      </label>
+      <a class="al-avatar" href="/admin/applicants/${escAttr(a.id)}" tabindex="-1" aria-hidden="true">${escHTML(initialsOf(a.name))}</a>
+      <a class="al-card-body" href="/admin/applicants/${escAttr(a.id)}" data-card-link>
+        <div class="al-card-row1">
+          <span class="al-card-name">${escHTML(a.name)}</span>
+          ${statusBadge(a.status)}
+          ${aiRecBadge(a)}
+          ${ev && ev.humanReviewRequired ? '<span class="ai-review-badge">Needs review</span>' : ''}
+        </div>
+        <div class="al-card-meta">
+          <span>${escHTML(positionLabel)}</span>
+          ${locName ? `<span class="dot">•</span><span>${escHTML(locName)}</span>` : ''}
+          <span class="dot">•</span>
+          <span title="${escAttr(formatFriendly(a.createdAt))}">Applied ${escHTML(timeAgo(a.createdAt))}</span>
+          ${(a._count && a._count.interviews > 0) ? `<span class="dot">•</span><span>${a._count.interviews} interview${a._count.interviews === 1 ? '' : 's'}</span>` : ''}
+        </div>
+      </a>
+      <div class="al-score">${scoreHtml}</div>
+      <div class="al-card-actions">
+        ${next && next.status ? `
+          <form method="POST" action="/admin/applicants/${escAttr(a.id)}/status" style="margin:0;" onsubmit="return confirm('Move ${escAttr(a.name)} to ${escAttr(STATUS_LABELS[next.status])}?')">
+            <input type="hidden" name="status" value="${escAttr(next.status)}" />
+            <button type="submit" class="icon-btn is-success" title="${escAttr(next.label)}" aria-label="${escAttr(next.label)}">→</button>
+          </form>` : ''}
+        ${!TERMINAL_STATUSES.has(a.status) ? `
+          <form method="POST" action="/admin/applicants/${escAttr(a.id)}/status" style="margin:0;" onsubmit="return confirm('Reject ${escAttr(a.name)}?')">
+            <input type="hidden" name="status" value="rejected" />
+            <button type="submit" class="icon-btn is-danger" title="Reject" aria-label="Reject">✕</button>
+          </form>` : ''}
+        <a class="icon-btn" href="/admin/applicants/${escAttr(a.id)}" title="Open" aria-label="Open">↗</a>
+      </div>
+    </div>`;
+}
+
+function applicantsList({ applications, locations, filters, counts, user, flashMsg, canSeeMultipleLocations, pendingInviteCount = 0, failedScreeningCount = 0 }) {
+  // Normalize the filters object so chip-building can read consistent keys.
+  const f = {
+    status: filters.status || '',
+    position: filters.position || '',
+    location: filters.location || '',
+    q: filters.q || '',
+    aiRec: filters.aiRec || '',
+    review: filters.review || '',
+    hasInterview: filters.hasInterview || '',
+    sort: filters.sort || 'newest',
+    group: filters.group || 'none',
+  };
+
+  const positionOptions = ['', ...POSITIONS].map((p) => {
+    const sel = f.position === p ? ' selected' : '';
+    const label = p === '' ? 'All positions' : p;
+    return `<option value="${escAttr(p)}"${sel}>${escHTML(label)}</option>`;
   }).join('');
 
   const locationOptions = canSeeMultipleLocations
     ? ['', ...locations.map(l => l.slug)].map((slug) => {
-        const sel = filters.location === slug ? ' selected' : '';
+        const sel = f.location === slug ? ' selected' : '';
         const loc = locations.find(l => l.slug === slug);
         const label = slug === '' ? 'All locations' : (loc ? loc.name : slug);
-        return `<option value="${escHTML(slug)}"${sel}>${escHTML(label)}</option>`;
+        return `<option value="${escAttr(slug)}"${sel}>${escHTML(label)}</option>`;
       }).join('')
     : '';
 
-  const rows = applications.length === 0 ? `
-    <div class="app-row" style="justify-content:center; color:var(--muted);">
-      <div>No applications match those filters.</div>
-    </div>
-  ` : applications.map(a => {
-    const locName = a.location?.name || '';
-    return `
-      <div class="app-row">
-        <div class="app-row-main">
-          <a class="app-name" href="/admin/applicants/${escHTML(a.id)}">${escHTML(a.name)}</a>
-          <span style="margin-left:8px;">${statusBadge(a.status)}</span>
-          ${aiRecBadge(a)}
-          ${a.aiEvaluation && a.aiEvaluation.humanReviewRequired ? '<span class="ai-review-badge">Human review</span>' : ''}
-          <div class="app-meta">
-            <span>${escHTML(a.position || '')}${a.position === 'Other' && a.positionOther ? ` (${escHTML(a.positionOther)})` : ''}</span>
-            <span class="app-meta-dot">•</span>
-            <span>${escHTML(locName)}</span>
-            <span class="app-meta-dot">•</span>
-            <span>Applied ${escHTML(formatFriendly(a.createdAt))}</span>
-            ${a.email ? `<span class="app-meta-dot">•</span><span>${escHTML(a.email)}</span>` : ''}
-            ${a.aiEvaluation && typeof a.aiEvaluation.weightedScore === 'number' ? `<span class="app-meta-dot">•</span><span>Score ${a.aiEvaluation.weightedScore.toFixed(2)} (${escHTML(a.aiEvaluation.confidence || '')})</span>` : ''}
-          </div>
-        </div>
-        <div class="app-row-actions">
-          <a class="btn btn-secondary btn-sm" href="/admin/applicants/${escHTML(a.id)}">Open</a>
-        </div>
-      </div>
-    `;
+  // Status chip rail. The "All" chip clears status; others toggle into the URL.
+  const totalApplicants = Object.values(counts).reduce((a, b) => a + b, 0);
+  const STATUS_CHIPS = [
+    { key: '',                    label: 'All',         count: totalApplicants },
+    { key: 'new',                 label: 'New',         count: counts.new },
+    { key: 'reviewing',           label: 'Reviewing',   count: counts.reviewing },
+    { key: 'interview_scheduled', label: 'Interview',   count: counts.interview_scheduled },
+    { key: 'offer_extended',      label: 'Offer',       count: counts.offer_extended || 0 },
+    { key: 'hired',               label: 'Hired',       count: counts.hired },
+  ];
+  const statusChips = STATUS_CHIPS.map(c => {
+    const active = f.status === c.key;
+    const href = buildListUrl(f, { status: c.key });
+    return `<a class="al-chip ${active ? 'is-active' : ''}" href="${escAttr(href)}">${escHTML(c.label)}<span class="count">${c.count}</span></a>`;
   }).join('');
 
-  const AI_REC_OPTIONS = [
-    { value: '', label: 'All verdicts' },
-    { value: 'recommend', label: 'Recommend for interview' },
-    { value: 'dont_recommend', label: 'Don’t recommend' },
+  // Quick toggle chips
+  const toggles = [
+    { key: 'aiRec',        on: 'recommend', off: '',  label: '★ Recommend only', cls: 'is-toggle' },
+    { key: 'review',       on: '1',         off: '',  label: '⚠ Needs review',   cls: 'is-toggle is-danger' },
+    { key: 'hasInterview', on: '1',         off: '',  label: 'Has interview',    cls: 'is-toggle' },
   ];
-  const aiRecOptionsHtml = AI_REC_OPTIONS.map((o) => {
-    const sel = filters.aiRec === o.value ? ' selected' : '';
-    return `<option value="${escHTML(o.value)}"${sel}>${escHTML(o.label)}</option>`;
+  const toggleChips = toggles.map(t => {
+    const active = f[t.key] === t.on;
+    const href = buildListUrl(f, { [t.key]: active ? t.off : t.on });
+    return `<a class="al-chip ${t.cls} ${active ? 'is-active' : ''}" href="${escAttr(href)}">${escHTML(t.label)}</a>`;
   }).join('');
+
+  // Sort options
+  const SORT_OPTIONS = [
+    { value: 'newest',     label: 'Newest first' },
+    { value: 'oldest',     label: 'Oldest first' },
+    { value: 'score_desc', label: 'Score: high → low' },
+    { value: 'score_asc',  label: 'Score: low → high' },
+    { value: 'name_asc',   label: 'Name A → Z' },
+  ];
+  const sortOptionsHtml = SORT_OPTIONS.map(o => `<option value="${escAttr(o.value)}" ${f.sort === o.value ? 'selected' : ''}>${escHTML(o.label)}</option>`).join('');
+
+  const GROUP_OPTIONS = [
+    { value: 'none',     label: 'No grouping' },
+    { value: 'status',   label: 'By status' },
+    { value: 'position', label: 'By position' },
+    { value: 'location', label: 'By location' },
+  ];
+  const groupOptionsHtml = GROUP_OPTIONS.map(o => `<option value="${escAttr(o.value)}" ${f.group === o.value ? 'selected' : ''}>${escHTML(o.label)}</option>`).join('');
+
+  // Group the applications client-side (server already sorted them).
+  let listBody;
+  if (applications.length === 0) {
+    const hasAnyFilter = !!(f.status || f.position || f.location || f.q || f.aiRec || f.review === '1' || f.hasInterview === '1');
+    listBody = `
+      <div class="al-empty">
+        <strong>${hasAnyFilter ? 'No applicants match.' : 'No applicants yet.'}</strong>
+        ${hasAnyFilter
+          ? `<div>Try clearing some filters. <a href="/admin/applicants" style="color:var(--gold-strong); text-decoration:none;">Reset all →</a></div>`
+          : '<div>Share the apply link to start hearing from people. Apply forms live at <code>/{location}/apply</code>.</div>'}
+      </div>`;
+  } else if (f.group === 'none') {
+    listBody = `<div class="al-list">${applications.map(renderApplicantCard).join('')}</div>`;
+  } else {
+    // Group keys per dimension
+    const keyFn = f.group === 'status'
+      ? (a) => a.status || 'unknown'
+      : f.group === 'position'
+      ? (a) => (a.position && a.position !== 'Other' ? a.position : (a.positionOther || 'Other'))
+      : (a) => (a.location?.name || 'Unassigned');
+
+    const labelFn = f.group === 'status'
+      ? (k) => STATUS_LABELS[k] || k
+      : (k) => k;
+
+    // Preserve the route-determined order: iterate apps, dedupe-preserving keys.
+    const seen = new Set();
+    const orderedKeys = [];
+    const buckets = new Map();
+    applications.forEach((a) => {
+      const k = keyFn(a);
+      if (!seen.has(k)) { seen.add(k); orderedKeys.push(k); buckets.set(k, []); }
+      buckets.get(k).push(a);
+    });
+
+    listBody = orderedKeys.map((k) => {
+      const items = buckets.get(k);
+      return `
+        <div class="al-group">
+          <div class="al-group-header">
+            <h2>${escHTML(labelFn(k))}</h2>
+            <span class="count">${items.length}</span>
+          </div>
+          <div class="al-list">${items.map(renderApplicantCard).join('')}</div>
+        </div>`;
+    }).join('');
+  }
 
   const flash = flashMsg ? `<div class="app-flash ${flashMsg.type === 'error' ? 'error' : 'success'}">${escHTML(flashMsg.text)}</div>` : '';
 
+  // Saved view shortcuts — encoded querystrings.
+  const savedViews = [
+    { label: '★ Open recommends', href: buildListUrl({}, { aiRec: 'recommend', status: '' }) },
+    { label: '⚠ Needs your review', href: buildListUrl({}, { review: '1' }) },
+    { label: 'Bartender pipeline', href: buildListUrl({}, { position: 'Bartender' }) },
+  ];
+  const savedViewsHtml = savedViews.map(v => `<a href="${escAttr(v.href)}">${escHTML(v.label)}</a>`).join('');
+
   return adminLayout('Applicants', `
     ${applicantStyles()}
-    <div class="page-header">
-      <div>
+
+    <div class="al-hero">
+      <div class="al-hero-left">
         <div class="admin-kicker">Hiring</div>
         <h1>Applicants</h1>
-        <p class="page-subtitle">Review applications, schedule interviews, and move candidates through the pipeline.</p>
+        <div class="meta-line">${totalApplicants} total · review applications, schedule interviews, move candidates through the pipeline.</div>
       </div>
-      <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
-        ${pendingInviteCount > 0 ? `
-          <form method="POST" action="/admin/applicants/send-questionnaire-invites" style="margin:0;" onsubmit="return confirm('Email ${pendingInviteCount} applicant${pendingInviteCount === 1 ? '' : 's'} the questionnaire link?');">
-            <button type="submit" class="btn btn-primary">Email ${pendingInviteCount} applicant${pendingInviteCount === 1 ? '' : 's'} the quiz link</button>
-          </form>` : ''}
-        ${failedScreeningCount > 0 ? `
-          <form method="POST" action="/admin/applicants/retry-failed-screenings" style="margin:0;" onsubmit="return confirm('Re-run screening for ${failedScreeningCount} applicant${failedScreeningCount === 1 ? '' : 's'}? This will use API credits.');">
-            <button type="submit" class="btn btn-secondary">Retry ${failedScreeningCount} failed screening${failedScreeningCount === 1 ? '' : 's'}</button>
-          </form>` : ''}
-        ${pendingInviteCount === 0 && failedScreeningCount === 0 ? `<span class="app-meta" style="font-size:0.78rem;">All caught up.</span>` : ''}
-        <a href="/admin/applicants/hiring-config" class="btn btn-secondary">Screening config</a>
+      <div class="al-hero-actions">
+        <div class="row">
+          ${pendingInviteCount > 0 ? `
+            <form method="POST" action="/admin/applicants/send-questionnaire-invites" style="margin:0;" onsubmit="return confirm('Email ${pendingInviteCount} applicant${pendingInviteCount === 1 ? '' : 's'} the questionnaire link?');">
+              <button type="submit" class="btn btn-primary">Email ${pendingInviteCount} the quiz link</button>
+            </form>` : ''}
+          ${failedScreeningCount > 0 ? `
+            <form method="POST" action="/admin/applicants/retry-failed-screenings" style="margin:0;" onsubmit="return confirm('Re-run screening for ${failedScreeningCount} applicant${failedScreeningCount === 1 ? '' : 's'}? This will use API credits.');">
+              <button type="submit" class="btn btn-secondary">Retry ${failedScreeningCount} failed</button>
+            </form>` : ''}
+          <a href="/admin/applicants/hiring-config" class="btn btn-secondary">Screening config</a>
+        </div>
+        ${pendingInviteCount === 0 && failedScreeningCount === 0 ? '<span class="app-meta" style="font-size:0.78rem;">All caught up.</span>' : ''}
       </div>
     </div>
+
     ${flash}
 
-    <div class="admin-stat-grid">
-      <div class="admin-stat"><strong>${counts.new}</strong><span>New</span></div>
-      <div class="admin-stat"><strong>${counts.reviewing}</strong><span>Reviewing</span></div>
-      <div class="admin-stat"><strong>${counts.interview_scheduled}</strong><span>Interviews scheduled</span></div>
-      <div class="admin-stat"><strong>${counts.hired}</strong><span>Hired (all-time)</span></div>
+    <div class="al-saved">
+      <span class="lbl">Quick:</span>
+      ${savedViewsHtml}
     </div>
 
-    <form method="GET" action="/admin/applicants" class="app-filter-bar">
-      ${canSeeMultipleLocations ? `
-      <label>Location
-        <select name="location">${locationOptions}</select>
-      </label>` : ''}
-      <label>Status
-        <select name="status">${statusOptions}</select>
-      </label>
-      <label>Position
-        <select name="position">${positionOptions}</select>
-      </label>
-      <label>Recommendation
-        <select name="ai_rec">${aiRecOptionsHtml}</select>
-      </label>
-      <label style="display:flex;align-items:flex-end;gap:6px;">
-        <input type="checkbox" name="review" value="1"${filters.review === '1' ? ' checked' : ''} />
-        Needs human review
-      </label>
-      <label>Search
-        <input type="search" name="q" placeholder="Name or email" value="${escHTML(filters.q || '')}" />
-      </label>
-      <button type="submit" class="btn btn-primary btn-sm">Filter</button>
-      <a href="/admin/applicants" class="btn btn-secondary btn-sm">Reset</a>
+    <div class="al-chip-rail">${statusChips}</div>
+    <div class="al-chip-rail">${toggleChips}</div>
+
+    <form method="GET" action="/admin/applicants" class="al-toolbar" id="alToolbar">
+      <input type="hidden" name="status" value="${escAttr(f.status)}" />
+      <input type="hidden" name="ai_rec" value="${escAttr(f.aiRec)}" />
+      <input type="hidden" name="review" value="${escAttr(f.review)}" />
+      <input type="hidden" name="has_interview" value="${escAttr(f.hasInterview)}" />
+      ${f.position ? `<input type="hidden" name="position" value="${escAttr(f.position)}" />` : ''}
+      ${f.location ? `<input type="hidden" name="location" value="${escAttr(f.location)}" />` : ''}
+
+      <div class="al-search">
+        <input type="search" name="q" id="alSearch" placeholder="Search name or email…" value="${escAttr(f.q)}" />
+      </div>
+      <span class="al-select-label">Sort
+        <select class="al-select" name="sort" onchange="this.form.submit();">${sortOptionsHtml}</select>
+      </span>
+      <span class="al-select-label">Group
+        <select class="al-select" name="group" onchange="this.form.submit();">${groupOptionsHtml}</select>
+      </span>
+      <button type="submit" class="btn btn-secondary btn-sm">Search</button>
     </form>
 
-    ${rows}
+    <details class="al-more" ${(f.position || f.location) ? 'open' : ''}>
+      <summary>More filters</summary>
+      <form method="GET" action="/admin/applicants" class="body">
+        <input type="hidden" name="status" value="${escAttr(f.status)}" />
+        <input type="hidden" name="ai_rec" value="${escAttr(f.aiRec)}" />
+        <input type="hidden" name="review" value="${escAttr(f.review)}" />
+        <input type="hidden" name="has_interview" value="${escAttr(f.hasInterview)}" />
+        <input type="hidden" name="sort" value="${escAttr(f.sort)}" />
+        <input type="hidden" name="group" value="${escAttr(f.group)}" />
+        <input type="hidden" name="q" value="${escAttr(f.q)}" />
+        ${canSeeMultipleLocations ? `
+        <div>
+          <label>Location</label>
+          <select class="al-select" name="location" onchange="this.form.submit();">${locationOptions}</select>
+        </div>` : ''}
+        <div>
+          <label>Position</label>
+          <select class="al-select" name="position" onchange="this.form.submit();">${positionOptions}</select>
+        </div>
+        <div style="display:flex; align-items:flex-end;">
+          <a class="btn btn-secondary btn-sm" href="/admin/applicants">Reset all filters</a>
+        </div>
+      </form>
+    </details>
+
+    <div class="al-result-meta">Showing <strong>${applications.length}</strong> of ${totalApplicants}${applications.length === 200 ? ' (capped — narrow filters to see older results)' : ''}</div>
+
+    ${listBody}
+
+    <div class="al-bulk-bar" id="alBulkBar" aria-live="polite">
+      <span class="count" data-bulk-count>0 selected</span>
+      <span style="color:var(--text-muted);">|</span>
+      <label style="font-size:0.78rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em;">Action</label>
+      <select id="alBulkAction">
+        <option value="advance:reviewing">Move to Reviewing</option>
+        <option value="advance:interviewed">Mark interviewed</option>
+        <option value="advance:offer_extended">Extend offer</option>
+        <option value="advance:hired">Mark hired</option>
+        <option value="advance:rejected">Reject</option>
+      </select>
+      <button type="button" class="btn btn-primary btn-sm" id="alBulkApply">Apply to N</button>
+      <button type="button" class="btn btn-secondary btn-sm" id="alBulkClear">Clear</button>
+    </div>
+
+    <script>
+      (function () {
+        // ---------- Bulk select ----------
+        var bar = document.getElementById('alBulkBar');
+        var countEl = document.querySelector('[data-bulk-count]');
+        var applyBtn = document.getElementById('alBulkApply');
+        var clearBtn = document.getElementById('alBulkClear');
+        var actionSel = document.getElementById('alBulkAction');
+
+        function checked() { return Array.from(document.querySelectorAll('[data-bulk-cb]:checked')); }
+        function refresh() {
+          var n = checked().length;
+          if (!bar) return;
+          if (n > 0) {
+            bar.classList.add('is-visible');
+            countEl.textContent = n + ' selected';
+            applyBtn.textContent = 'Apply to ' + n;
+          } else {
+            bar.classList.remove('is-visible');
+          }
+          // Toggle is-selected on the parent card for visual highlight.
+          document.querySelectorAll('[data-bulk-cb]').forEach(function (cb) {
+            var card = cb.closest('.al-card');
+            if (card) card.classList.toggle('is-selected', cb.checked);
+          });
+        }
+        document.addEventListener('change', function (e) {
+          if (e.target && e.target.matches && e.target.matches('[data-bulk-cb]')) refresh();
+        });
+        if (clearBtn) clearBtn.addEventListener('click', function () {
+          document.querySelectorAll('[data-bulk-cb]:checked').forEach(function (cb) { cb.checked = false; });
+          refresh();
+        });
+        if (applyBtn) applyBtn.addEventListener('click', function () {
+          var ids = checked().map(function (cb) { return cb.value; });
+          if (!ids.length) return;
+          var parts = (actionSel.value || '').split(':');
+          if (parts[0] !== 'advance' || !parts[1]) return;
+          var status = parts[1];
+          var label = actionSel.options[actionSel.selectedIndex].textContent.trim();
+          if (!confirm(label + ' for ' + ids.length + ' applicant' + (ids.length === 1 ? '' : 's') + '?')) return;
+          // POST sequentially to existing /admin/applicants/:id/status. Fire-and-forget;
+          // then full-page reload to refresh the list with updated state.
+          applyBtn.disabled = true;
+          applyBtn.textContent = 'Working…';
+          Promise.all(ids.map(function (id) {
+            var body = new URLSearchParams();
+            body.set('status', status);
+            return fetch('/admin/applicants/' + encodeURIComponent(id) + '/status', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: body.toString(),
+              credentials: 'same-origin',
+              redirect: 'manual',
+            }).catch(function () { return null; });
+          })).then(function () { window.location.reload(); });
+        });
+
+        // ---------- Keyboard nav ----------
+        var cards = function () { return Array.from(document.querySelectorAll('.al-card')); };
+        var focusedIdx = -1;
+        function focusCard(idx) {
+          var list = cards();
+          if (!list.length) return;
+          if (focusedIdx >= 0 && list[focusedIdx]) list[focusedIdx].classList.remove('is-focused');
+          focusedIdx = Math.max(0, Math.min(list.length - 1, idx));
+          var card = list[focusedIdx];
+          card.classList.add('is-focused');
+          card.focus({ preventScroll: false });
+          card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+        document.addEventListener('keydown', function (e) {
+          var tag = (e.target && e.target.tagName) || '';
+          if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || (e.target && e.target.isContentEditable)) {
+            if (e.key === 'Escape' && tag === 'INPUT' && e.target.id === 'alSearch') { e.target.blur(); }
+            return;
+          }
+          if (e.metaKey || e.ctrlKey || e.altKey) return;
+          var k = e.key.toLowerCase();
+          if (k === 'j') { e.preventDefault(); focusCard(focusedIdx + 1); }
+          else if (k === 'k') { e.preventDefault(); focusCard(Math.max(0, focusedIdx - 1)); }
+          else if (k === 'enter') {
+            var list = cards();
+            if (focusedIdx >= 0 && list[focusedIdx]) {
+              var link = list[focusedIdx].querySelector('[data-card-link]');
+              if (link) { e.preventDefault(); window.location.href = link.getAttribute('href'); }
+            }
+          } else if (k === '/') {
+            var s = document.getElementById('alSearch');
+            if (s) { e.preventDefault(); s.focus(); s.select(); }
+          } else if (k === 'a' || k === 'r') {
+            var list2 = cards();
+            if (focusedIdx < 0 || !list2[focusedIdx]) return;
+            var actions = list2[focusedIdx].querySelector('.al-card-actions');
+            if (!actions) return;
+            var btn = k === 'a' ? actions.querySelector('.is-success') : actions.querySelector('.is-danger');
+            if (btn) { e.preventDefault(); btn.click(); }
+          }
+        });
+      })();
+    </script>
   `, user);
 }
 

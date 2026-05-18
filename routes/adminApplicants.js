@@ -551,6 +551,9 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
       position: url.searchParams.get('position') || '',
       location: url.searchParams.get('location') || '',
       q: (url.searchParams.get('q') || '').trim(),
+      hasInterview: url.searchParams.get('has_interview') === '1' ? '1' : '',
+      sort: url.searchParams.get('sort') || 'newest',
+      group: url.searchParams.get('group') || 'none',
     };
 
     const where = { ...applicationLocationGate };
@@ -565,6 +568,9 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
         { name: { contains: filters.q, mode: 'insensitive' } },
         { email: { contains: filters.q, mode: 'insensitive' } },
       ];
+    }
+    if (filters.hasInterview === '1') {
+      where.interviews = { some: {} };
     }
 
     const aiRecFilter = url.searchParams.get('ai_rec') || '';
@@ -581,9 +587,21 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
       where.aiEvaluation = { ...(where.aiEvaluation || {}), humanReviewRequired: true };
     }
 
+    // Sort: default newest. Score-based sorts require ordering by the relation;
+    // applicants without an aiEvaluation row sort to the end.
+    let orderBy;
+    switch (filters.sort) {
+      case 'oldest':     orderBy = { createdAt: 'asc' }; break;
+      case 'score_desc': orderBy = [{ aiEvaluation: { weightedScore: 'desc' } }, { createdAt: 'desc' }]; break;
+      case 'score_asc':  orderBy = [{ aiEvaluation: { weightedScore: 'asc' } },  { createdAt: 'desc' }]; break;
+      case 'name_asc':   orderBy = { name: 'asc' }; break;
+      case 'newest':
+      default:           orderBy = { createdAt: 'desc' }; break;
+    }
+
     const applications = await prisma.jobApplication.findMany({
       where,
-      orderBy: { createdAt: 'desc' },
+      orderBy,
       include: {
         location: { select: { name: true, slug: true } },
         questionnaire: { select: { id: true } },
@@ -596,6 +614,7 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
             errorDetail: true,
           },
         },
+        _count: { select: { interviews: true } },
       },
       take: 200,
     }).catch(() => []);

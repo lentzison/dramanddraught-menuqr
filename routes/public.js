@@ -16,6 +16,7 @@ const {
   getFeedbackFromAddress,
 } = require('../helpers');
 const { generateHomepage } = require('../views/homepage');
+const { generateHiringIndexPage } = require('../views/hiringIndexPage');
 const { generateLocationPage } = require('../views/locationPage');
 const specialPages = require('../views/specialsPage');
 const {
@@ -1880,6 +1881,15 @@ async function handlePublic(req, res, pathname, prisma) {
     const locs = await getLocations(prisma);
     const sid = await trackPageView(req, res, prisma, '', null, '/', getQueryString(req));
     sendHTML(res, 200, injectTracking(generateHomepage(locs), sid));
+    return true;
+  }
+
+  // Hiring landing page — one shareable URL that lists every location currently
+  // hiring and links to that location's /{slug}/apply form.
+  if (pathname === '/hiring' || pathname === '/careers' || pathname === '/jobs') {
+    const locs = await getLocations(prisma);
+    const sid = await trackPageView(req, res, prisma, '', null, '/hiring', getQueryString(req));
+    sendHTML(res, 200, injectTracking(generateHiringIndexPage(locs), sid));
     return true;
   }
 

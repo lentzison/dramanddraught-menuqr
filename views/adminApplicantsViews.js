@@ -1016,16 +1016,32 @@ function formatCategoryLabel(key) {
 function questionnaireAnswersPanel(application) {
   const q = application.questionnaire;
   if (!q || !q.answers) return '';
-  const { QUESTIONS } = require('../hiring/knowledgeBase');
-  const blocks = QUESTIONS.map((qq) => {
+  const { QUESTIONS, questionsForVersion, effectiveQuestionsForApplicant } = require('../hiring/knowledgeBase');
+  // Pick the question set that was in force when this questionnaire was
+  // submitted. For the current version, also filter to the applicant's
+  // role (role-specific questions only appear for tagged roles).
+  const versioned = questionsForVersion(q.version);
+  const questions = versioned === QUESTIONS ? effectiveQuestionsForApplicant(application) : versioned;
+  // Catch any orphaned answers whose IDs aren't in the resolved question set
+  // (e.g. mixed-version edge cases). Render them at the end so nothing is lost.
+  const knownIds = new Set(questions.map((qq) => qq.id));
+  const orphanIds = Object.keys(q.answers || {}).filter((k) => !knownIds.has(k));
+
+  const blocks = questions.map((qq, idx) => {
     const a = q.answers[qq.id] || '(no answer)';
     return `
-      <div class="answer-q">Q${qq.order}. ${escHTML(qq.text)}</div>
+      <div class="answer-q">Q${idx + 1}. ${escHTML(qq.text)}</div>
       <div class="answer-a">${escHTML(a)}</div>`;
+  }).join('') + orphanIds.map((id) => {
+    return `
+      <div class="answer-q" style="color:var(--text-soft);">Other (${escHTML(id)})</div>
+      <div class="answer-a">${escHTML(q.answers[id] || '')}</div>`;
   }).join('');
+
+  const versionTag = q.version ? `<span style="color:var(--text-soft); font-weight:400; font-size:0.74rem; margin-left:6px;">${escHTML(q.version)}</span>` : '';
   return `
     <details class="ai-collapse">
-      <summary>Show all 20 questionnaire answers <span style="color:var(--muted); font-weight:400; font-size:0.78rem;">&middot; submitted ${escHTML(formatFriendly(q.submittedAt))}</span></summary>
+      <summary>Show all ${questions.length} questionnaire answers <span style="color:var(--muted); font-weight:400; font-size:0.78rem;">&middot; submitted ${escHTML(formatFriendly(q.submittedAt))}</span>${versionTag}</summary>
       ${blocks}
     </details>`;
 }
@@ -2356,12 +2372,18 @@ function hiringConfigPage({ user }) {
     return `<tr><td style="padding:8px 14px; color:var(--muted);">${escHTML(kb.CATEGORY_LABELS[cat] || cat)}</td>${cells}</tr>`;
   }).join('');
 
-  const questionRows = kb.QUESTIONS.map((q) => `
+  const questionRows = kb.QUESTIONS.map((q) => {
+    const cats = (q.scoringCategories || []).map((c) => escHTML(kb.CATEGORY_LABELS[c] || c)).join(', ') || '<span style="color:var(--text-soft);">not scored</span>';
+    const roles = Array.isArray(q.appliesToRoles) && q.appliesToRoles.length
+      ? `<span style="color:var(--gold-strong); font-size:0.72rem; font-weight:800; text-transform:uppercase; letter-spacing:0.06em;">${q.appliesToRoles.map((r) => escHTML(kb.ROLE_LABELS[r] || r)).join(' · ')}</span>`
+      : '<span style="color:var(--text-soft); font-size:0.72rem;">all roles</span>';
+    return `
     <tr>
       <td style="padding:8px 12px; text-align:center; color:var(--muted); width:40px;">${q.order}</td>
-      <td style="padding:8px 12px; color:var(--text); font-size:0.92rem;">${escHTML(q.text)}</td>
-      <td style="padding:8px 12px; color:var(--muted); font-size:0.78rem;">${q.scoringCategories.map((c) => escHTML(kb.CATEGORY_LABELS[c] || c)).join(', ')}</td>
-    </tr>`).join('');
+      <td style="padding:8px 12px; color:var(--text); font-size:0.92rem;">${escHTML(q.text)}<div style="margin-top:4px;">${roles}</div></td>
+      <td style="padding:8px 12px; color:var(--muted); font-size:0.78rem;">${cats}</td>
+    </tr>`;
+  }).join('');
 
   return adminLayout('Hiring config', `
     <div class="page-header">
@@ -2391,34 +2413,46 @@ function hiringConfigPage({ user }) {
 
     <div class="app-section">
       <h2>How the verdict is calculated</h2>
-      <p style="color:var(--text); line-height:1.55; margin:0 0 12px;">Each applicant gets one of two verdicts:</p>
+      <p style="color:var(--text); line-height:1.55; margin:0 0 12px;">Each applicant gets one of three manager-facing verdicts:</p>
       <ul style="line-height:1.7; color:var(--text); padding-left:20px; margin:0 0 14px;">
-        <li><strong style="color:#4ade80;">Recommend for interview</strong> — weighted score &ge; 3.7, every category &ge; 3.0, and no hard deal-breaker.</li>
-        <li><strong style="color:#bbb;">Don’t recommend</strong> — anything else, including any category &lt; 2.5 or an active deal-breaker.</li>
+        <li><strong style="color:#a4f4c2;">Recommend interview</strong> — weighted score ≥ 3.7, every category ≥ 3.0, every role-specific minimum met, no hard deal-breaker, no human-review trigger.</li>
+        <li><strong style="color:var(--amber);">Needs human review</strong> — borderline scores, role-minimum miss, protected info disclosed, generic-answer pattern, "Unsure" on legal eligibility, conflicting signals. Most edge cases land here.</li>
+        <li><strong style="color:#ffb3b3;">Does not meet role requirements</strong> — job-related role-requirement gaps only: confirmed cannot work the role's required shifts, confirmed not legally eligible for the role, or the applicant disqualifies themselves.</li>
       </ul>
-      <h3 style="margin:14px 0 6px; font-size:0.95rem; color:var(--accent);">Hard deal-breakers (force "Don’t recommend")</h3>
+      <h3 style="margin:14px 0 6px; font-size:0.95rem; color:var(--accent);">Hard role-requirement gaps (route to "Does not meet role requirements")</h3>
       <ul style="line-height:1.55; color:var(--text); padding-left:20px; margin:0 0 14px;">
-        <li>Cannot work any Friday or Saturday night.</li>
-        <li>Applying for Bartender while under 21.</li>
-        <li>Stated availability does not cover the role's required shifts.</li>
+        <li>Bartender applicant answers <strong>No</strong> to legal alcohol-service eligibility (Unsure → human review).</li>
+        <li>Structured availability grid does not cover the role's required shifts — bartender / barback need at least one Friday or Saturday evening + a late close; server needs at least one weekend evening; door needs a Friday or Saturday late close; lead needs a weekend evening.</li>
+        <li>Applicant explicitly states they cannot work the role's required shifts.</li>
       </ul>
       <h3 style="margin:14px 0 6px; font-size:0.95rem; color:var(--accent);">Human-review triggers</h3>
       <ul style="line-height:1.55; color:var(--text); padding-left:20px; margin:0 0 14px;">
         <li>Any single category scores below 2.0.</li>
         <li>Final weighted score is within ±0.15 of the recommend threshold (borderline).</li>
-        <li>Earliest start date is more than 60 days out.</li>
-        <li>Q20 availability is ambiguous ("depends", "flexible" with no specifics).</li>
+        <li>A role-specific category minimum is missed (e.g. bartender Own-Guest-Experience below 3.25).</li>
+        <li>Earliest start date is more than 60 days out (computed server-side; the screener no longer estimates dates).</li>
+        <li>Availability free-text is ambiguous ("depends", "flexible" with no specifics).</li>
         <li>Two or more answers contradict each other.</li>
         <li>Applicant mentions a current or former employee by name.</li>
         <li>Applicant discloses protected or sensitive information.</li>
+        <li>Most answers in a category read polished but generic / template-like (follow-up trigger, NOT a penalty — some strong candidates use writing help).</li>
+        <li>Bartender applicant answers "Unsure" on legal eligibility.</li>
       </ul>
       <h3 style="margin:14px 0 6px; font-size:0.95rem; color:var(--accent);">Short-answer floor</h3>
-      <p style="margin:0 0 14px; color:var(--text); line-height:1.55;">Any answer under 15 characters (excluding Q20) cannot evidence a category score above 2. If a category's mapped questions are majority short-answered, the category is capped at 2 deterministically.</p>
-      <p class="app-meta" style="margin:0;">Internally the rubric still tracks four buckets (strong callback / callback / maybe / hold) for analytics. Managers see only the two-state verdict. Managers always make the final call — the system never auto-rejects an applicant.</p>
+      <p style="margin:0 0 14px; color:var(--text); line-height:1.55;">Any answer under 15 characters (excluding the availability question) cannot evidence a category score above 2. If a category's mapped questions are majority short-answered, the category is capped at 2 deterministically.</p>
+      <h3 style="margin:14px 0 6px; font-size:0.95rem; color:var(--accent);">Generic answer cap</h3>
+      <p style="margin:0 0 14px; color:var(--text); line-height:1.55;">An answer that uses only generic intent language without a specific action, tradeoff, example, or observable behavior cannot support a category score above 3 — regardless of length. Polished and vague is not specific.</p>
+      <h3 style="margin:14px 0 6px; font-size:0.95rem; color:var(--accent);">Evidence caps</h3>
+      <ul style="line-height:1.55; color:var(--text); padding-left:20px; margin:0 0 14px;">
+        <li>Cap at <strong>3.5</strong> if a category has no specific past example anywhere in its mapped answers.</li>
+        <li>Cap at <strong>3.0</strong> if a majority of the mapped answers for a category land in the generic-cap pattern above.</li>
+        <li>Contradictions on availability, role interest, or escalation judgement → flag for human review and cap the affected categories at 3.0 until reviewed.</li>
+      </ul>
+      <p class="app-meta" style="margin:0;">Every category score must cite at least one supporting answer ID and a quoted evidence excerpt — these show up in the detail page when you expand "Why this score". Managers always make the final call; the system never auto-rejects an applicant.</p>
     </div>
 
     <div class="app-section">
-      <h2>20-question questionnaire</h2>
+      <h2>Questionnaire (${kb.QUESTIONS.length} questions, role-filtered for each applicant)</h2>
       <div style="overflow-x:auto;">
         <table style="width:100%; border-collapse:collapse; font-size:0.88rem;">
           <thead>

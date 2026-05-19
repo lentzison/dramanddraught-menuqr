@@ -9,7 +9,7 @@
 
 const KNOWLEDGE_BASE_VERSION = 'kb-v5-2026-05-19';
 const PROMPT_VERSION = 'prompt-v4-2026-05-19';
-const QUESTIONNAIRE_VERSION = 'questionnaire-v2-2026-05-14';
+const QUESTIONNAIRE_VERSION = 'questionnaire-v3-2026-05-19';
 const RUBRIC_VERSION = 'rubric-v5-2026-05-19';
 
 const ROLES = ['bartender', 'barback', 'server', 'door', 'lead_shift_lead', 'other'];
@@ -230,10 +230,198 @@ function missingRequiredAvailability(role, availability) {
 
 const MIN_ANSWER_LENGTH = 15; // chars — questions below this can't push a category above 2 (Q20 exempt)
 
+// v3 question set (this push). Cuts the original 20 down to 10 core
+// behavioral questions plus a small set of role-specific questions tagged
+// with `appliesToRoles`. Use `effectiveQuestionsForApplicant()` /
+// `questionsForVersion()` to get the right list at render time.
+//
+// q10 (availability) is exempt from scoring — same as the legacy q20.
+//
 // Each question carries per-question scoring anchors that the screener uses
 // to calibrate evidence. Keep anchors specific and behavioral; avoid generic
 // adjectives like "good" or "thorough."
 const QUESTIONS = [
+  {
+    id: 'q1', order: 1,
+    text: 'What role are you applying for, and what makes you a fit for that role?',
+    primarySignal: 'Role fit, self-awareness, and motivation',
+    scoringCategories: ['keep_moving_forward', 'own_guest_experience'],
+    scoringAnchors: {
+      5: 'Specific reason tied to the actual work of the role — names what they do well that matches what THIS role needs.',
+      3: 'Likes the role generally; reasoning is plausible but generic.',
+      1: 'Just wants money / "seems cool" / wants title without naming the work; or no reason at all.',
+    },
+    notes: 'If the applicant mentions multiple roles, treat role flexibility as positive evidence for Keep Moving Forward.',
+  },
+  {
+    id: 'q2', order: 2,
+    text: 'Tell us about ONE specific guest you remember making feel welcome. What did you notice about them, and what did you do?',
+    primarySignal: 'Hospitality mindset and a real example',
+    scoringCategories: ['own_guest_experience'],
+    scoringAnchors: {
+      5: 'Concrete story with a person, a cue they noticed, and a specific action they took. Reads as a real memory, not a script.',
+      3: 'Describes general approach; no specific guest. Or names a guest but the action is generic ("kept their water full").',
+      1: '"I do it with everyone" / "I\'m always nice" / no example at all.',
+    },
+  },
+  {
+    id: 'q3', order: 3,
+    text: 'A guest is unsure what to order. Walk us through how you help them.',
+    primarySignal: 'Product hospitality without pretension',
+    scoringCategories: ['own_guest_experience', 'speak_up'],
+    scoringAnchors: {
+      5: 'Asks guiding questions about flavor / occasion / what they normally like before recommending; mentions specific products or styles; non-pretentious.',
+      3: 'Recommends a single product with no discovery; not condescending.',
+      1: 'Dismissive, condescending, jargon-heavy, or refuses to engage; says they\'d "defer to someone else" with no ownership.',
+    },
+  },
+  {
+    id: 'q4', order: 4,
+    text: 'Tell us about a real mistake you made at work — something a guest or teammate noticed. What happened, and what did you do next?',
+    primarySignal: 'Accountability and learning from real failure',
+    scoringCategories: ['be_reliable', 'keep_moving_forward'],
+    scoringAnchors: {
+      5: 'Owns a specific mistake, names what they did to fix it in the moment, and what they changed afterward.',
+      3: 'Mistake is named but the fix or learning is vague.',
+      1: '"I never make mistakes" / blames others / dodges the question / no example.',
+    },
+    notes: '"Something a guest or teammate noticed" is the guardrail — answers that claim no mistakes ever should land at 1.',
+  },
+  {
+    id: 'q5', order: 5,
+    text: 'Tell us about a time you helped a teammate when it was not technically your job.',
+    primarySignal: 'Team-first behavior and ownership',
+    scoringCategories: ['support_each_other', 'be_reliable'],
+    scoringAnchors: {
+      5: 'Concrete example, no resentment, helped because the team or guest needed it.',
+      3: 'Generic story; willingness implied but no clear example.',
+      1: 'No example, complains about helping, or says they avoid doing other people\'s work.',
+    },
+  },
+  {
+    id: 'q6', order: 6,
+    text: 'A shift is slammed and someone calls out. What do you prioritize first?',
+    primarySignal: 'Composure, judgment, and teamwork under pressure',
+    scoringCategories: ['keep_moving_forward', 'support_each_other', 'own_guest_experience'],
+    scoringAnchors: {
+      5: 'Names prioritization, communication, staying composed, taking care of guests, supporting the team — at least three of those.',
+      3: 'Mentions one of: staying calm OR speed OR teamwork. Light on the others.',
+      1: 'Panics, blames the absent person, focuses only on their own section, stops communicating.',
+    },
+  },
+  {
+    id: 'q7', order: 7,
+    text: 'A manager gives feedback you genuinely disagree with. What do you say in the moment, and what would you do afterward?',
+    primarySignal: 'Coachability, maturity, and direct communication',
+    scoringCategories: ['speak_up', 'keep_moving_forward'],
+    scoringAnchors: {
+      5: 'Listens first; asks a clarifying question or follows up privately; applies feedback even when they disagree. Bonus for a real example.',
+      3: '"Thank them and try to do it" with no follow-up or processing — polite but passive.',
+      1: 'Argues in the moment, gets defensive, says managers are usually wrong, or ignores feedback.',
+    },
+  },
+  {
+    id: 'q8', order: 8,
+    text: 'A teammate is cutting a corner on cleanliness, consistency, or service. What do you do?',
+    primarySignal: 'Direct communication, standards, and team care',
+    scoringCategories: ['support_each_other', 'speak_up'],
+    scoringAnchors: {
+      5: 'Talks to the teammate directly and respectfully; thinks about guest impact; escalates only if it persists.',
+      3: 'Says they\'d tell a manager but no direct teammate conversation.',
+      1: 'Ignores it / "not my problem" / tattles immediately without ever talking to the teammate.',
+    },
+  },
+  {
+    id: 'q9', order: 9,
+    text: 'Tell us about a menu, product, skill, or system you had to learn from scratch. How did you go about learning it?',
+    primarySignal: 'Curiosity, ownership of learning',
+    scoringCategories: ['keep_moving_forward'],
+    scoringAnchors: {
+      5: 'Concrete example with specific steps they took (studied a menu, asked a senior teammate, practiced at home, etc.) and a sense of how they retained it.',
+      3: 'Names something they learned but generic about how.',
+      1: 'Resists learning, says they "just got it" without explanation, or no example.',
+    },
+  },
+  {
+    id: 'q10', order: 10,
+    text: 'What availability can you consistently commit to? Please include holidays, late closes, and any recurring conflicts we should know about — job-related only.',
+    primarySignal: 'Availability fit for the role',
+    scoringCategories: [], // exempt from scoring — same as legacy q20
+    scoringAnchors: {
+      5: 'Clear, specific, covers holidays, closes, and any conflicts. Treat as the source of truth and cross-reference with the structured availability grid on the application.',
+      3: '"Flexible" / "open availability" with no specifics.',
+      1: 'Cannot meet the role\'s required shifts (see REQUIRED_AVAILABILITY_BY_ROLE).',
+    },
+    notes: 'Exempt from category scoring. The structured availability grid on the application is the authoritative signal; this answer adds nuance (holidays, recurring conflicts) and serves as a cross-check.',
+  },
+
+  // ─── Role-specific questions ───
+  {
+    id: 'q_bartender_1', order: 11,
+    text: 'A guest says, "I do not know whiskey, but I want to try something." What three questions would you ask before recommending something?',
+    primarySignal: 'Curiosity, product hospitality, discovery process',
+    scoringCategories: ['own_guest_experience', 'speak_up'],
+    scoringAnchors: {
+      5: 'Three concrete discovery questions (flavor profile, sweet vs. dry, what they typically like elsewhere, etc.). No jargon.',
+      3: 'One or two reasonable questions; lacks a clear process.',
+      1: 'No real discovery / picks for them / jargon-heavy / dismissive.',
+    },
+    appliesToRoles: ['bartender'],
+  },
+  {
+    id: 'q_bartender_2', order: 12,
+    text: 'How do you make sure cocktail specs stay consistent during a busy shift?',
+    primarySignal: 'Standards under pressure, mise en place, communication',
+    scoringCategories: ['be_reliable', 'keep_moving_forward'],
+    scoringAnchors: {
+      5: 'Specific tactics — measured pours, jiggers, batching, prep before service, calling out modifications, recipe cards on the rail.',
+      3: 'General "I try to be consistent" answer without tactics.',
+      1: '"I eyeball it" or admits specs drift when busy.',
+    },
+    appliesToRoles: ['bartender'],
+  },
+  {
+    id: 'q_barback_1', order: 13,
+    text: 'During a rush, the bartender is low on glassware, citrus, and ice. What do you handle first and how do you communicate it?',
+    primarySignal: 'Anticipation, prioritization, communication',
+    scoringCategories: ['keep_moving_forward', 'support_each_other'],
+    scoringAnchors: {
+      5: 'Names a clear priority (usually ice → glassware → citrus depending on bar) AND describes how they keep the bartender informed without slowing them down.',
+      3: 'Picks a priority but no communication, or communicates but no priority.',
+      1: '"Whatever the bartender asks for" with no anticipation, or freezes.',
+    },
+    appliesToRoles: ['barback'],
+  },
+  {
+    id: 'q_door_1', order: 14,
+    text: 'A guest is frustrated about waiting while the room is at capacity. How do you handle the first 60 seconds?',
+    primarySignal: 'Calm under pressure, guest empathy, clarity',
+    scoringCategories: ['own_guest_experience', 'speak_up'],
+    scoringAnchors: {
+      5: 'Acknowledges them immediately, gives an honest time estimate, offers an alternative (bar seat, nearby spot to wait), checks back in.',
+      3: 'Acknowledges them politely but no specific plan or follow-up.',
+      1: 'Defensive, dismissive, blames the policy, or argues with the guest.',
+    },
+    appliesToRoles: ['door'],
+  },
+  {
+    id: 'q_lead_1', order: 15,
+    text: 'A teammate is making the same mistake repeatedly during service. How do you coach them without embarrassing them?',
+    primarySignal: 'Leadership through coaching, not policing',
+    scoringCategories: ['support_each_other', 'speak_up'],
+    scoringAnchors: {
+      5: 'Quick private check-in during service (not in front of guests/teammates); concrete fix; bigger conversation after the shift if it persists.',
+      3: 'Talks to them but timing/setting unclear.',
+      1: 'Corrects publicly, escalates immediately, or ignores the pattern.',
+    },
+    appliesToRoles: ['lead_shift_lead'],
+  },
+];
+
+// Frozen legacy question sets for displaying historical answers + scoring any
+// in-flight responses that were submitted before this push. Keyed by the
+// version string that was stamped on the questionnaire when submitted.
+const QUESTIONS_V2 = [
   {
     id: 'q1', order: 1,
     text: 'What role are you most interested in at Dram & Draught, and why?',
@@ -462,6 +650,45 @@ const QUESTIONS = [
   },
 ];
 
+// Map a questionnaire version string to the question set in force when it
+// was submitted. Anything not listed here falls through to the current set.
+const QUESTIONS_BY_VERSION = {
+  'questionnaire-v2-2026-05-14': QUESTIONS_V2,
+  // Current version explicitly listed so the lookup is unambiguous.
+  'questionnaire-v3-2026-05-19': QUESTIONS,
+};
+
+// Pick the question set that should be used to RENDER answers stored under
+// a given version stamp. Falls back to the current QUESTIONS for unknown
+// versions so we never display blank labels.
+function questionsForVersion(version) {
+  return QUESTIONS_BY_VERSION[version] || QUESTIONS;
+}
+
+// Normalize a free-text position to a role key (mirrors aiEvaluation's
+// normalizeRoleKey but kept here so view and questionnaire code can import).
+function normalizeRoleKey(position) {
+  if (!position) return 'other';
+  const k = String(position).toLowerCase().replace(/[^a-z]+/g, '_').replace(/^_+|_+$/g, '');
+  if (k === 'head_bartender' || k === 'general_manager' || k === 'manager') return 'lead_shift_lead';
+  if (['bartender', 'barback', 'server', 'door', 'lead_shift_lead'].includes(k)) return k;
+  if (k.includes('host')) return 'door';            // "Host" applicants take door-specific Q
+  if (k === 'floor_manager') return 'lead_shift_lead';
+  return 'other';
+}
+
+// Filter the current question set to those that apply to a given role
+// (questions without appliesToRoles apply to all). This is what the live
+// questionnaire renders and what the AI screener evaluates.
+function effectiveQuestionsForRole(role) {
+  const r = normalizeRoleKey(role);
+  return QUESTIONS.filter((q) => !q.appliesToRoles || q.appliesToRoles.includes(r));
+}
+
+function effectiveQuestionsForApplicant(application) {
+  return effectiveQuestionsForRole(application && application.position);
+}
+
 const APPLICANT_NOTICE = `As part of our hiring process, Dram & Draught asks applicants to complete a short questionnaire about hospitality, teamwork, communication, learning, availability, and job-related situations.
 
 A note on availability: we ask that the availability you provide here stays consistent through your first 90 days of employment. Availability is a key part of how we make hiring decisions. If it changes before, during, or even after that period, we will review whether the updated availability still meets the needs of the business.
@@ -687,6 +914,12 @@ module.exports = {
   ROLE_WEIGHTS,
   weightsForRole,
   QUESTIONS,
+  QUESTIONS_V2,
+  QUESTIONS_BY_VERSION,
+  questionsForVersion,
+  normalizeRoleKey,
+  effectiveQuestionsForRole,
+  effectiveQuestionsForApplicant,
   APPLICANT_NOTICE,
   KNOWLEDGE_BASE,
   THRESHOLDS,

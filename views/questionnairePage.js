@@ -1,7 +1,7 @@
 const { vintageThemeCss } = require('./publicTheme');
 const { brandMarkCss, renderBrandMark } = require('./brandMark');
 const { escHTML } = require('./escapeHtml');
-const { QUESTIONS, APPLICANT_NOTICE } = require('../hiring/knowledgeBase');
+const { QUESTIONS, APPLICANT_NOTICE, effectiveQuestionsForApplicant } = require('../hiring/knowledgeBase');
 
 function pageShell(title, bodyHtml) {
   return `<!DOCTYPE html>
@@ -70,12 +70,16 @@ function pageShell(title, bodyHtml) {
 }
 
 function generateQuestionnairePage({ application, locationName, locationSlug, prev = {}, errorMessage = null }) {
-  const fields = QUESTIONS.map((q) => {
+  // Show only the questions that apply to this applicant's role. Core
+  // questions apply to everyone; role-specific questions only appear for
+  // their tagged roles.
+  const roleQuestions = effectiveQuestionsForApplicant(application);
+  const fields = roleQuestions.map((q, idx) => {
     const value = prev[q.id] || '';
     return `
       <div class="q-block">
         <label class="q-label" for="${q.id}">
-          <span class="q-number">${q.order}.</span>${escHTML(q.text)}<span class="q-required" title="Required">*</span>
+          <span class="q-number">${idx + 1}.</span>${escHTML(q.text)}<span class="q-required" title="Required">*</span>
         </label>
         <textarea class="q-textarea" name="${q.id}" id="${q.id}" required rows="3">${escHTML(value)}</textarea>
       </div>`;
@@ -86,7 +90,7 @@ function generateQuestionnairePage({ application, locationName, locationSlug, pr
       ${renderBrandMark()}
       <h1 class="q-title">Hospitality questionnaire</h1>
       <p class="q-sub">For ${escHTML(application.name)} &middot; ${escHTML(locationName)}</p>
-      <p class="q-progress">20 short-answer questions &middot; ~10 minutes</p>
+      <p class="q-progress">${roleQuestions.length} short-answer questions &middot; ~${Math.max(5, Math.round(roleQuestions.length * 0.7))} minutes</p>
     </div>
 
     <div class="q-card">

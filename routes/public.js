@@ -48,7 +48,7 @@ const {
   generateQuestionnaireDonePage,
   generateQuestionnaireExpiredPage,
 } = require('../views/questionnairePage');
-const { QUESTIONS: HIRING_QUESTIONS, QUESTIONNAIRE_VERSION } = require('../hiring/knowledgeBase');
+const { QUESTIONS: HIRING_QUESTIONS, QUESTIONNAIRE_VERSION, effectiveQuestionsForApplicant } = require('../hiring/knowledgeBase');
 const { runAiEvaluation } = require('../hiring/aiEvaluation');
 const { generateNotFoundPage } = require('../views/notFoundPage');
 const {
@@ -1472,7 +1472,11 @@ async function handleQuestionnaire(req, res, prisma, applicationId) {
 
   const answers = {};
   const missing = [];
-  for (const q of HIRING_QUESTIONS) {
+  // Only validate the questions this applicant's role actually sees on the
+  // form — role-specific questions never appear for off-role applicants and
+  // shouldn't be flagged as missing.
+  const roleQuestions = effectiveQuestionsForApplicant(application);
+  for (const q of roleQuestions) {
     const raw = body[q.id];
     const text = typeof raw === 'string' ? raw.trim() : '';
     if (!text) missing.push(q.order);

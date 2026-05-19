@@ -9,6 +9,8 @@ const {
   CATEGORIES,
   CATEGORY_LABELS,
   QUESTIONS,
+  questionsForVersion,
+  effectiveQuestionsForApplicant,
   weightsForRole,
   buildSystemPrompt,
   buildResponseSchema,
@@ -106,13 +108,20 @@ function evaluateRoleMinimums(role, categoryScores) {
   return violations;
 }
 
-// Short-answer floor — any answer under MIN_ANSWER_LENGTH (excluding Q20)
-// cannot serve as evidence for a category score above 2. If a category's
-// mapped questions are majority short, cap its score at 2.
-function capCategoriesForShortAnswers(categoryScores, answers) {
+// Short-answer floor — any answer below MIN_ANSWER_LENGTH (excluding the
+// availability question, which is exempt from scoring) cannot serve as
+// evidence for a category score above 2. If a category's mapped questions
+// are majority short, cap its score at 2.
+//
+// Takes the active question set (filtered to the applicant's role) so the
+// ratio math doesn't punish a category just because role-specific questions
+// weren't asked.
+function capCategoriesForShortAnswers(categoryScores, answers, activeQuestions = QUESTIONS) {
+  // Treat q20 (legacy) and q10 (v3) as availability-exempt.
+  const exemptIds = new Set(['q20', 'q10']);
   const shortQs = new Set();
-  for (const q of QUESTIONS) {
-    if (q.id === 'q20') continue;
+  for (const q of activeQuestions) {
+    if (exemptIds.has(q.id)) continue;
     const a = (answers && answers[q.id]) || '';
     if (a.trim().length < MIN_ANSWER_LENGTH) shortQs.add(q.id);
   }
@@ -121,7 +130,7 @@ function capCategoriesForShortAnswers(categoryScores, answers) {
   const notes = [];
   const capped = categoryScores.map((entry) => {
     if (!entry) return entry;
-    const mapped = QUESTIONS.filter((q) => q.scoringCategories.includes(entry.category) && q.id !== 'q20');
+    const mapped = activeQuestions.filter((q) => Array.isArray(q.scoringCategories) && q.scoringCategories.includes(entry.category) && !exemptIds.has(q.id));
     if (mapped.length === 0) return entry;
     const shortCount = mapped.filter((q) => shortQs.has(q.id)).length;
     const ratio = shortCount / mapped.length;
@@ -196,16 +205,29 @@ function buildUserPrompt({ application, questionnaire, roleWeights }) {
     : '(not provided)';
   const answers = questionnaire.answers || {};
 
-  const answerLines = QUESTIONS.map((q) => {
+  // Use the question set that was in force when this questionnaire was
+  // submitted (versions other than the current QUESTIONS use legacy sets).
+  // Then filter by the applicant's role for the current (v3+) set so
+  // role-specific questions only appear for tagged roles. Legacy v2 has no
+  // appliesToRoles, so the filter is a no-op there.
+  const versionedQuestions = questionsForVersion(questionnaire.version);
+  const activeQuestions = versionedQuestions === QUESTIONS
+    ? effectiveQuestionsForApplicant(application)
+    : versionedQuestions;
+  const exemptIds = new Set(['q20', 'q10']);
+
+  const answerLines = activeQuestions.map((q) => {
     const text = answers[q.id] || '(no answer)';
-    const lengthFlag = (q.id !== 'q20' && text && text.trim().length < MIN_ANSWER_LENGTH)
+    const isExempt = exemptIds.has(q.id);
+    const lengthFlag = (!isExempt && text && text.trim().length < MIN_ANSWER_LENGTH)
       ? `\n  ⚠ SHORT ANSWER (${text.trim().length} chars) — cannot evidence a category above 2.`
       : '';
-    const anchors = q.scoringAnchors
+    const anchors = q.scoringAnchors && q.scoringAnchors[5] && q.scoringAnchors[3] && q.scoringAnchors[1]
       ? `\n  Anchors:\n    5 = ${q.scoringAnchors[5]}\n    3 = ${q.scoringAnchors[3]}\n    1 = ${q.scoringAnchors[1]}`
       : '';
     const notes = q.notes ? `\n  Note: ${q.notes}` : '';
-    return `Q${q.order} (${q.id}) [signals: ${q.scoringCategories.join(', ')}]: ${q.text}${anchors}${notes}\nA: ${text}${lengthFlag}`;
+    const signals = (q.scoringCategories || []).length ? q.scoringCategories.join(', ') : 'not scored';
+    return `Q${q.order} (${q.id}) [signals: ${signals}]: ${q.text}${anchors}${notes}\nA: ${text}${lengthFlag}`;
   }).join('\n\n');
 
   const weightLines = CATEGORIES
@@ -461,8 +483,13 @@ async function runAiEvaluation({ application, questionnaire }) {
   });
 
   // Apply the short-answer floor deterministically (in addition to the
-  // prompt-level guidance to the screener).
-  const capResult = capCategoriesForShortAnswers(normalizedCategoryScores, questionnaire.answers);
+  // prompt-level guidance to the screener). Use the same active question set
+  // the prompt used so role-specific gaps don't distort the cap math.
+  const activeQuestions = (function () {
+    const versioned = questionsForVersion(questionnaire.version);
+    return versioned === QUESTIONS ? effectiveQuestionsForApplicant(application) : versioned;
+  })();
+  const capResult = capCategoriesForShortAnswers(normalizedCategoryScores, questionnaire.answers, activeQuestions);
   normalizedCategoryScores = capResult.capped;
 
   const weightedScore = recomputeWeightedScore(normalizedCategoryScores, role);

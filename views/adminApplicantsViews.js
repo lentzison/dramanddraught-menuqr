@@ -572,9 +572,9 @@ function applicantStyles() {
       .al-card {
         position: relative;
         display: grid;
-        grid-template-columns: 30px 44px 1fr 200px auto;
+        grid-template-columns: 28px 1fr 200px auto;
         gap: 14px; align-items: center;
-        padding: 12px 16px 12px 12px;
+        padding: 12px 16px 12px 14px;
         background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.01)), var(--surface);
         border: 1px solid var(--line); border-radius: var(--radius);
         text-decoration: none; color: var(--text);
@@ -668,9 +668,54 @@ function applicantStyles() {
       .al-card-actions .icon-btn.is-danger:hover  { color: #ffb3b3; border-color: rgba(255,123,123,0.5); background: rgba(255,123,123,0.1); }
 
       @media (max-width: 760px) {
-        .al-card { grid-template-columns: 22px 36px 1fr; row-gap: 6px; }
-        .al-score { grid-column: 2 / -1; }
+        .al-card { grid-template-columns: 22px 1fr; row-gap: 6px; }
+        .al-score { grid-column: 1 / -1; }
         .al-card-actions { grid-column: 1 / -1; justify-content: flex-end; opacity: 1; }
+      }
+
+      /* === Reject modal === */
+      .al-modal-overlay {
+        position: fixed; inset: 0; z-index: 100;
+        display: none; align-items: center; justify-content: center;
+        background: rgba(0,0,0,0.55);
+        backdrop-filter: blur(2px);
+      }
+      .al-modal-overlay.is-open { display: flex; }
+      .al-modal {
+        width: min(520px, 92vw); max-height: 90vh; overflow-y: auto;
+        background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01)), var(--surface-2);
+        border: 1px solid var(--line); border-radius: var(--radius);
+        box-shadow: 0 24px 60px rgba(0,0,0,0.55);
+        padding: 22px 24px;
+      }
+      .al-modal h3 {
+        margin: 0 0 6px;
+        font-size: 1.1rem; color: var(--text);
+      }
+      .al-modal .al-modal-sub { color: var(--text-muted); font-size: 0.86rem; margin: 0 0 14px; }
+      .al-modal label { display: block; font-size: 0.74rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 800; margin-bottom: 4px; margin-top: 14px; }
+      .al-modal textarea, .al-modal input[type="text"] {
+        width: 100%; box-sizing: border-box;
+        background: var(--bg-soft); color: var(--text);
+        border: 1px solid var(--line); border-radius: var(--radius);
+        padding: 9px 11px; font-size: 0.92rem; font-family: inherit;
+      }
+      .al-modal textarea { min-height: 80px; resize: vertical; }
+      .al-modal .al-modal-row {
+        display: flex; align-items: center; gap: 8px;
+        padding: 10px 12px; margin-top: 12px;
+        background: rgba(255,255,255,0.03); border: 1px solid var(--line); border-radius: 6px;
+        color: var(--text); font-size: 0.88rem;
+      }
+      .al-modal .al-modal-row input[type="checkbox"] { accent-color: var(--gold-strong); }
+      .al-modal .al-modal-note {
+        margin-top: 12px; padding: 10px 12px;
+        background: rgba(242,166,90,0.08); border-left: 3px solid var(--amber); border-radius: 4px;
+        color: var(--text); font-size: 0.82rem; line-height: 1.5;
+      }
+      .al-modal .al-modal-actions {
+        display: flex; justify-content: flex-end; gap: 10px;
+        margin-top: 18px;
       }
 
       /* === Floating bulk action bar === */
@@ -1003,11 +1048,10 @@ function renderApplicantCard(a) {
   const next = NEXT_STEP[a.status];
 
   return `
-    <div class="al-card" data-ribbon="${escAttr(ribbon)}" data-applicant-id="${escAttr(a.id)}" data-status="${escAttr(a.status)}" tabindex="-1">
+    <div class="al-card" data-ribbon="${escAttr(ribbon)}" data-applicant-id="${escAttr(a.id)}" data-applicant-name="${escAttr(a.name)}" data-status="${escAttr(a.status)}" tabindex="-1">
       <label class="al-card-cb" title="Select" onclick="event.stopPropagation();">
         <input type="checkbox" data-bulk-cb value="${escAttr(a.id)}" />
       </label>
-      <a class="al-avatar" href="/admin/applicants/${escAttr(a.id)}" tabindex="-1" aria-hidden="true">${escHTML(initialsOf(a.name))}</a>
       <a class="al-card-body" href="/admin/applicants/${escAttr(a.id)}" data-card-link>
         <div class="al-card-row1">
           <span class="al-card-name">${escHTML(a.name)}</span>
@@ -1031,13 +1075,141 @@ function renderApplicantCard(a) {
             <button type="submit" class="icon-btn is-success" title="${escAttr(next.label)}" aria-label="${escAttr(next.label)}">→</button>
           </form>` : ''}
         ${!TERMINAL_STATUSES.has(a.status) ? `
-          <form method="POST" action="/admin/applicants/${escAttr(a.id)}/status" style="margin:0;" onsubmit="return confirm('Reject ${escAttr(a.name)}?')">
-            <input type="hidden" name="status" value="rejected" />
-            <button type="submit" class="icon-btn is-danger" title="Reject" aria-label="Reject">✕</button>
-          </form>` : ''}
+          <button type="button" class="icon-btn is-danger" data-open-reject="${escAttr(a.id)}" data-name="${escAttr(a.name)}" data-interviews="${a._count && a._count.interviews ? a._count.interviews : 0}" title="Reject" aria-label="Reject">✕</button>
+        ` : ''}
         <a class="icon-btn" href="/admin/applicants/${escAttr(a.id)}" title="Open" aria-label="Open">↗</a>
       </div>
     </div>`;
+}
+
+// Shared modal for rejection — used by list page and detail page. Stays hidden
+// until JS sets data-mode + populates fields. Always submits to a single
+// endpoint; the JS handler fans the request out for bulk operations.
+function rejectModalHtml() {
+  return `
+    <div class="al-modal-overlay" id="alRejectOverlay" aria-hidden="true">
+      <div class="al-modal" role="dialog" aria-modal="true" aria-labelledby="alRejectTitle">
+        <h3 id="alRejectTitle">Reject applicant</h3>
+        <p class="al-modal-sub" id="alRejectSub">This will move them to Rejected.</p>
+
+        <label for="alRejectReason">Reason (optional, saved to internal notes)</label>
+        <textarea id="alRejectReason" placeholder="e.g. Availability didn't match the role, or experience gap on bartending"></textarea>
+
+        <div class="al-modal-row" id="alRejectInterviewsRow" style="display:none;">
+          <span aria-hidden="true">⛌</span>
+          <span><strong id="alRejectInterviewCount">0</strong> scheduled interview<span id="alRejectInterviewPlural">s</span> will be auto-cancelled.</span>
+        </div>
+
+        <div class="al-modal-row">
+          <input type="checkbox" id="alRejectSendEmail" />
+          <label for="alRejectSendEmail" style="margin:0; text-transform:none; letter-spacing:0; font-size:0.88rem; color:var(--text); font-weight:600;">
+            Send a polite rejection email to the candidate
+          </label>
+        </div>
+
+        <div class="al-modal-note">
+          Rejection is reversible — open the applicant later and use "Change status" to put them back in the pipeline. Cancelled interviews don't come back automatically though.
+        </div>
+
+        <div class="al-modal-actions">
+          <button type="button" class="btn btn-secondary" id="alRejectCancel">Cancel</button>
+          <button type="button" class="btn btn-danger" id="alRejectConfirm">Reject</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+// Shared client-side script that wires up the reject modal. Returns a string
+// suitable for inclusion inside a <script> tag.
+function rejectModalScript() {
+  return `
+    (function () {
+      var overlay = document.getElementById('alRejectOverlay');
+      if (!overlay) return;
+      var sub = document.getElementById('alRejectSub');
+      var reason = document.getElementById('alRejectReason');
+      var sendEmail = document.getElementById('alRejectSendEmail');
+      var ivRow = document.getElementById('alRejectInterviewsRow');
+      var ivCount = document.getElementById('alRejectInterviewCount');
+      var ivPlural = document.getElementById('alRejectInterviewPlural');
+      var confirmBtn = document.getElementById('alRejectConfirm');
+      var cancelBtn = document.getElementById('alRejectCancel');
+      var pending = { ids: [], names: [], interviews: 0 };
+
+      function open(opts) {
+        pending = opts || { ids: [], names: [], interviews: 0 };
+        var n = pending.ids.length;
+        if (n === 1) {
+          sub.textContent = 'Move ' + (pending.names[0] || 'this applicant') + ' to Rejected.';
+        } else {
+          sub.textContent = 'Move ' + n + ' applicants to Rejected.';
+        }
+        reason.value = '';
+        sendEmail.checked = false;
+        if (pending.interviews > 0) {
+          ivRow.style.display = '';
+          ivCount.textContent = pending.interviews;
+          ivPlural.textContent = pending.interviews === 1 ? '' : 's';
+        } else {
+          ivRow.style.display = 'none';
+        }
+        overlay.classList.add('is-open');
+        overlay.setAttribute('aria-hidden', 'false');
+        setTimeout(function () { reason.focus(); }, 50);
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = n > 1 ? ('Reject ' + n) : 'Reject';
+      }
+      function close() {
+        overlay.classList.remove('is-open');
+        overlay.setAttribute('aria-hidden', 'true');
+      }
+      window.__openRejectModal = open;
+      window.__closeRejectModal = close;
+
+      // List-page card buttons.
+      document.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-open-reject]');
+        if (!btn) return;
+        e.preventDefault();
+        open({
+          ids: [btn.getAttribute('data-open-reject')],
+          names: [btn.getAttribute('data-name') || ''],
+          interviews: parseInt(btn.getAttribute('data-interviews') || '0', 10) || 0,
+        });
+      });
+
+      cancelBtn.addEventListener('click', close);
+      overlay.addEventListener('click', function (e) {
+        if (e.target === overlay) close();
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && overlay.classList.contains('is-open')) close();
+      });
+
+      confirmBtn.addEventListener('click', function () {
+        if (!pending.ids.length) return close();
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Rejecting…';
+        var note = reason.value.trim();
+        var doEmail = sendEmail.checked ? '1' : '';
+        Promise.all(pending.ids.map(function (id) {
+          var body = new URLSearchParams();
+          body.set('status', 'rejected');
+          if (note) body.set('note', note);
+          if (doEmail) body.set('sendEmail', '1');
+          return fetch('/admin/applicants/' + encodeURIComponent(id) + '/status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: body.toString(),
+            credentials: 'same-origin',
+            redirect: 'manual',
+          }).catch(function () { return null; });
+        })).then(function () {
+          window.location.reload();
+        });
+      });
+    })();
+  `;
 }
 
 function applicantsList({ applications, locations, filters, counts, user, flashMsg, canSeeMultipleLocations, pendingInviteCount = 0, failedScreeningCount = 0 }) {
@@ -1266,11 +1438,13 @@ function applicantsList({ applications, locations, filters, counts, user, flashM
         <option value="advance:interviewed">Mark interviewed</option>
         <option value="advance:offer_extended">Extend offer</option>
         <option value="advance:hired">Mark hired</option>
-        <option value="advance:rejected">Reject</option>
+        <option value="reject">Reject (with optional email)</option>
       </select>
       <button type="button" class="btn btn-primary btn-sm" id="alBulkApply">Apply to N</button>
       <button type="button" class="btn btn-secondary btn-sm" id="alBulkClear">Clear</button>
     </div>
+
+    ${rejectModalHtml()}
 
     <script>
       (function () {
@@ -1306,9 +1480,30 @@ function applicantsList({ applications, locations, filters, counts, user, flashM
           refresh();
         });
         if (applyBtn) applyBtn.addEventListener('click', function () {
-          var ids = checked().map(function (cb) { return cb.value; });
+          var rows = checked();
+          var ids = rows.map(function (cb) { return cb.value; });
           if (!ids.length) return;
-          var parts = (actionSel.value || '').split(':');
+          var value = actionSel.value || '';
+
+          // Reject action goes through the shared modal so the user can pick a
+          // reason and toggle the rejection email.
+          if (value === 'reject') {
+            var names = rows.map(function (cb) {
+              var card = cb.closest('.al-card');
+              return card ? (card.getAttribute('data-applicant-name') || '') : '';
+            });
+            var interviews = rows.reduce(function (sum, cb) {
+              var card = cb.closest('.al-card');
+              var iv = card ? parseInt(card.getAttribute('data-interviews') || '0', 10) : 0;
+              return sum + (iv || 0);
+            }, 0);
+            if (typeof window.__openRejectModal === 'function') {
+              window.__openRejectModal({ ids: ids, names: names, interviews: interviews });
+            }
+            return;
+          }
+
+          var parts = value.split(':');
           if (parts[0] !== 'advance' || !parts[1]) return;
           var status = parts[1];
           var label = actionSel.options[actionSel.selectedIndex].textContent.trim();
@@ -1372,6 +1567,8 @@ function applicantsList({ applications, locations, filters, counts, user, flashM
           }
         });
       })();
+
+      ${rejectModalScript()}
     </script>
   `, user);
 }
@@ -1445,8 +1642,9 @@ function renderStepper(application) {
     </div>`;
 }
 
-function renderHeroActions(application) {
+function renderHeroActions(application, interviews) {
   const next = NEXT_STEP[application.status];
+  const scheduledInterviewCount = (interviews || []).filter(i => i.status === 'scheduled').length;
   const allOptions = [
     ...STEPPER_STEPS.map(s => s.key),
     'hired',
@@ -1473,6 +1671,15 @@ function renderHeroActions(application) {
     const label = STATUS_LABELS[opt] || opt;
     if (isCurrent) {
       return `<button type="button" class="is-current" disabled>${escHTML(label)} (current)</button>`;
+    }
+    // "Rejected" routes through the shared reject modal so the user can pick a
+    // reason + toggle the rejection email; everything else POSTs directly.
+    if (opt === 'rejected') {
+      return `
+        <button type="button" class="is-danger"
+                data-open-reject="${escHTML(application.id)}"
+                data-name="${escHTML(application.name)}"
+                data-interviews="${scheduledInterviewCount}">${escHTML(label)}…</button>`;
     }
     return `
       <form method="POST" action="/admin/applicants/${escHTML(application.id)}/status">
@@ -1839,7 +2046,7 @@ function applicantDetail({ application, interviews, user, flashMsg }) {
           Shortcuts: <span class="ap-kbd">A</span> advance · <span class="ap-kbd">R</span> reject · <span class="ap-kbd">N</span> focus notes · <span class="ap-kbd">/</span> back to list
         </div>
       </div>
-      ${renderHeroActions(application)}
+      ${renderHeroActions(application, interviews)}
     </div>
 
     ${flash}
@@ -1950,13 +2157,10 @@ function applicantDetail({ application, interviews, user, flashMsg }) {
             var advance = document.getElementById('ap-advance-btn');
             if (advance) { e.preventDefault(); advance.click(); }
           } else if (key === 'r') {
-            // Pick the reject form from the change-status dropdown.
-            var rejectBtn = document.querySelector('.ap-menu-panel form input[name="status"][value="rejected"]');
-            if (rejectBtn) {
-              if (confirm('Move this applicant to "Rejected"?')) {
-                e.preventDefault(); rejectBtn.form.submit();
-              }
-            }
+            // Open the shared reject modal — the data-open-reject button in
+            // the change-status menu owns the applicant id + name.
+            var rejectBtn = document.querySelector('.ap-menu-panel [data-open-reject]');
+            if (rejectBtn) { e.preventDefault(); rejectBtn.click(); }
           } else if (key === 'n') {
             if (notesInput) { e.preventDefault(); notesInput.focus(); notesInput.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
           } else if (key === '/') {
@@ -1973,7 +2177,11 @@ function applicantDetail({ application, interviews, user, flashMsg }) {
           });
         }
       })();
+
+      ${rejectModalScript()}
     </script>
+
+    ${rejectModalHtml()}
   `, user);
 }
 

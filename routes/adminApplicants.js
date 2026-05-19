@@ -342,23 +342,59 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
       flashRedirect(res, `/admin/applicants/${id}`, 'error', 'Unknown status.');
       return true;
     }
+    const note = body.note ? String(body.note).slice(0, 1000) : null;
+    const sendEmail = body.sendEmail === '1' || body.sendEmail === 'on' || body.sendEmail === true;
+
     await prisma.jobApplication.update({
       where: { id },
       data: {
         status: next,
         decisionBy: user.email || null,
         decisionAt: new Date(),
-        decisionNote: body.note ? String(body.note).slice(0, 1000) : null,
+        decisionNote: note,
       },
     });
+
+    // Rejection side-effects: auto-cancel any scheduled interviews so the
+    // candidate stops getting reminder emails, and optionally send a polite
+    // rejection note.
+    let cancelledCount = 0;
+    if (next === 'rejected') {
+      try {
+        const cancelRes = await prisma.interview.updateMany({
+          where: { applicationId: id, status: 'scheduled' },
+          data: {
+            status: 'cancelled',
+            cancelledAt: new Date(),
+            cancellationReason: 'Application rejected' + (note ? ` — ${note}` : ''),
+          },
+        });
+        cancelledCount = cancelRes.count || 0;
+      } catch (err) {
+        console.warn('[applicants] failed to auto-cancel interviews on rejection:', err.message);
+      }
+
+      if (sendEmail) {
+        sendRejectionEmail(app, note).catch((err) => console.warn('[applicants] rejection email failed:', err.message));
+      }
+    }
+
     writeAudit(prisma, req, user, {
       action: 'update',
       resourceType: 'jobApplication',
       resourceId: id,
       resourceLabel: `${app.name} — ${app.position}`,
-      details: { from: app.status, to: next },
+      details: { from: app.status, to: next, sendEmail: next === 'rejected' ? !!sendEmail : undefined, interviewsCancelled: cancelledCount || undefined },
     }).catch(() => {});
-    flashRedirect(res, `/admin/applicants/${id}`, 'success', `Moved to ${STATUS_LABELS[next] || next}.`);
+
+    let flashText = `Moved to ${STATUS_LABELS[next] || next}.`;
+    if (next === 'rejected') {
+      const bits = [];
+      if (cancelledCount > 0) bits.push(`${cancelledCount} interview${cancelledCount === 1 ? '' : 's'} cancelled`);
+      if (sendEmail) bits.push('rejection email sent');
+      if (bits.length) flashText = `Rejected — ${bits.join(', ')}.`;
+    }
+    flashRedirect(res, `/admin/applicants/${id}`, 'success', flashText);
     return true;
   }
 
@@ -701,6 +737,31 @@ async function sendInterviewConfirmation(application, interview) {
   await sendEmailViaGoogle({
     to: recipients,
     subject: `Interview confirmed — Dram & Draught (${dateStr})`,
+    body: lines.join('\n'),
+  });
+}
+
+async function sendRejectionEmail(application, reason) {
+  if (!application?.email) return;
+  const firstName = (application.name || '').split(' ')[0] || 'there';
+  const positionLine = application.position
+    ? `the ${application.position} role`
+    : 'your application';
+  const lines = [
+    `Hi ${firstName},`,
+    '',
+    `Thank you for taking the time to apply for ${positionLine} at Dram & Draught. After reviewing everything you sent us, we've decided to move forward with other candidates this time.`,
+    reason ? `\nA quick note on our decision: ${reason}` : null,
+    '',
+    "We appreciate your interest in joining the team, and we'll keep your application on file. If something opens up that looks like a strong fit, we'll be in touch.",
+    '',
+    'All the best,',
+    'Dram & Draught Hiring Team',
+  ].filter((v) => v != null);
+
+  await sendEmailViaGoogle({
+    to: application.email,
+    subject: `Update on your Dram & Draught application`,
     body: lines.join('\n'),
   });
 }

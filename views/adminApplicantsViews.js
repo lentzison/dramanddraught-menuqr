@@ -455,6 +455,21 @@ function applicantStyles() {
 
       .ai-meta { color:var(--text-muted); font-size:0.74rem; margin-top:6px; padding:4px 2px; line-height: 1.5; }
 
+      /* === Onboarding card (hired-only, right rail) === */
+      .ap-onb-status {
+        padding: 12px 14px; border-radius: var(--radius);
+        background: rgba(255,255,255,0.025); border: 1px solid var(--line);
+        color: var(--text); font-size: 0.92rem; line-height: 1.45;
+      }
+      .ap-onb-status strong { color: var(--text); display: block; margin-bottom: 4px; }
+      .ap-onb-status .ap-onb-sub { color: var(--text-muted); font-size: 0.82rem; }
+      .ap-onb-status.is-good { border-color: rgba(98,210,143,0.45); background: rgba(98,210,143,0.08); }
+      .ap-onb-status.is-good strong { color: #a4f4c2; }
+      .ap-onb-status.is-warn { border-color: rgba(242,166,90,0.45); background: rgba(242,166,90,0.08); }
+      .ap-onb-status.is-warn strong { color: var(--amber); }
+      .ap-onb-status.is-pending { border-color: rgba(143,183,255,0.45); background: rgba(143,183,255,0.06); }
+      .ap-onb-status.is-pending strong { color: #a8c6ff; }
+
       /* === Keyboard shortcut hint === */
       .ap-kbd { display:inline-block; padding: 1px 6px; border:1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; background: rgba(255,255,255,0.05); font-family: 'SF Mono', Menlo, monospace; font-size: 0.72rem; color: var(--text); }
       .ap-shortcut-hint { color: var(--text-muted); font-size: 0.78rem; margin-top: 8px; }
@@ -1830,7 +1845,76 @@ function renderNarrative(label, value) {
     </div>`;
 }
 
-function applicantDetail({ application, interviews, user, flashMsg }) {
+// Onboarding card for hired applicants — sits in the right rail when the
+// pipeline state is "hired". Shows the dashboard-invite state and lets the
+// admin send / resend / pick a different role.
+function renderOnboardingCard(application, dashboardInviteStatus, roleOptions) {
+  if (application.status !== 'hired') return '';
+  const inviteSent = !!application.dashboardInviteSentAt;
+  const liveStatus = (dashboardInviteStatus && dashboardInviteStatus.status) || null;
+  const usedAt = dashboardInviteStatus && dashboardInviteStatus.usedAt;
+  const viewedAt = dashboardInviteStatus && dashboardInviteStatus.viewedAt;
+  const expiresAt = dashboardInviteStatus && dashboardInviteStatus.expiresAt;
+  const isExpired = liveStatus === 'EXPIRED' || (expiresAt && new Date(expiresAt) < new Date());
+  const isCompleted = liveStatus === 'COMPLETED' || !!usedAt;
+
+  // Roles: prefer prior pick on this application, else the implicit map.
+  const defaultRole = application.dashboardInviteRole || '';
+  const roles = (roleOptions || []).map(o => `<option value="${escAttr(o.value)}" ${defaultRole === o.value ? 'selected' : ''}>${escHTML(o.label)}</option>`).join('');
+
+  let statusBlock = '';
+  if (isCompleted) {
+    statusBlock = `
+      <div class="ap-onb-status is-good">
+        <strong>✓ Account activated${usedAt ? ` on ${escHTML(formatFriendly(usedAt))}` : ''}.</strong>
+        <div class="ap-onb-sub">They're set up in the Bartender Dashboard.</div>
+      </div>`;
+  } else if (isExpired) {
+    statusBlock = `
+      <div class="ap-onb-status is-warn">
+        <strong>⚠ Invite expired.</strong>
+        <div class="ap-onb-sub">Click "Resend invite" below to issue a fresh link.</div>
+      </div>`;
+  } else if (inviteSent) {
+    statusBlock = `
+      <div class="ap-onb-status is-pending">
+        <strong>✉ Invite sent ${escHTML(formatFriendly(application.dashboardInviteSentAt))}.</strong>
+        <div class="ap-onb-sub">${viewedAt ? `Opened ${escHTML(formatFriendly(viewedAt))} — they haven't finished signing up yet.` : "Waiting for them to open the link."}</div>
+      </div>`;
+  } else {
+    statusBlock = `
+      <div class="ap-onb-status">
+        <strong>Not invited yet.</strong>
+        <div class="ap-onb-sub">Send them a Bartender Dashboard registration link.</div>
+      </div>`;
+  }
+
+  const submitLabel = !inviteSent
+    ? 'Send dashboard invite'
+    : (isExpired ? 'Resend invite' : 'Resend invite');
+
+  return `
+    <div class="ap-card" id="onboarding">
+      <div class="ap-card-head">
+        <h2>Onboarding</h2>
+        ${inviteSent ? `<a class="ap-card-aside" href="https://bartender-app.apps.dramanddraught.com" target="_blank" rel="noopener" style="color: var(--text-muted); text-decoration: none;">Bartender ↗</a>` : ''}
+      </div>
+      ${statusBlock}
+
+      <form method="POST" action="/admin/applicants/${escHTML(application.id)}/onboarding-invite" style="margin-top:12px;" onsubmit="return confirm('${inviteSent ? 'Resend' : 'Send'} the dashboard invite to ${escAttr(application.email || application.name)}?');">
+        <label style="display:block; font-size:0.72rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em; font-weight:800; margin-bottom:6px;">Role</label>
+        <select name="role" style="width:100%; background:var(--bg-soft); color:var(--text); border:1px solid var(--line); padding:9px 11px; border-radius:var(--radius); font-size:0.92rem; font-family:inherit;">
+          <option value="">(use position default)</option>
+          ${roles}
+        </select>
+        <div style="margin-top:12px; text-align:right;">
+          <button type="submit" class="btn btn-primary btn-sm">${escHTML(submitLabel)}</button>
+        </div>
+      </form>
+    </div>`;
+}
+
+function applicantDetail({ application, interviews, user, flashMsg, dashboardInviteStatus, dashboardRoleOptions }) {
   const flash = flashMsg ? `<div class="app-flash ${flashMsg.type === 'error' ? 'error' : 'success'}">${escHTML(flashMsg.text)}</div>` : '';
   const locName = application.location?.name || '';
   const positionLabel = application.position === 'Other' && application.positionOther
@@ -2061,6 +2145,7 @@ function applicantDetail({ application, interviews, user, flashMsg }) {
         ${interviewsCard}
       </div>
       <aside class="ap-rail">
+        ${renderOnboardingCard(application, dashboardInviteStatus, dashboardRoleOptions)}
         ${contactCard}
         ${availabilityCard}
         ${resumeCard}

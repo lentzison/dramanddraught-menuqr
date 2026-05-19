@@ -3,6 +3,7 @@ const { requireAuth, isCompanyWide, getUserLocationSlugs } = require('../auth');
 const { applicantsList, applicantDetail, STATUS_LABELS } = require('../views/adminApplicantsViews');
 const { writeAudit } = require('../auditLog');
 const { runAiEvaluation } = require('../hiring/aiEvaluation');
+const { createAndSendInvite: createDashboardInvite, fetchInviteStatus, ROLE_OPTIONS: DASHBOARD_ROLE_OPTIONS } = require('../bartenderInvite');
 
 async function rerunAndPersistScreening(prisma, application, questionnaire) {
   const evaluation = await runAiEvaluation({ application, questionnaire });
@@ -398,6 +399,70 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
     return true;
   }
 
+  // ─── Send Bartender Dashboard onboarding invite ───
+  // POST /admin/applicants/:id/onboarding-invite — only valid for hired
+  // applicants. Creates an EmployeeInvite row in the bartender DB and emails
+  // the candidate the welcome / registration link.
+  const onboardingInviteMatch = pathname.match(/^\/admin\/applicants\/([0-9a-f-]{8,})\/onboarding-invite$/i);
+  if (onboardingInviteMatch && req.method === 'POST') {
+    const id = onboardingInviteMatch[1];
+    const app = await prisma.jobApplication.findUnique({
+      where: { id },
+      include: { location: { select: { slug: true, name: true } } },
+    }).catch(() => null);
+    if (!app || (!userIsCompanyWide && !allowedLocationIds.has(app.locationId))) {
+      sendHTML(res, 404, '<h1>Not found</h1>');
+      return true;
+    }
+    if (app.status !== 'hired') {
+      flashRedirect(res, `/admin/applicants/${id}`, 'error', 'Move the applicant to Hired before sending a dashboard invite.');
+      return true;
+    }
+    const body = await parseBody(req);
+    const role = String(body.role || '').trim() || null;
+
+    const result = await createDashboardInvite({
+      application: app,
+      locationSlug: app.location?.slug,
+      role,
+      adminEmail: user.email || null,
+      adminName: user.email ? user.email.split('@')[0] : null,
+    });
+
+    if (!result.ok) {
+      flashRedirect(res, `/admin/applicants/${id}`, 'error', `Could not send dashboard invite: ${result.error}`);
+      return true;
+    }
+
+    // Persist invite id/token + role + sentAt on the application row so the
+    // detail page can render the status without hitting the bartender DB again.
+    await prisma.jobApplication.update({
+      where: { id },
+      data: {
+        dashboardInviteId: result.inviteId,
+        dashboardInviteToken: result.token,
+        dashboardInviteSentAt: result.sentAt || new Date(),
+        dashboardInviteRole: role || app.dashboardInviteRole || null,
+      },
+    }).catch(() => {});
+
+    writeAudit(prisma, req, user, {
+      action: 'create',
+      resourceType: 'employeeInvite',
+      resourceId: result.inviteId,
+      resourceLabel: `${app.name} — ${app.position}`,
+      details: { reusedExisting: !!result.reusedExisting, role, emailError: result.emailError || undefined },
+    }).catch(() => {});
+
+    const flashText = result.reusedExisting
+      ? 'Active invite already existed — link reused, no duplicate email sent.'
+      : (result.emailError
+        ? `Invite created but email failed: ${result.emailError}. Open the candidate's record to resend.`
+        : 'Dashboard invite sent. They will get a registration link by email.');
+    flashRedirect(res, `/admin/applicants/${id}`, result.emailError ? 'error' : 'success', flashText);
+    return true;
+  }
+
   // ─── Internal notes: POST /admin/applicants/:id/notes ───
   const notesMatch = pathname.match(/^\/admin\/applicants\/([0-9a-f-]{8,})\/notes$/i);
   if (notesMatch && req.method === 'POST') {
@@ -574,8 +639,24 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
       orderBy: { scheduledAt: 'desc' },
     }).catch(() => []);
 
+    // If we've sent a dashboard invite, fetch its latest state from the
+    // bartender DB so the Onboarding card can show Viewed / Completed /
+    // Expired without a webhook. Fire-and-forget — if it fails we just don't
+    // render the status pill.
+    let dashboardInviteStatus = null;
+    if (application.dashboardInviteId) {
+      dashboardInviteStatus = await fetchInviteStatus(application.dashboardInviteId);
+    }
+
     const flashMsg = decodeFlash(req);
-    sendHTML(res, 200, applicantDetail({ application, interviews, user, flashMsg }));
+    sendHTML(res, 200, applicantDetail({
+      application,
+      interviews,
+      user,
+      flashMsg,
+      dashboardInviteStatus,
+      dashboardRoleOptions: DASHBOARD_ROLE_OPTIONS,
+    }));
     return true;
   }
 

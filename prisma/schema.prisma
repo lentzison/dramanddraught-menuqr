@@ -384,6 +384,15 @@ model JobApplication {
   // Auto-reminder bookkeeping. 24h fires before 72h; flags prevent re-sends.
   questionnaireReminder24hSent Boolean @default(false)
   questionnaireReminder72hSent Boolean @default(false)
+
+  // Bartender Dashboard onboarding invite (set once we POST to bartender DB's
+  // EmployeeInvite table after hiring). Token lets us deep-link / re-fetch
+  // status from the bartender side.
+  dashboardInviteId         String?
+  dashboardInviteToken      String?
+  dashboardInviteSentAt     DateTime?
+  dashboardInviteRole       String?  // bartender Role enum value: BARTENDER, SERVER_BARBACK, HOST, ...
+
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

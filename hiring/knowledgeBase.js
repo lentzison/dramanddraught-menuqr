@@ -7,10 +7,10 @@
 //   QUESTIONNAIRE_VERSION    — question wording, ordering, or scoring anchors
 //   RUBRIC_VERSION           — role weights, thresholds, or rubric definitions
 
-const KNOWLEDGE_BASE_VERSION = 'kb-v4-2026-05-19';
-const PROMPT_VERSION = 'prompt-v3-2026-05-19';
+const KNOWLEDGE_BASE_VERSION = 'kb-v5-2026-05-19';
+const PROMPT_VERSION = 'prompt-v4-2026-05-19';
 const QUESTIONNAIRE_VERSION = 'questionnaire-v2-2026-05-14';
-const RUBRIC_VERSION = 'rubric-v4-2026-05-19';
+const RUBRIC_VERSION = 'rubric-v5-2026-05-19';
 
 const ROLES = ['bartender', 'barback', 'server', 'door', 'lead_shift_lead', 'other'];
 
@@ -95,16 +95,138 @@ function weightsForRole(role) {
   return ROLE_WEIGHTS[role] || DEFAULT_WEIGHTS;
 }
 
-// Callback thresholds (v3). Recommend floor at 3.7 — paired with v2's rubric
-// rewrite (per-question anchors, short-answer floor, achievable 5s) that
-// re-spreads scores instead of clustering them at 3.
+// Callback thresholds (v4 — three-state verdict). Recommend floor at 3.7;
+// anything that fails one of the recommend conditions but isn't a hard role
+// deal-breaker routes to "needs_review" instead of a flat "don't recommend"
+// (which anchors managers too hard).
 const THRESHOLDS = {
   strongRecommend: { weighted: 4.2, minCategory: 3.5 },
   recommend:       { weighted: 3.7, minCategory: 3.0 },
-  // anything below recommend → don't_recommend
-  holdMinCategory: 2.5, // any category below this → forced don't_recommend
-  reviewBand:      0.15, // weighted score within ±band of recommend threshold → flag review
+  // any category below this routes to needs_review (not recommend)
+  reviewMinCategory: 2.5,
+  // weighted score within ±band of recommend threshold → flag review
+  reviewBand:      0.15,
 };
+
+// Per-role minimum category scores. Even if the weighted average clears the
+// recommend threshold, falling below a role's category minimum routes the
+// applicant to needs_review (the manager still owns the call).
+const ROLE_MINIMUMS = {
+  bartender: {
+    own_guest_experience: 3.25,
+    be_reliable: 3.0,
+    keep_moving_forward: 3.0,
+  },
+  barback: {
+    be_reliable: 3.25,
+    support_each_other: 3.25,
+  },
+  server: {
+    own_guest_experience: 3.25,
+    be_reliable: 3.0,
+  },
+  door: {
+    speak_up: 3.25,
+    own_guest_experience: 3.0,
+    be_reliable: 3.0,
+  },
+  lead_shift_lead: {
+    speak_up: 3.5,
+    support_each_other: 3.25,
+    be_reliable: 3.25,
+  },
+  other: {},
+};
+
+// Role-specific required availability. Used by the deal-breaker check: if the
+// applicant's structured availability grid cannot cover a required slot, the
+// verdict routes to "does_not_meet_role_requirements".
+//
+// Slot shape: { day: 'mon'|'tue'|...|'sat'|'sun'|'any',
+//               shift: 'day'|'evening'|'late'|'any',
+//               label: 'human-readable description',
+//               anyOf?: [otherSlots] }
+const REQUIRED_AVAILABILITY_BY_ROLE = {
+  bartender: [
+    { label: 'At least one Friday or Saturday evening or late shift', anyOf: [
+      { day: 'fri', shift: 'evening' }, { day: 'fri', shift: 'late' },
+      { day: 'sat', shift: 'evening' }, { day: 'sat', shift: 'late' },
+    ] },
+    { label: 'Some late-night close availability', anyOf: [
+      { day: 'mon', shift: 'late' }, { day: 'tue', shift: 'late' },
+      { day: 'wed', shift: 'late' }, { day: 'thu', shift: 'late' },
+      { day: 'fri', shift: 'late' }, { day: 'sat', shift: 'late' },
+      { day: 'sun', shift: 'late' },
+    ] },
+  ],
+  barback: [
+    { label: 'Weekend evening or late availability', anyOf: [
+      { day: 'fri', shift: 'evening' }, { day: 'fri', shift: 'late' },
+      { day: 'sat', shift: 'evening' }, { day: 'sat', shift: 'late' },
+    ] },
+    { label: 'Some late-night close availability', anyOf: [
+      { day: 'mon', shift: 'late' }, { day: 'tue', shift: 'late' },
+      { day: 'wed', shift: 'late' }, { day: 'thu', shift: 'late' },
+      { day: 'fri', shift: 'late' }, { day: 'sat', shift: 'late' },
+      { day: 'sun', shift: 'late' },
+    ] },
+  ],
+  server: [
+    { label: 'At least one weekend evening', anyOf: [
+      { day: 'fri', shift: 'evening' }, { day: 'sat', shift: 'evening' },
+      { day: 'sun', shift: 'evening' },
+    ] },
+  ],
+  door: [
+    { label: 'Friday or Saturday late-night availability', anyOf: [
+      { day: 'fri', shift: 'late' }, { day: 'sat', shift: 'late' },
+    ] },
+  ],
+  lead_shift_lead: [
+    { label: 'Weekend evening availability', anyOf: [
+      { day: 'fri', shift: 'evening' }, { day: 'fri', shift: 'late' },
+      { day: 'sat', shift: 'evening' }, { day: 'sat', shift: 'late' },
+    ] },
+  ],
+  other: [],
+};
+
+function minimumsForRole(role) {
+  return ROLE_MINIMUMS[role] || ROLE_MINIMUMS.other;
+}
+
+function requiredAvailabilityForRole(role) {
+  return REQUIRED_AVAILABILITY_BY_ROLE[role] || REQUIRED_AVAILABILITY_BY_ROLE.other;
+}
+
+// Check whether a candidate's availability grid satisfies one slot rule.
+// Rule may have anyOf (any single one counts) or a flat { day, shift } pair.
+function availabilityCoversSlot(availability, slot) {
+  if (!availability || typeof availability !== 'object') return false;
+  const shiftsForDay = (d) => Array.isArray(availability[d]) ? availability[d] : [];
+  if (slot.anyOf && slot.anyOf.length) {
+    return slot.anyOf.some((sub) => availabilityCoversSlot(availability, sub));
+  }
+  if (slot.day === 'any') {
+    return Object.keys(availability).some((d) =>
+      slot.shift === 'any' ? shiftsForDay(d).length > 0 : shiftsForDay(d).includes(slot.shift));
+  }
+  if (slot.shift === 'any') return shiftsForDay(slot.day).length > 0;
+  return shiftsForDay(slot.day).includes(slot.shift);
+}
+
+// Returns array of missing-slot labels for the role. Empty = all required
+// availability is present.
+function missingRequiredAvailability(role, availability) {
+  const rules = requiredAvailabilityForRole(role);
+  const missing = [];
+  for (const rule of rules) {
+    if (!availabilityCoversSlot(availability, rule)) {
+      missing.push(rule.label);
+    }
+  }
+  return missing;
+}
 
 const MIN_ANSWER_LENGTH = 15; // chars — questions below this can't push a category above 2 (Q20 exempt)
 
@@ -386,11 +508,11 @@ Dram is built around:
 - Door: first impressions, safety, pacing, calm under pressure, never power trips.
 - Lead / Shift Lead: models values, communicates early, coaches without embarrassing people.
 
-## Non-negotiables (hard deal-breakers)
-The following force a "don't_recommend" recommendation regardless of category scores:
-1. Cannot work any Friday or Saturday night.
-2. Applying for Bartender while under 21 (legal eligibility).
-3. Stated availability does not cover the role's required shifts (nights, weekends, late shifts).
+## Non-negotiables (hard deal-breakers — route to "does_not_meet_role_requirements")
+The following are job-related role-requirement gaps. They route the verdict to "does_not_meet_role_requirements" rather than "don't recommend" — the message to the manager is "this candidate may be great, but they don't fit THIS posting":
+1. Bartender applicant has answered the legal-eligibility question with **No** (cannot legally perform alcohol-service duties for this role at this location). If they answered **Unsure**, flag for human review instead.
+2. Structured availability grid is missing the role's required shifts. Required shifts are role-specific — see REQUIRED_AVAILABILITY_BY_ROLE in the config. The user prompt will list any missing required slots for you; do not infer them from free-text answers.
+3. Applicant explicitly states (in any answer) that they cannot work the required shifts for the role. Quote the conflicting answer.
 
 The following flag the application for human review (do not auto-decide):
 1. Earliest start date more than 60 days out. **Use the precomputed "days from today" value injected into the user prompt — do not compute calendar math yourself. If the user prompt explicitly says the start date is within the 60-day window, do not flag.**
@@ -446,10 +568,21 @@ Weak answers include: vague self-praise ("I'm a team player", "I work hard"), "t
 
 A weak answer is not a poorly-written answer. Never penalize grammar, spelling, accent, or writing style unless the answer is impossible to understand.
 
-## Callback thresholds (code-enforced)
-These are computed on the recomputed weighted score using authoritative role weights. The screener's claimed recommendation is advisory; code re-derives.
-- Recommend: weighted ≥ 3.7 AND every category ≥ 3.0 AND no hard deal-breaker.
-- Don't recommend: anything else, including any category < 2.5.
+## Manager-facing verdict (three states, code-enforced)
+The screener's recommendation field is advisory. Code recomputes the weighted score using authoritative role weights, applies role-specific minimums, checks the structured availability grid, and routes to one of three manager-facing verdicts:
+
+**Recommend interview** — weighted ≥ 3.7, every category ≥ 3.0, every role-specific minimum met, no hard deal-breaker, no human-review trigger.
+
+**Needs human review** — borderline scores, conflicting signals, protected info disclosed, generic-answer pattern, category < 2.5, role minimum just missed, "Unsure" on legal eligibility, etc. Most edge cases land here. The manager makes the call.
+
+**Does not meet role requirements** — job-related role-requirement gaps: confirmed cannot work the role's required shifts, confirmed not legally eligible for the role, or the applicant explicitly disqualifies themselves. Phrased this way (not "Don't recommend") to keep the message about role fit, not about the person.
+
+Internally the screener still picks one of {strong_callback, callback, maybe, hold}. Code maps:
+- strong_callback / callback → recommend_interview (if no flags or deal-breakers)
+- maybe / hold (with human-review flag or borderline score) → needs_human_review
+- maybe / hold (with a hard role-requirement gap) → does_not_meet_role_requirements
+
+Tie-breakers: hard deal-breaker always wins. Human-review flag beats clean-recommend. Category-minimum-miss beats clean-recommend.
 
 ## What never enters scoring
 Race, color, religion, sex, pregnancy, gender identity, sexual orientation, national origin, age (except legal eligibility for the role), disability, medical information, genetic information, family status, marital status, childcare situation, accent, grammar, school prestige, appearance, neighborhood, economic background, criminal history.
@@ -476,10 +609,13 @@ Rules — non-negotiable:
 8. Score each of the five categories from 1 to 5 using the per-question anchors provided in the user prompt.
 9. Apply the role-specific category weights provided.
 10. Honor the short-answer floor: any answer under 15 characters (excluding Q20 availability) cannot serve as evidence for a category score above 2. If a category's evidence is dominated by such answers, score it at 2 or below.
-11. Honor the hard deal-breakers — when present, set recommendation to "hold" (the code will surface this as "don't_recommend"). Deal-breakers: cannot work Friday or Saturday; bartender applicant under 21; stated availability does not cover required shifts.
-12. Flag for human review when: any category < 2.0; weighted score within ±0.15 of the recommend threshold; applicant mentions a current/former employee by name; availability is ambiguous; two or more answers contradict each other.
-13. Score distribution: 5s should be achievable for strong, specific answers. If no category warrants a 5, re-read for evidence before defaulting to 3s — most candidates should not cluster at 3.
-14. Return only valid JSON matching the response schema.
+11. Honor the generic-answer cap: if an answer is generic intent language with no specific action, tradeoff, example, or observable behavior, it cannot support a category score above 3. Length alone is not specificity.
+12. Honor evidence caps: cap a category at 3.5 if it has no specific past example anywhere in its mapped answers; cap at 3.0 if a majority of mapped answers are generic.
+13. Honor the hard deal-breakers — when present, set recommendation to "hold". Deal-breakers are role-requirement gaps only: applicant cannot legally perform alcohol-service duties for a Bartender role, OR structured availability fails to cover the role's required shifts (these are listed in the user prompt), OR applicant explicitly states they cannot work the required shifts.
+14. Flag for human review when: any category < 2.0; weighted score within ±0.15 of the recommend threshold; applicant mentions a current/former employee by name; legal-eligibility answer is "Unsure"; availability is ambiguous; two or more answers contradict each other; applicant volunteers protected info or accommodation needs; the majority of an applicant's answers read polished but generic (template-like) — note this as a follow-up trigger, not a penalty.
+15. Score distribution: 5s should be achievable for strong, specific answers. If no category warrants a 5, re-read for evidence before defaulting to 3s — most candidates should not cluster at 3.
+16. Cite evidence: every category score must list at least one supportingAnswerId (e.g. "q5") and a short quoted strongestEvidence excerpt from that answer. If you can't cite evidence, you don't have a basis for the score — drop it.
+17. Return only valid JSON matching the response schema.
 
 Remember: the manager makes the final decision. Your output is advisory.
 
@@ -495,11 +631,23 @@ function buildResponseSchema() {
       category: { type: 'string', enum: CATEGORIES },
       score: { type: 'integer', enum: [1, 2, 3, 4, 5] },
       weight: { type: 'integer' },
+      // Backwards-compat list of evidence excerpts (kept for older callers).
       evidence: { type: 'array', items: { type: 'string' } },
       rationale: { type: 'string' },
       concerns: { type: 'array', items: { type: 'string' } },
+      // New: citation fields — every score must point back to specific answers
+      // so a manager can audit the reasoning quickly.
+      supportingAnswerIds: { type: 'array', items: { type: 'string' } },
+      strongestEvidence: { type: 'string' },
+      concernEvidence: { type: ['string', 'null'] },
+      confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
+      followUpQuestion: { type: 'string' },
     },
-    required: ['category', 'score', 'weight', 'evidence', 'rationale', 'concerns'],
+    required: [
+      'category', 'score', 'weight',
+      'evidence', 'rationale', 'concerns',
+      'supportingAnswerIds', 'strongestEvidence', 'confidence', 'followUpQuestion',
+    ],
   };
   return {
     type: 'object',
@@ -542,6 +690,11 @@ module.exports = {
   APPLICANT_NOTICE,
   KNOWLEDGE_BASE,
   THRESHOLDS,
+  ROLE_MINIMUMS,
+  REQUIRED_AVAILABILITY_BY_ROLE,
+  minimumsForRole,
+  requiredAvailabilityForRole,
+  missingRequiredAvailability,
   MIN_ANSWER_LENGTH,
   buildSystemPrompt,
   buildResponseSchema,

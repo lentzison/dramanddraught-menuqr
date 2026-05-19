@@ -674,7 +674,14 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
     };
 
     const where = { ...applicationLocationGate };
-    if (filters.status && VALID_STATUSES.has(filters.status)) where.status = filters.status;
+    if (filters.status && VALID_STATUSES.has(filters.status)) {
+      where.status = filters.status;
+    } else {
+      // Default view excludes archived (rejected / withdrawn) so the main
+      // screen stays focused on the active pipeline. Admins can still see
+      // them by clicking the Rejected / Withdrawn chip or using ?status=.
+      where.status = { notIn: ['rejected', 'withdrawn'] };
+    }
     if (filters.position) where.position = filters.position;
     if (filters.location) {
       const loc = locations.find(l => l.slug === filters.location);
@@ -695,9 +702,26 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
     filters.aiRec = aiRecFilter;
     filters.review = reviewFilter;
 
-    if (aiRecFilter === 'recommend') {
-      where.aiEvaluation = { ...(where.aiEvaluation || {}), recommendation: { in: ['strong_callback', 'callback'] } };
+    // Three-state verdict filter. The DB only stores the internal
+    // recommendation + humanReviewRequired flag, so we map the manager-facing
+    // bucket back to those columns. Legacy values (recommend / dont_recommend)
+    // keep working.
+    if (aiRecFilter === 'recommend' || aiRecFilter === 'recommend_interview') {
+      where.aiEvaluation = {
+        ...(where.aiEvaluation || {}),
+        recommendation: { in: ['strong_callback', 'callback'] },
+        humanReviewRequired: false,
+      };
+    } else if (aiRecFilter === 'needs_human_review') {
+      // Anything flagged for review, regardless of recommendation.
+      where.aiEvaluation = { ...(where.aiEvaluation || {}), humanReviewRequired: true };
+    } else if (aiRecFilter === 'does_not_meet_role_requirements') {
+      // Hard deal-breaker rows: AI recommended hold and no review-only flag
+      // would explain it. (Conservative — admins can also browse this group
+      // via the chip.)
+      where.aiEvaluation = { ...(where.aiEvaluation || {}), recommendation: 'hold' };
     } else if (aiRecFilter === 'dont_recommend') {
+      // Legacy two-state filter — kept for bookmarked URLs.
       where.aiEvaluation = { ...(where.aiEvaluation || {}), recommendation: { in: ['maybe', 'hold'] } };
     }
     if (reviewFilter === '1') {

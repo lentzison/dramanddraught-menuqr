@@ -13,6 +13,10 @@ const {
   buildSystemPrompt,
   buildResponseSchema,
   THRESHOLDS,
+  ROLE_MINIMUMS,
+  minimumsForRole,
+  missingRequiredAvailability,
+  requiredAvailabilityForRole,
   MIN_ANSWER_LENGTH,
 } = require('./knowledgeBase');
 
@@ -68,18 +72,38 @@ function recomputeWeightedScore(categoryScores, role) {
   return Math.round((weightedSum / totalWeight) * 100) / 100;
 }
 
-// Code-enforced recommendation (v2 thresholds, 3.5 floor).
+// Code-enforced recommendation (v4 thresholds — three-state verdict).
+// Internal value stays one of {strong_callback, callback, maybe, hold} so
+// older callers keep working; the manager-facing bucket is computed by
+// `verdictBucketFromInternal()` below using extra signals (role minimums,
+// hard role-requirement gaps).
 function determineRecommendation({ weightedScore, categoryScores, aiRecommendation, dealBreakers }) {
   const scores = (categoryScores || []).map((c) => c && typeof c.score === 'number' ? c.score : 0);
   const minScore = scores.length ? Math.min(...scores) : 0;
 
   if (dealBreakers && dealBreakers.length) return 'hold';
   if (aiRecommendation === 'hold') return 'hold';
-  if (minScore > 0 && minScore < THRESHOLDS.holdMinCategory) return 'hold';
-  if (weightedScore < THRESHOLDS.recommend.weighted) return 'hold';
+  if (minScore > 0 && minScore < THRESHOLDS.reviewMinCategory) return 'hold';
+  if (weightedScore < THRESHOLDS.recommend.weighted) return 'maybe';
   if (weightedScore >= THRESHOLDS.strongRecommend.weighted && minScore >= THRESHOLDS.strongRecommend.minCategory) return 'strong_callback';
   if (weightedScore >= THRESHOLDS.recommend.weighted && minScore >= THRESHOLDS.recommend.minCategory) return 'callback';
   return 'maybe';
+}
+
+// Walk the role minimums against the normalized category scores and report
+// any that fall below. Used to route the manager-facing verdict to
+// "needs_review" instead of "recommend" when a role-critical category is shy.
+function evaluateRoleMinimums(role, categoryScores) {
+  const mins = minimumsForRole(role);
+  const violations = [];
+  for (const [category, threshold] of Object.entries(mins)) {
+    const entry = (categoryScores || []).find((c) => c && c.category === category);
+    const score = entry && typeof entry.score === 'number' ? entry.score : 0;
+    if (score < threshold) {
+      violations.push({ category, score, threshold });
+    }
+  }
+  return violations;
 }
 
 // Short-answer floor — any answer under MIN_ANSWER_LENGTH (excluding Q20)
@@ -110,17 +134,57 @@ function capCategoriesForShortAnswers(categoryScores, answers) {
   return { capped, notes };
 }
 
-// Identifies the hard deal-breakers from KB §Non-negotiables that we can
-// detect deterministically. Returns an array of reasons (empty when clean).
-function detectDealBreakers(application) {
+// Identifies hard role-requirement gaps (deal-breakers). Returns an array of
+// reasons (empty when clean). These route the verdict to
+// "does_not_meet_role_requirements", not "needs_review".
+function detectDealBreakers(application, role) {
   const reasons = [];
   const positionLower = String(application.position || '').toLowerCase();
-  if (positionLower === 'bartender' && application.age21 === false) {
-    reasons.push('Applying for Bartender while under 21 (legal eligibility).');
+
+  // Legal eligibility for alcohol-service duties (Bartender only).
+  // alcoholEligibility is the new authoritative field; fall back to age21
+  // for applications submitted before the form change.
+  if (positionLower === 'bartender') {
+    const elig = application.alcoholEligibility;
+    if (elig === 'no') {
+      reasons.push('Applicant is not legally eligible to perform alcohol-service duties for this Bartender role.');
+    } else if (elig == null && application.age21 === false) {
+      reasons.push('Applying for Bartender while under 21 (legal eligibility, legacy).');
+    }
+    // "unsure" intentionally not a deal-breaker — routes to human review.
   }
-  // Availability deal-breakers (no Friday/Saturday) are best detected from the
-  // Q20 answer text; we ask the screener to flag and trust its `hold` verdict.
+
+  // Structured availability grid must cover the role's required shifts.
+  const missing = missingRequiredAvailability(role, application.availability);
+  for (const slot of missing) {
+    reasons.push(`Availability gap: ${slot} (required for ${role}).`);
+  }
+
   return reasons;
+}
+
+// Manager-facing verdict bucket. The internal recommendation, deal-breakers,
+// human-review flags, and role-minimum violations all feed into this single
+// decision the manager sees.
+function verdictBucketFromInternal({
+  internalRecommendation,
+  dealBreakers,
+  humanReviewRequired,
+  roleMinimumViolations,
+}) {
+  // Hard role-requirement gap → does_not_meet.
+  if (dealBreakers && dealBreakers.length) return 'does_not_meet_role_requirements';
+  // Anything triggering human review → needs_review.
+  if (humanReviewRequired) return 'needs_human_review';
+  // Role minimum violation → needs_review.
+  if (roleMinimumViolations && roleMinimumViolations.length) return 'needs_human_review';
+  // Clean recommend (strong_callback or callback) with no flags above.
+  if (internalRecommendation === 'strong_callback' || internalRecommendation === 'callback') {
+    return 'recommend_interview';
+  }
+  // Everything else (maybe, hold without role-requirement gap) lands in
+  // needs_review so a manager always decides.
+  return 'needs_human_review';
 }
 
 function buildUserPrompt({ application, questionnaire, roleWeights }) {
@@ -150,8 +214,27 @@ function buildUserPrompt({ application, questionnaire, roleWeights }) {
 
   // Application-level facts the screener should know up front.
   const contextLines = [];
-  if (application.position === 'Bartender' && application.age21 === false) {
-    contextLines.push('⚠ DEAL-BREAKER: Bartender applicant has not confirmed they are 21+. Force recommendation to "hold".');
+  // Bartender legal-eligibility — prefer the explicit alcoholEligibility
+  // answer; fall back to age21 for legacy applications.
+  if (application.position === 'Bartender') {
+    if (application.alcoholEligibility === 'no') {
+      contextLines.push('⚠ DEAL-BREAKER: Bartender applicant answered "No" to legal alcohol-service eligibility. Force recommendation to "hold".');
+    } else if (application.alcoholEligibility === 'unsure') {
+      contextLines.push('⚠ HUMAN REVIEW: Bartender applicant answered "Unsure" on legal alcohol-service eligibility. Flag for human review; do NOT recommend without manager confirmation.');
+    } else if (application.alcoholEligibility == null && application.age21 === false) {
+      contextLines.push('⚠ DEAL-BREAKER: Bartender applicant (legacy) is under 21. Force recommendation to "hold".');
+    }
+  }
+
+  // Structured-availability gap check — list any required slots the role needs
+  // that the applicant's grid does not cover. The screener should treat these
+  // as hard role-requirement gaps (route to "hold"); the code maps that to
+  // "does_not_meet_role_requirements" in the manager-facing verdict.
+  const missingAvail = missingRequiredAvailability(role, application.availability);
+  if (missingAvail.length) {
+    contextLines.push(`⚠ DEAL-BREAKER: Structured availability does not cover required ${role} shifts — missing: ${missingAvail.join('; ')}.`);
+  } else if ((requiredAvailabilityForRole(role) || []).length > 0) {
+    contextLines.push(`Availability check: structured grid covers all required ${role} shifts.`);
   }
 
   // Compute days-from-today server-side so the model never has to estimate
@@ -348,7 +431,9 @@ async function runAiEvaluation({ application, questionnaire }) {
   }
 
   // Normalize and re-weight category scores using OUR weights, regardless of
-  // what the AI claimed.
+  // what the AI claimed. We now also persist citation fields (supporting
+  // answer ids, strongest evidence quote, concern evidence, confidence,
+  // suggested follow-up question) so the manager can audit per-category.
   let normalizedCategoryScores = CATEGORIES.map((category) => {
     const fromAi = (parsed.categoryScores || []).find((c) => c && c.category === category) || {};
     const score = Number.isInteger(fromAi.score) ? Math.max(1, Math.min(5, fromAi.score)) : 0;
@@ -359,6 +444,19 @@ async function runAiEvaluation({ application, questionnaire }) {
       evidence: Array.isArray(fromAi.evidence) ? fromAi.evidence.slice(0, 8).map(String) : [],
       rationale: typeof fromAi.rationale === 'string' ? fromAi.rationale : '',
       concerns: Array.isArray(fromAi.concerns) ? fromAi.concerns.slice(0, 8).map(String) : [],
+      supportingAnswerIds: Array.isArray(fromAi.supportingAnswerIds)
+        ? fromAi.supportingAnswerIds.slice(0, 6).map((s) => String(s).slice(0, 16))
+        : [],
+      strongestEvidence: typeof fromAi.strongestEvidence === 'string'
+        ? fromAi.strongestEvidence.slice(0, 600)
+        : '',
+      concernEvidence: typeof fromAi.concernEvidence === 'string'
+        ? fromAi.concernEvidence.slice(0, 600)
+        : null,
+      perCategoryConfidence: ['high', 'medium', 'low'].includes(fromAi.confidence) ? fromAi.confidence : null,
+      followUpQuestion: typeof fromAi.followUpQuestion === 'string'
+        ? fromAi.followUpQuestion.slice(0, 400)
+        : '',
     };
   });
 
@@ -369,16 +467,21 @@ async function runAiEvaluation({ application, questionnaire }) {
 
   const weightedScore = recomputeWeightedScore(normalizedCategoryScores, role);
 
-  // Code-detected deal-breakers (hard).
-  const codeDealBreakers = detectDealBreakers(application);
+  // Code-detected deal-breakers (hard role-requirement gaps).
+  const codeDealBreakers = detectDealBreakers(application, role);
 
   // AI may surface deal-breakers in concerns (e.g. "cannot work Fridays").
   const concerns = Array.isArray(parsed.jobRelatedConcerns) ? parsed.jobRelatedConcerns.map(String) : [];
   const aiDealBreakers = concerns.filter((c) => /can(?:not|'t)\s+(work|meet|commit)|legal eligibility|underage|under 21|no friday|no saturday|cannot work (friday|saturday|weekends)/i.test(c));
   const dealBreakers = Array.from(new Set([...codeDealBreakers, ...aiDealBreakers]));
 
+  // Role-specific category minimums — don't ship a recommend if a role-critical
+  // category is shy of its floor. Routes to needs_review with a clear reason.
+  const roleMinimumViolations = evaluateRoleMinimums(role, normalizedCategoryScores);
+
   // Merge human-review reasons: AI flags + code keyword scan + cap notes +
-  // borderline-band rule.
+  // borderline-band rule + role-minimum violations + legal-eligibility
+  // "Unsure".
   const codeFlags = detectHumanReviewSignals(questionnaire.answers);
   const aiFlags = Array.isArray(parsed.humanReviewReasons) ? parsed.humanReviewReasons.map(String) : [];
   const reviewFlags = [...aiFlags, ...codeFlags, ...capResult.notes];
@@ -387,10 +490,17 @@ async function runAiEvaluation({ application, questionnaire }) {
     reviewFlags.push('A category scored below 2 — needs manager review before any decision.');
   }
   // Borderline band around the recommend threshold.
-  const distanceFromThreshold = Math.abs(weightedScore - THRESHOLDS.recommend.weighted);
   if (weightedScore >= THRESHOLDS.recommend.weighted - THRESHOLDS.reviewBand
       && weightedScore <= THRESHOLDS.recommend.weighted + THRESHOLDS.reviewBand) {
     reviewFlags.push(`Weighted score ${weightedScore.toFixed(2)} is within ±${THRESHOLDS.reviewBand} of the recommend threshold — borderline.`);
+  }
+  // Role-minimum violations.
+  for (const v of roleMinimumViolations) {
+    reviewFlags.push(`${CATEGORY_LABELS[v.category] || v.category} score ${v.score.toFixed(1)} is below the ${role} role minimum of ${v.threshold}.`);
+  }
+  // Legal-eligibility "unsure" — manager confirms.
+  if (String(application.position || '').toLowerCase() === 'bartender' && application.alcoholEligibility === 'unsure') {
+    reviewFlags.push('Bartender applicant answered "Unsure" on legal eligibility — manager should confirm before any interview offer.');
   }
   const humanReviewReasons = Array.from(new Set(reviewFlags));
   const humanReviewRequired = humanReviewReasons.length > 0 || parsed.humanReviewRequired === true;
@@ -402,11 +512,19 @@ async function runAiEvaluation({ application, questionnaire }) {
     dealBreakers,
   });
 
+  const verdictBucket = verdictBucketFromInternal({
+    internalRecommendation: recommendation,
+    dealBreakers,
+    humanReviewRequired,
+    roleMinimumViolations,
+  });
+
   const confidence = ['high', 'medium', 'low'].includes(parsed.confidence) ? parsed.confidence : 'medium';
 
   return {
     errorDetail: null,
     recommendation,
+    verdictBucket,
     weightedScore,
     confidence,
     humanReviewRequired,

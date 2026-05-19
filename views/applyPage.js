@@ -202,11 +202,21 @@ function generateApplyPage(location, opts = {}) {
               <label><input type="radio" name="age21" value="yes"${prev.age21 === 'yes' ? ' checked' : ''} required /> Yes</label>
               <label><input type="radio" name="age21" value="no"${prev.age21 === 'no' ? ' checked' : ''} /> No</label>
             </div>
-            <div class="apply-helper">Required for any role serving alcohol.</div>
           </div>
           <div class="apply-field">
             <label>Earliest start date</label>
             <input type="date" name="earliestStart" value="${escHTML(prev.earliestStart || '')}" />
+          </div>
+        </div>
+        <div class="apply-row" data-bartender-only>
+          <div class="apply-field" style="grid-column: 1 / -1;">
+            <span class="apply-label">Are you legally eligible to perform all alcohol-service duties required for this role at this location? <span data-bartender-required style="color:#f7c4c4;">*</span></span>
+            <div class="yesno-pair">
+              <label><input type="radio" name="alcoholEligibility" value="yes"${prev.alcoholEligibility === 'yes' ? ' checked' : ''} /> Yes</label>
+              <label><input type="radio" name="alcoholEligibility" value="no"${prev.alcoholEligibility === 'no' ? ' checked' : ''} /> No</label>
+              <label><input type="radio" name="alcoholEligibility" value="unsure"${prev.alcoholEligibility === 'unsure' ? ' checked' : ''} /> Unsure</label>
+            </div>
+            <div class="apply-helper">Required for Bartender. We use this in place of asking your age directly. "Unsure" routes to a manager for review and never penalizes you.</div>
           </div>
         </div>
       </div>

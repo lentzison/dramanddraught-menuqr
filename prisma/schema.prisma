@@ -345,6 +345,11 @@ model JobApplication {
   position        String   // "Bartender" | "Barback" | "Server" | "Host" | "Floor Manager" | "Other"
   positionOther   String?  // free text when position == "Other"
   age21           Boolean  @default(false)
+  // Bartender-only: "yes" / "no" / "unsure" — legal eligibility to perform
+  // alcohol-service duties for the role at the location. Replaces age21 as
+  // the deal-breaker signal (age21 stays for backwards-compat with older
+  // applications).
+  alcoholEligibility String?
   earliestStart   DateTime?
 
   // Availability stored as JSON: { mon: ["day","evening","late"], tue: [...], ... }

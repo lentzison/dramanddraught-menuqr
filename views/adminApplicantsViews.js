@@ -85,8 +85,9 @@ function applicantStyles() {
       .app-badge-withdrawn        { background:rgba(185,174,160,0.15); color:var(--text-muted); }
 
       .ai-rec-badge { display:inline-block; padding:4px 10px; border-radius:999px; font-size:0.7rem; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; margin-left:6px; }
-      .ai-rec-recommend       { background:rgba(98,210,143,0.22); color:#a4f4c2; }
-      .ai-rec-dont_recommend  { background:rgba(185,174,160,0.16); color:var(--text-muted); }
+      .ai-rec-recommend, .ai-rec-recommend_interview       { background:rgba(98,210,143,0.22); color:#a4f4c2; }
+      .ai-rec-dont_recommend, .ai-rec-needs_human_review   { background:rgba(242,166,90,0.18); color:var(--amber); }
+      .ai-rec-does_not_meet_role_requirements              { background:rgba(255,123,123,0.18); color:#ffb3b3; }
       .ai-rec-pending         { background:rgba(143,183,255,0.16); color:#a8c6ff; }
       .ai-rec-error           { background:rgba(255,123,123,0.18); color:#ffb3b3; }
       .ai-review-badge { display:inline-block; padding:4px 10px; border-radius:999px; font-size:0.7rem; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; margin-left:6px; background:rgba(242,166,90,0.18); color:var(--amber); }
@@ -438,6 +439,12 @@ function applicantStyles() {
       .ai-cat-detail ul { margin:0 0 6px; padding-left:18px; }
       .ai-cat-detail li { font-size:0.86rem; line-height:1.45; margin-bottom:3px; color:var(--text); }
       .ai-cat-detail .concerns li { color:#ffb3b3; }
+      .ai-cat-source { display: flex; align-items: center; gap: 8px; padding: 0 0 8px 0; font-size: 0.74rem; color: var(--text-muted); flex-wrap: wrap; }
+      .ai-cat-qid { display: inline-block; padding: 1px 7px; border: 1px solid var(--line); border-radius: 999px; background: rgba(255,255,255,0.04); color: var(--text-muted); font-family: 'SF Mono', Menlo, monospace; font-size: 0.7rem; letter-spacing: 0.03em; }
+      .ai-cat-conf { color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.07em; font-weight: 700; font-size: 0.7rem; }
+      .ai-cat-quote { margin: 4px 0 8px; padding: 8px 12px; border-left: 3px solid var(--gold-strong); background: rgba(255,255,255,0.025); border-radius: 0 6px 6px 0; color: var(--text); font-size: 0.86rem; line-height: 1.5; font-style: italic; }
+      .ai-cat-quote-concern { border-left-color: var(--amber); }
+      .ai-cat-followup { padding: 8px 12px; background: rgba(143,183,255,0.06); border-left: 3px solid var(--blue); border-radius: 0 6px 6px 0; color: var(--text); font-size: 0.86rem; line-height: 1.5; }
       details.ai-cat-toggle > summary { cursor:pointer; color: var(--gold-strong); font-size:0.78rem; padding:6px 0; list-style:none; }
       details.ai-cat-toggle > summary::-webkit-details-marker { display:none; }
       details.ai-cat-toggle > summary::before { content:'▸ '; }
@@ -513,6 +520,9 @@ function applicantStyles() {
       .al-chip.is-toggle.is-active { background: rgba(240,199,102,0.22); color: var(--gold-strong); border-color: var(--gold-strong); }
       .al-chip.is-toggle.is-active .count { background: rgba(240,199,102,0.18); color: var(--gold-strong); }
       .al-chip.is-danger.is-active { background: rgba(242,166,90,0.22); color: var(--amber); border-color: var(--amber); }
+      .al-chip.is-archive { color: var(--text-soft); opacity: 0.7; }
+      .al-chip.is-archive:hover { color: var(--text-muted); opacity: 1; }
+      .al-chip.is-archive.is-active { background: rgba(255,123,123,0.18); color: #ffb3b3; border-color: rgba(255,123,123,0.4); opacity: 1; }
 
       /* === Toolbar (search + sort + group + more filters) === */
       .al-toolbar {
@@ -606,14 +616,17 @@ function applicantStyles() {
         position: absolute; left: 0; top: 8px; bottom: 8px; width: 4px;
         background: var(--ribbon, var(--line)); border-radius: 4px;
       }
-      .al-card[data-ribbon="recommend"]      { --ribbon: #62d28f; }
-      .al-card[data-ribbon="review"]         { --ribbon: var(--amber); }
-      .al-card[data-ribbon="pending"]        { --ribbon: var(--blue); }
-      .al-card[data-ribbon="dont_recommend"] { --ribbon: var(--line); }
-      .al-card[data-ribbon="error"]          { --ribbon: var(--red); }
-      .al-card[data-ribbon="hired"]          { --ribbon: #62d28f; }
-      .al-card[data-ribbon="rejected"]       { --ribbon: var(--red); }
-      .al-card[data-ribbon="withdrawn"]      { --ribbon: var(--text-soft); }
+      .al-card[data-ribbon="recommend"],
+      .al-card[data-ribbon="recommend_interview"]   { --ribbon: #62d28f; }
+      .al-card[data-ribbon="review"],
+      .al-card[data-ribbon="needs_human_review"]    { --ribbon: var(--amber); }
+      .al-card[data-ribbon="pending"]               { --ribbon: var(--blue); }
+      .al-card[data-ribbon="dont_recommend"]        { --ribbon: var(--line); }
+      .al-card[data-ribbon="does_not_meet_role_requirements"] { --ribbon: var(--red); }
+      .al-card[data-ribbon="error"]                 { --ribbon: var(--red); }
+      .al-card[data-ribbon="hired"]                 { --ribbon: #62d28f; }
+      .al-card[data-ribbon="rejected"]              { --ribbon: var(--red); }
+      .al-card[data-ribbon="withdrawn"]             { --ribbon: var(--text-soft); }
       .al-card.is-focused { box-shadow: 0 0 0 2px var(--gold-strong) inset; border-color: var(--gold-strong); }
       .al-card.is-selected { border-color: var(--gold-strong); background: linear-gradient(180deg, rgba(240,199,102,0.05), rgba(240,199,102,0.02)), var(--surface); }
 
@@ -813,20 +826,41 @@ function aiRecBadge(application) {
     return '<span class="ai-rec-badge ai-rec-pending">Quiz in — evaluating</span>';
   }
   if (ev.errorDetail) return '<span class="ai-rec-badge ai-rec-error">Screening error</span>';
-  const bucket = verdictBucketFor(ev.recommendation);
-  const label = VERDICT_LABELS[bucket];
+  const bucket = verdictBucketForApplication(application) || verdictBucketFor(ev.recommendation);
+  const label = VERDICT_LABELS[bucket] || bucket;
   return `<span class="ai-rec-badge ai-rec-${escHTML(bucket)}">${escHTML(label)}</span>`;
 }
 
-// Underlying recommendations collapse to two manager-facing verdicts.
-// `recommend` covers strong_callback + callback; `dont_recommend` covers maybe + hold.
+// Three manager-facing verdicts. Internal model recommendations map to:
+//   strong_callback / callback  → recommend_interview (when no flags or gaps)
+//   maybe / hold (with human-review flag or borderline)  → needs_human_review
+//   maybe / hold (with hard role-requirement gap)  → does_not_meet_role_requirements
+//
+// The eval row may carry the precomputed `verdictBucket` from a v4 evaluation;
+// if so, trust it. Older rows fall back to the legacy bucket derivation so the
+// detail page still renders without re-running the screener.
 function verdictBucketFor(rec) {
   return rec === 'strong_callback' || rec === 'callback' ? 'recommend' : 'dont_recommend';
 }
 
+function verdictBucketForApplication(application) {
+  const ev = application && application.aiEvaluation;
+  if (!ev) return null;
+  // Trust the v4 precomputed bucket if it's present.
+  if (ev.verdictBucket && VERDICT_LABELS[ev.verdictBucket]) return ev.verdictBucket;
+  // Legacy fallback: map the old two-bucket result to the new vocabulary.
+  if (ev.humanReviewRequired) return 'needs_human_review';
+  if (ev.recommendation === 'strong_callback' || ev.recommendation === 'callback') return 'recommend_interview';
+  return 'needs_human_review';
+}
+
 const VERDICT_LABELS = {
-  recommend: 'Recommend for interview',
-  dont_recommend: 'Don’t recommend',
+  recommend_interview:           'Recommend interview',
+  needs_human_review:            'Needs human review',
+  does_not_meet_role_requirements: 'Does not meet role requirements',
+  // Legacy two-state values stay defined so old evaluations still render.
+  recommend:      'Recommend interview',
+  dont_recommend: 'Needs human review',
 };
 
 const VERDICT_HEADLINES = {
@@ -882,11 +916,11 @@ function aiEvaluationPanel(application) {
   const categoryScores = Array.isArray(ev.categoryScores) ? ev.categoryScores : [];
 
   // Verdict card — the one line a GM needs to read
-  const bucket = verdictBucketFor(rec);
+  const bucket = verdictBucketForApplication(application) || verdictBucketFor(rec);
   const verdict = `
     <div class="ai-verdict is-${escHTML(bucket)}">
       <div>
-        <span class="ai-verdict-pill is-${escHTML(bucket)}">${escHTML(VERDICT_LABELS[bucket])}</span>
+        <span class="ai-verdict-pill is-${escHTML(bucket)}">${escHTML(VERDICT_LABELS[bucket] || bucket)}</span>
         <div class="ai-verdict-confidence">Confidence: ${escHTML(confidenceLabel)}</div>
       </div>
       <div class="ai-verdict-score">${escHTML(scoreLabel)}<small>Score / 5</small></div>
@@ -920,13 +954,23 @@ function aiEvaluationPanel(application) {
     const meterPct = Math.max(0, Math.min(100, score * 20));
     const ev2 = Array.isArray(cat.evidence) ? cat.evidence : [];
     const con = Array.isArray(cat.concerns) ? cat.concerns : [];
-    const hasDetail = (cat.rationale && cat.rationale.length) || ev2.length || con.length;
+    // v4 evidence fields (may be absent on older evaluations).
+    const supportingIds = Array.isArray(cat.supportingAnswerIds) ? cat.supportingAnswerIds : [];
+    const strongest = cat.strongestEvidence ? String(cat.strongestEvidence) : '';
+    const concernEv = cat.concernEvidence ? String(cat.concernEvidence) : '';
+    const perConf = cat.perCategoryConfidence ? String(cat.perCategoryConfidence) : '';
+    const followUp = cat.followUpQuestion ? String(cat.followUpQuestion) : '';
+    const hasDetail = (cat.rationale && cat.rationale.length) || ev2.length || con.length || strongest || concernEv || followUp;
+    const sourceLine = supportingIds.length
+      ? `<div class="ai-cat-source">Source: ${supportingIds.map((s) => `<span class="ai-cat-qid">${escHTML(s)}</span>`).join(' ')}${perConf ? ` &middot; <span class="ai-cat-conf">${escHTML(perConf)} confidence</span>` : ''}</div>`
+      : '';
     const row = `
       <div class="ai-cat-row">
         <div class="label">${escHTML(formatCategoryLabel(cat.category))}</div>
         <div class="meter"><span style="width:${meterPct}%"></span></div>
         <div class="num">${score || '—'}<small>/5</small></div>
-      </div>`;
+      </div>
+      ${sourceLine}`;
     if (!hasDetail) return row;
     return `
       ${row}
@@ -934,8 +978,11 @@ function aiEvaluationPanel(application) {
         <summary>Why this score &middot; evidence</summary>
         <div class="ai-cat-detail">
           ${cat.rationale ? `<div class="why">${escHTML(cat.rationale)}</div>` : ''}
-          ${ev2.length ? `<h4>Evidence</h4><ul>${ev2.map((e) => `<li>${escHTML(e)}</li>`).join('')}</ul>` : ''}
+          ${strongest ? `<h4>Strongest evidence</h4><blockquote class="ai-cat-quote">${escHTML(strongest)}</blockquote>` : ''}
+          ${ev2.length ? `<h4>Evidence excerpts</h4><ul>${ev2.map((e) => `<li>${escHTML(e)}</li>`).join('')}</ul>` : ''}
+          ${concernEv ? `<h4>Concern evidence</h4><blockquote class="ai-cat-quote ai-cat-quote-concern">${escHTML(concernEv)}</blockquote>` : ''}
           ${con.length ? `<h4>Concerns</h4><ul class="concerns">${con.map((c) => `<li>${escHTML(c)}</li>`).join('')}</ul>` : ''}
+          ${followUp ? `<h4>Suggested interview follow-up</h4><div class="ai-cat-followup">${escHTML(followUp)}</div>` : ''}
         </div>
       </details>`;
   }).join('');
@@ -1001,7 +1048,10 @@ function ribbonKey(a) {
   const ev = a.aiEvaluation;
   if (!ev) return 'pending';
   if (ev.errorDetail) return 'error';
-  if (ev.humanReviewRequired) return 'review';
+  // v4: trust the precomputed verdictBucket; fall back for legacy rows.
+  const bucket = verdictBucketForApplication(a);
+  if (bucket) return bucket;
+  if (ev.humanReviewRequired) return 'needs_human_review';
   return verdictBucketFor(ev.recommendation);
 }
 
@@ -1257,19 +1307,28 @@ function applicantsList({ applications, locations, filters, counts, user, flashM
     : '';
 
   // Status chip rail. The "All" chip clears status; others toggle into the URL.
+  // "All" by default means active pipeline (excludes rejected + withdrawn).
+  // Click the Rejected / Withdrawn chips at the end to surface archived rows.
   const totalApplicants = Object.values(counts).reduce((a, b) => a + b, 0);
+  const activeApplicants = totalApplicants - (counts.rejected || 0) - (counts.withdrawn || 0);
   const STATUS_CHIPS = [
-    { key: '',                    label: 'All',         count: totalApplicants },
+    { key: '',                    label: 'Active',      count: activeApplicants },
     { key: 'new',                 label: 'New',         count: counts.new },
     { key: 'reviewing',           label: 'Reviewing',   count: counts.reviewing },
     { key: 'interview_scheduled', label: 'Interview',   count: counts.interview_scheduled },
     { key: 'offer_extended',      label: 'Offer',       count: counts.offer_extended || 0 },
     { key: 'hired',               label: 'Hired',       count: counts.hired },
+    { key: 'rejected',            label: 'Rejected',    count: counts.rejected || 0, muted: true },
+    { key: 'withdrawn',           label: 'Withdrawn',   count: counts.withdrawn || 0, muted: true },
   ];
   const statusChips = STATUS_CHIPS.map(c => {
     const active = f.status === c.key;
     const href = buildListUrl(f, { status: c.key });
-    return `<a class="al-chip ${active ? 'is-active' : ''}" href="${escAttr(href)}">${escHTML(c.label)}<span class="count">${c.count}</span></a>`;
+    // Don't render an archived chip if there are no rows in it — avoids
+    // surfacing a 0-count Rejected pill on a fresh install.
+    if (c.muted && !active && (c.count || 0) === 0) return '';
+    const cls = ['al-chip', active ? 'is-active' : '', c.muted ? 'is-archive' : ''].filter(Boolean).join(' ');
+    return `<a class="${cls}" href="${escAttr(href)}">${escHTML(c.label)}<span class="count">${c.count}</span></a>`;
   }).join('');
 
   // Quick toggle chips

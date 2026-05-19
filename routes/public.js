@@ -1320,6 +1320,10 @@ async function handleApply(req, res, prisma, locationSlug) {
   const positionOther = position === 'Other' ? trimField(body.positionOther, 100) : null;
   const age21Raw = trimField(body.age21, 10).toLowerCase();
   const age21 = age21Raw === 'yes';
+  // Legal eligibility for alcohol-service duties: yes / no / unsure. Required
+  // for Bartender; optional for non-alcohol-handling roles. Stored verbatim.
+  const alcEligRaw = trimField(body.alcoholEligibility, 10).toLowerCase();
+  const alcoholEligibility = ['yes', 'no', 'unsure'].includes(alcEligRaw) ? alcEligRaw : null;
   const earliestStartRaw = trimField(body.earliestStart, 20);
   const yearsRaw = trimField(body.yearsExperience, 10);
   const yearsExperience = /^\d{1,2}$/.test(yearsRaw) ? Math.min(parseInt(yearsRaw, 10), 60) : null;
@@ -1337,6 +1341,9 @@ async function handleApply(req, res, prisma, locationSlug) {
   if (!position || !APPLY_POSITIONS_SET.has(position)) errors.push('Please select a position.');
   if (position === 'Other' && !positionOther) errors.push('Please tell us which "Other" role.');
   if (!age21Raw) errors.push('Please tell us if you are 21 or older.');
+  if (position === 'Bartender' && !alcoholEligibility) {
+    errors.push('Please answer whether you are legally eligible to perform alcohol-service duties.');
+  }
 
   let earliestStart = null;
   if (earliestStartRaw) {
@@ -1352,7 +1359,7 @@ async function handleApply(req, res, prisma, locationSlug) {
       errorMessage: errors.join(' '),
       prev: {
         name, email, phone, position, positionOther,
-        age21: age21Raw, earliestStart: earliestStartRaw,
+        age21: age21Raw, alcoholEligibility: alcEligRaw, earliestStart: earliestStartRaw,
         yearsExperience: yearsRaw, priorEmployers, certifications,
         spiritKnowledge, whyDD, referredBy, availability,
       },
@@ -1378,6 +1385,7 @@ async function handleApply(req, res, prisma, locationSlug) {
         position,
         positionOther: positionOther || null,
         age21,
+        alcoholEligibility,
         earliestStart,
         availability: Object.keys(availability).length ? availability : null,
         yearsExperience,

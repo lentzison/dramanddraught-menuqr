@@ -843,6 +843,7 @@ async function hasFeaturedFlights(locationSlug) {
 }
 
 module.exports = {
+  getPool,
   findUserByEmail,
   getUserRoles,
   hasAccess,

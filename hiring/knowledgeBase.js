@@ -7,10 +7,10 @@
 //   QUESTIONNAIRE_VERSION    — question wording, ordering, or scoring anchors
 //   RUBRIC_VERSION           — role weights, thresholds, or rubric definitions
 
-const KNOWLEDGE_BASE_VERSION = 'kb-v3-2026-05-14';
-const PROMPT_VERSION = 'prompt-v2-2026-05-14';
+const KNOWLEDGE_BASE_VERSION = 'kb-v4-2026-05-19';
+const PROMPT_VERSION = 'prompt-v3-2026-05-19';
 const QUESTIONNAIRE_VERSION = 'questionnaire-v2-2026-05-14';
-const RUBRIC_VERSION = 'rubric-v3-2026-05-14';
+const RUBRIC_VERSION = 'rubric-v4-2026-05-19';
 
 const ROLES = ['bartender', 'barback', 'server', 'door', 'lead_shift_lead', 'other'];
 
@@ -342,7 +342,11 @@ const QUESTIONS = [
 
 const APPLICANT_NOTICE = `As part of our hiring process, Dram & Draught asks applicants to complete a short questionnaire about hospitality, teamwork, communication, learning, availability, and job-related situations.
 
-Please do not include medical information, family status, or other personal information unrelated to the job. If you need an accommodation or an alternative way to complete this questionnaire, please contact us.`;
+A note on availability: we ask that the availability you provide here stays consistent through your first 90 days of employment. Availability is a key part of how we make hiring decisions. If it changes before, during, or even after that period, we will review whether the updated availability still meets the needs of the business.
+
+Please keep answers focused on job-related experience and behavior. Do not include medical information, age, religious or family details, childcare situation, disability status, national origin, or other protected personal information — it will not be used in scoring and we may have to redact it.
+
+If you need an accommodation or an alternative way to complete this questionnaire, please contact us at hiring@dramanddraught.com. Asking for an accommodation will not be used against you in scoring.`;
 
 // Knowledge base text passed to the screener. Keep stable bytes for prompt
 // caching — render order matters; everything dynamic goes in the user prompt.
@@ -389,13 +393,14 @@ The following force a "don't_recommend" recommendation regardless of category sc
 3. Stated availability does not cover the role's required shifts (nights, weekends, late shifts).
 
 The following flag the application for human review (do not auto-decide):
-1. Earliest start date more than 60 days out.
+1. Earliest start date more than 60 days out. **Use the precomputed "days from today" value injected into the user prompt — do not compute calendar math yourself. If the user prompt explicitly says the start date is within the 60-day window, do not flag.**
 2. Q20 answer is ambiguous ("depends", "flexible" with no specifics).
-3. Two or more answers contradict each other.
+3. Two or more answers contradict each other (especially around availability, role interest, willingness to follow standards, or escalation judgement).
 4. Applicant mentions a current or former employee by name.
 5. Applicant discloses protected or sensitive information (race, religion, medical, family, accommodation needs, etc.). Ignore that information for scoring; flag for review.
 6. Any single category scores below 2.0.
 7. Final weighted score lands within ±0.15 of the recommend threshold (borderline).
+8. Most of the answers mapped to a category read as polished but generic / template-like (see "Generic answer cap" below). This is a follow-up trigger, not a penalty.
 
 ## Scoring rubric (1–5 per category)
 - 5: Strong, specific, job-related evidence. Names a real example or behavior; concrete; would notice details on shift.
@@ -408,6 +413,31 @@ The following flag the application for human review (do not auto-decide):
 
 ## Short-answer floor
 Any answer under 15 characters (excluding Q20) cannot serve as positive evidence for a category score above 2. If a category's evidence is composed primarily of such short answers, score that category at 2 or below.
+
+## Generic answer cap
+If an answer uses only generic intent language without a specific action, tradeoff, example, or observable behavior, it cannot support a category score above 3. Length alone is not specificity — a long polished answer with no concrete behavior is still capped at 3.
+
+Examples of generic-only answers (cap at 3 for the supporting category):
+- "I would treat the guest with respect and professionalism."
+- "I am a team player."
+- "I would help however I can."
+- "I stay positive under pressure."
+- "I make sure everyone has a great time."
+
+A concise answer can still support a higher score if it contains concrete, job-relevant behavior (e.g. "I would offer a non-alcoholic alternative and quietly tell the floor lead").
+
+## Evidence caps
+- **No specific past example anywhere in the category**: if every mapped answer for a category is purely hypothetical ("I would…", "I always…", "I try to…") with no real past situation cited, cap that category at 3.5.
+- **Mostly generic**: if a majority of the mapped answers for a category land in the generic-cap pattern above, cap that category at 3.0.
+- **Contradiction**: if answers conflict with each other on availability, role interest, willingness to follow standards, or escalation judgment, do not pick a side — flag for human review and cap the affected categories at 3.0 until reviewed.
+
+## AI-likeness / template feel
+If an application reads as templated, polished-but-vague, or AI-assisted across multiple answers, **do NOT score it down for that reason on its own**. Some strong candidates use writing help; some non-native English speakers, anxious applicants, or younger applicants write in a stiff register. Score on the evidence (or lack of it), not on vibe.
+
+When you notice a templated / low-specificity pattern across most of a category's answers:
+1. Apply the Generic answer cap and Evidence caps above based on actual evidence, not on tone.
+2. Add a human-review reason "highly generic or template-like" with the suggested action "ask behavioral follow-up in interview, do not penalize directly".
+3. Include at least one suggested interview question that pushes the candidate to describe a specific past situation in detail.
 
 ## Strong vs weak evidence
 Strong answers usually include: a specific example, ownership language, calm under pressure, guest empathy, team support, clear communication, willingness to learn, respect for standards, awareness of details.

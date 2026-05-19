@@ -41,6 +41,18 @@ function pageShell(location, title, bodyHtml) {
         .apply-title { font-family: var(--brand-serif, 'Cormorant Garamond', serif); font-size: 1.9rem; line-height: 1.1; margin: 0 0 4px; color: #f5f1e6; }
         .apply-sub { color: #a8acb3; font-size: 0.9rem; margin: 0 0 22px; }
         .apply-card { background: rgba(20,21,24,0.85); border: 1px solid rgba(212,175,55,0.18); border-radius: 14px; padding: 22px 20px; margin-bottom: 18px; }
+        .apply-notice { background: rgba(20,21,24,0.6); border-left: 3px solid var(--gold); border-color: rgba(212,175,55,0.35); }
+        .apply-commit-notice {
+          margin-top: 14px;
+          padding: 12px 14px;
+          background: rgba(212,175,55,0.08);
+          border: 1px solid rgba(212,175,55,0.3);
+          border-radius: 10px;
+          color: #e8e2d2;
+          font-size: 0.88rem;
+          line-height: 1.55;
+        }
+        .apply-commit-notice strong { color: var(--gold); }
         .apply-section-title { font-family: var(--brand-serif, 'Cormorant Garamond', serif); font-size: 1.2rem; color: var(--gold); margin: 0 0 14px; letter-spacing: 0.02em; }
         .apply-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 12px; }
         @media (max-width: 560px) { .apply-row { grid-template-columns: 1fr; } }
@@ -126,6 +138,21 @@ function generateApplyPage(location, opts = {}) {
     <h1 class="apply-title">Join the ${escHTML(location.name)} team</h1>
     <p class="apply-sub">Tell us about yourself. We read every application.</p>
 
+    <div class="apply-card apply-notice">
+      <div class="apply-section-title" style="margin-bottom: 8px;">Before you start</div>
+      <p style="color: #d6d2c5; line-height: 1.55; margin: 0 0 10px;">
+        Keep answers focused on your work experience and behavior. Please <strong>don't include</strong>
+        medical info, age beyond what we ask for, religion, family or childcare situation, disability
+        status, or any other protected personal information. It won't be used in scoring and we may need
+        to redact it.
+      </p>
+      <p style="color: #d6d2c5; line-height: 1.55; margin: 0;">
+        Need an accommodation or an alternate way to complete this application? Email
+        <a href="mailto:hiring@dramanddraught.com" style="color: var(--gold); text-decoration: underline;">hiring@dramanddraught.com</a>.
+        Requesting accommodation won't be held against you.
+      </p>
+    </div>
+
     ${errorMessage ? `<div class="apply-error">${escHTML(errorMessage)}</div>` : ''}
 
     <form method="POST" action="/${escHTML(location.slug)}/apply" novalidate id="apply-form">
@@ -193,6 +220,12 @@ function generateApplyPage(location, opts = {}) {
           <span class="avail-head">Evening</span>
           <span class="avail-head">Late</span>
           ${availabilityRows}
+        </div>
+        <div class="apply-commit-notice">
+          <strong>Heads up:</strong> we ask that the availability you give here stays consistent through
+          your first <strong>90 days</strong> of employment. Availability is a key part of how we make
+          hiring decisions. If it changes before, during, or after that window, we'll review whether the
+          updated availability still meets the needs of the business.
         </div>
       </div>
 

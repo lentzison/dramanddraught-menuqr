@@ -153,24 +153,43 @@ function buildUserPrompt({ application, questionnaire, roleWeights }) {
   if (application.position === 'Bartender' && application.age21 === false) {
     contextLines.push('⚠ DEAL-BREAKER: Bartender applicant has not confirmed they are 21+. Force recommendation to "hold".');
   }
+
+  // Compute days-from-today server-side so the model never has to estimate
+  // calendar math (it was hallucinating "more than 60 days out" for dates
+  // only days away — see https://github.com/dramanddraught/menuqr issue).
+  // Use Eastern wall-clock so the boundary matches how we display dates.
+  const todayEastern = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  todayEastern.setHours(0, 0, 0, 0);
+  let earliestStartDaysOut = null;
   if (application.earliestStart) {
     const start = new Date(application.earliestStart);
-    const daysOut = Math.round((start.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-    if (Number.isFinite(daysOut) && daysOut > 60) {
-      contextLines.push(`⚠ HUMAN REVIEW: earliest start is ${daysOut} days out (>60 days). Flag for human review.`);
+    start.setHours(0, 0, 0, 0);
+    const diffMs = start.getTime() - todayEastern.getTime();
+    earliestStartDaysOut = Math.round(diffMs / (1000 * 60 * 60 * 24));
+    if (Number.isFinite(earliestStartDaysOut)) {
+      if (earliestStartDaysOut > 60) {
+        contextLines.push(`⚠ HUMAN REVIEW: earliest start is ${earliestStartDaysOut} days from today (>60 days). Flag for human review.`);
+      } else if (earliestStartDaysOut < 0) {
+        contextLines.push(`Earliest start is ${Math.abs(earliestStartDaysOut)} days in the past. Use the application's createdAt as the effective start window; do NOT flag based on start date.`);
+      } else {
+        contextLines.push(`Earliest start is ${earliestStartDaysOut} day${earliestStartDaysOut === 1 ? '' : 's'} from today (within the 60-day window). Do NOT flag this for human review based on start date.`);
+      }
     }
   }
   const contextBlock = contextLines.length
-    ? `\nApplication-level flags (use these directly):\n${contextLines.map((l) => `- ${l}`).join('\n')}\n`
+    ? `\nApplication-level flags (computed server-side — use these directly, do NOT compute calendar math yourself):\n${contextLines.map((l) => `- ${l}`).join('\n')}\n`
     : '';
+
+  const todayLine = todayEastern.toISOString().slice(0, 10);
 
   return `Evaluate this applicant for Dram & Draught.
 
 Application details:
+- Today (Eastern): ${todayLine}
 - Applicant role: ${application.position || '(unspecified)'}${application.positionOther ? ` — "${application.positionOther}"` : ''}
 - Normalized role key: ${role}
 - 21+ confirmed: ${application.age21 === true ? 'yes' : application.age21 === false ? 'NO' : 'unknown'}
-- Earliest start: ${application.earliestStart ? new Date(application.earliestStart).toISOString().slice(0, 10) : '(not provided)'}
+- Earliest start: ${application.earliestStart ? `${new Date(application.earliestStart).toISOString().slice(0, 10)}${earliestStartDaysOut != null ? ` (${earliestStartDaysOut} day${earliestStartDaysOut === 1 ? '' : 's'} from today)` : ''}` : '(not provided)'}
 - Availability grid: ${availabilityText}
 - Q20 self-reported availability is included below in the answers.
 ${contextBlock}

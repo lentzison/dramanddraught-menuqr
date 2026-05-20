@@ -227,7 +227,8 @@ function buildUserPrompt({ application, questionnaire, roleWeights }) {
       : '';
     const notes = q.notes ? `\n  Note: ${q.notes}` : '';
     const signals = (q.scoringCategories || []).length ? q.scoringCategories.join(', ') : 'not scored';
-    return `Q${q.order} (${q.id}) [signals: ${signals}]: ${q.text}${anchors}${notes}\nA: ${text}${lengthFlag}`;
+    const typeTag = q.questionType ? ` [type: ${q.questionType}]` : '';
+    return `Q${q.order} (${q.id})${typeTag} [signals: ${signals}]: ${q.text}${anchors}${notes}\nA: ${text}${lengthFlag}`;
   }).join('\n\n');
 
   const weightLines = CATEGORIES
@@ -287,6 +288,20 @@ function buildUserPrompt({ application, questionnaire, roleWeights }) {
 
   const todayLine = todayEastern.toISOString().slice(0, 10);
 
+  // Adjacent-experience signals — feed transferable hospitality background
+  // (priorEmployers, years of experience, certifications) into the prompt so
+  // the model can credit shift-lead / cafe-manager / restaurant-server
+  // backgrounds per the KB's Adjacent hospitality leadership section.
+  const priorEmployersText = application.priorEmployers
+    ? String(application.priorEmployers).slice(0, 4000)
+    : '(not provided)';
+  const certsText = application.certifications
+    ? String(application.certifications).slice(0, 500)
+    : '(none provided)';
+  const yearsText = Number.isFinite(application.yearsExperience)
+    ? `${application.yearsExperience} year${application.yearsExperience === 1 ? '' : 's'}`
+    : '(not provided)';
+
   return `Evaluate this applicant for Dram & Draught.
 
 Application details:
@@ -296,7 +311,12 @@ Application details:
 - 21+ confirmed: ${application.age21 === true ? 'yes' : application.age21 === false ? 'NO' : 'unknown'}
 - Earliest start: ${application.earliestStart ? `${new Date(application.earliestStart).toISOString().slice(0, 10)}${earliestStartDaysOut != null ? ` (${earliestStartDaysOut} day${earliestStartDaysOut === 1 ? '' : 's'} from today)` : ''}` : '(not provided)'}
 - Availability grid: ${availabilityText}
-- Q20 self-reported availability is included below in the answers.
+- Q10 self-reported availability is included below in the answers.
+
+Background (read for adjacent hospitality / leadership signal — see KB §Adjacent hospitality):
+- Years of bar/restaurant experience: ${yearsText}
+- Prior employers: ${priorEmployersText}
+- Certifications: ${certsText}
 ${contextBlock}
 Role-specific category weights (sum to 100):
 ${weightLines}
@@ -389,6 +409,7 @@ async function runAiEvaluation({ application, questionnaire }) {
       humanReviewRequired: true,
       humanReviewReasons: ['AI evaluation could not run (configuration missing). Manager review required.'],
       candidateSummary: '',
+      positiveSignalSummary: '',
       overallRationale: 'AI evaluation skipped — ANTHROPIC_API_KEY is not set on the server.',
       jobRelatedConcerns: [],
       suggestedInterviewQuestions: [],
@@ -440,6 +461,7 @@ async function runAiEvaluation({ application, questionnaire }) {
       humanReviewRequired: true,
       humanReviewReasons: ['AI evaluation did not return valid JSON. Manager review required.'],
       candidateSummary: '',
+      positiveSignalSummary: '',
       overallRationale: 'AI evaluation failed to produce a structured response.',
       jobRelatedConcerns: [],
       suggestedInterviewQuestions: [],
@@ -530,7 +552,25 @@ async function runAiEvaluation({ application, questionnaire }) {
     reviewFlags.push('Bartender applicant answered "Unsure" on legal eligibility — manager should confirm before any interview offer.');
   }
   const humanReviewReasons = Array.from(new Set(reviewFlags));
-  const humanReviewRequired = humanReviewReasons.length > 0 || parsed.humanReviewRequired === true;
+
+  // Some review reasons are follow-up-only — they should be surfaced to the
+  // manager but should NOT block the Recommend Interview verdict on their
+  // own. "Polished tone" / "template-like" wording is the canonical case:
+  // some strong candidates write that way (writing help, ESL, etc.), so the
+  // KB tells the model to put those in suggestedInterviewQuestions, but if
+  // the model still adds them to humanReviewReasons we filter here so the
+  // verdict isn't blocked by tone alone.
+  const followUpOnlyReasonPatterns = [
+    /polished/i,
+    /template[- ]?like/i,
+    /generic answer pattern/i,
+    /highly generic/i,
+    /ai[- ]?(assisted|generated|like)/i,
+    /\bai\b.{0,20}\b(written|sound|tone)/i,
+  ];
+  const isFollowUpOnly = (reason) => followUpOnlyReasonPatterns.some((p) => p.test(reason));
+  const blockingReviewReasons = humanReviewReasons.filter((r) => !isFollowUpOnly(r));
+  const humanReviewRequired = blockingReviewReasons.length > 0;
 
   const recommendation = determineRecommendation({
     weightedScore,
@@ -558,6 +598,7 @@ async function runAiEvaluation({ application, questionnaire }) {
     humanReviewReasons,
     candidateSummary: String(parsed.candidateSummary || '').slice(0, 4000),
     overallRationale: String(parsed.overallRationale || '').slice(0, 4000),
+    positiveSignalSummary: String(parsed.positiveSignalSummary || '').slice(0, 4000),
     jobRelatedConcerns: Array.from(new Set([...concerns, ...codeDealBreakers])),
     suggestedInterviewQuestions: Array.isArray(parsed.suggestedInterviewQuestions)
       ? parsed.suggestedInterviewQuestions.slice(0, 10).map(String)

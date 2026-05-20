@@ -7,10 +7,10 @@
 //   QUESTIONNAIRE_VERSION    — question wording, ordering, or scoring anchors
 //   RUBRIC_VERSION           — role weights, thresholds, or rubric definitions
 
-const KNOWLEDGE_BASE_VERSION = 'kb-v5-2026-05-19';
-const PROMPT_VERSION = 'prompt-v4-2026-05-19';
+const KNOWLEDGE_BASE_VERSION = 'kb-v6-2026-05-20';
+const PROMPT_VERSION = 'prompt-v5-2026-05-20';
 const QUESTIONNAIRE_VERSION = 'questionnaire-v3-2026-05-19';
-const RUBRIC_VERSION = 'rubric-v5-2026-05-19';
+const RUBRIC_VERSION = 'rubric-v6-2026-05-20';
 
 const ROLES = ['bartender', 'barback', 'server', 'door', 'lead_shift_lead', 'other'];
 
@@ -245,6 +245,7 @@ const QUESTIONS = [
     id: 'q1', order: 1,
     text: 'What role are you applying for, and what makes you a fit for that role?',
     primarySignal: 'Role fit, self-awareness, and motivation',
+    questionType: 'fit',
     scoringCategories: ['keep_moving_forward', 'own_guest_experience'],
     scoringAnchors: {
       5: 'Specific reason tied to the actual work of the role — names what they do well that matches what THIS role needs.',
@@ -257,6 +258,7 @@ const QUESTIONS = [
     id: 'q2', order: 2,
     text: 'Tell us about ONE specific guest you remember making feel welcome. What did you notice about them, and what did you do?',
     primarySignal: 'Hospitality mindset and a real example',
+    questionType: 'past_example',
     scoringCategories: ['own_guest_experience'],
     scoringAnchors: {
       5: 'Concrete story with a person, a cue they noticed, and a specific action they took. Reads as a real memory, not a script.',
@@ -268,6 +270,7 @@ const QUESTIONS = [
     id: 'q3', order: 3,
     text: 'A guest is unsure what to order. Walk us through how you help them.',
     primarySignal: 'Product hospitality without pretension',
+    questionType: 'scenario',
     scoringCategories: ['own_guest_experience', 'speak_up'],
     scoringAnchors: {
       5: 'Asks guiding questions about flavor / occasion / what they normally like before recommending; mentions specific products or styles; non-pretentious.',
@@ -279,6 +282,7 @@ const QUESTIONS = [
     id: 'q4', order: 4,
     text: 'Tell us about a real mistake you made at work — something a guest or teammate noticed. What happened, and what did you do next?',
     primarySignal: 'Accountability and learning from real failure',
+    questionType: 'past_example',
     scoringCategories: ['be_reliable', 'keep_moving_forward'],
     scoringAnchors: {
       5: 'Owns a specific mistake, names what they did to fix it in the moment, and what they changed afterward.',
@@ -291,6 +295,7 @@ const QUESTIONS = [
     id: 'q5', order: 5,
     text: 'Tell us about a time you helped a teammate when it was not technically your job.',
     primarySignal: 'Team-first behavior and ownership',
+    questionType: 'past_example',
     scoringCategories: ['support_each_other', 'be_reliable'],
     scoringAnchors: {
       5: 'Concrete example, no resentment, helped because the team or guest needed it.',
@@ -302,6 +307,7 @@ const QUESTIONS = [
     id: 'q6', order: 6,
     text: 'A shift is slammed and someone calls out. What do you prioritize first?',
     primarySignal: 'Composure, judgment, and teamwork under pressure',
+    questionType: 'scenario',
     scoringCategories: ['keep_moving_forward', 'support_each_other', 'own_guest_experience'],
     scoringAnchors: {
       5: 'Names prioritization, communication, staying composed, taking care of guests, supporting the team — at least three of those.',
@@ -313,6 +319,7 @@ const QUESTIONS = [
     id: 'q7', order: 7,
     text: 'A manager gives feedback you genuinely disagree with. What do you say in the moment, and what would you do afterward?',
     primarySignal: 'Coachability, maturity, and direct communication',
+    questionType: 'scenario',
     scoringCategories: ['speak_up', 'keep_moving_forward'],
     scoringAnchors: {
       5: 'Listens first; asks a clarifying question or follows up privately; applies feedback even when they disagree. Bonus for a real example.',
@@ -324,6 +331,7 @@ const QUESTIONS = [
     id: 'q8', order: 8,
     text: 'A teammate is cutting a corner on cleanliness, consistency, or service. What do you do?',
     primarySignal: 'Direct communication, standards, and team care',
+    questionType: 'scenario',
     scoringCategories: ['support_each_other', 'speak_up'],
     scoringAnchors: {
       5: 'Talks to the teammate directly and respectfully; thinks about guest impact; escalates only if it persists.',
@@ -335,6 +343,7 @@ const QUESTIONS = [
     id: 'q9', order: 9,
     text: 'Tell us about a menu, product, skill, or system you had to learn from scratch. How did you go about learning it?',
     primarySignal: 'Curiosity, ownership of learning',
+    questionType: 'past_example',
     scoringCategories: ['keep_moving_forward'],
     scoringAnchors: {
       5: 'Concrete example with specific steps they took (studied a menu, asked a senior teammate, practiced at home, etc.) and a sense of how they retained it.',
@@ -346,6 +355,7 @@ const QUESTIONS = [
     id: 'q10', order: 10,
     text: 'What availability can you consistently commit to? Please include holidays, late closes, and any recurring conflicts we should know about — job-related only.',
     primarySignal: 'Availability fit for the role',
+    questionType: 'availability',
     scoringCategories: [], // exempt from scoring — same as legacy q20
     scoringAnchors: {
       5: 'Clear, specific, covers holidays, closes, and any conflicts. Treat as the source of truth and cross-reference with the structured availability grid on the application.',
@@ -360,6 +370,7 @@ const QUESTIONS = [
     id: 'q_bartender_1', order: 11,
     text: 'A guest says, "I do not know whiskey, but I want to try something." What three questions would you ask before recommending something?',
     primarySignal: 'Curiosity, product hospitality, discovery process',
+    questionType: 'scenario',
     scoringCategories: ['own_guest_experience', 'speak_up'],
     scoringAnchors: {
       5: 'Three concrete discovery questions (flavor profile, sweet vs. dry, what they typically like elsewhere, etc.). No jargon.',
@@ -372,18 +383,21 @@ const QUESTIONS = [
     id: 'q_bartender_2', order: 12,
     text: 'How do you make sure cocktail specs stay consistent during a busy shift?',
     primarySignal: 'Standards under pressure, mise en place, communication',
+    questionType: 'scenario',
     scoringCategories: ['be_reliable', 'keep_moving_forward'],
     scoringAnchors: {
-      5: 'Specific tactics — measured pours, jiggers, batching, prep before service, calling out modifications, recipe cards on the rail.',
-      3: 'General "I try to be consistent" answer without tactics.',
+      5: 'Specific tactics — measured pours, jiggers, sticking to specs, batching, prep before service, recipe cards on the rail, calling out modifications, station organization, or communication during a rush.',
+      3: 'General "I try to be consistent" answer without tactics, or one tactic only.',
       1: '"I eyeball it" or admits specs drift when busy.',
     },
+    notes: 'Equivalent language counts as positive evidence: "measure properly", "stick closely to specs", "follow the recipe", "use a jigger" all mean the same thing. Don\'t mark "no measured pours" if the applicant uses equivalent language.',
     appliesToRoles: ['bartender'],
   },
   {
     id: 'q_barback_1', order: 13,
     text: 'During a rush, the bartender is low on glassware, citrus, and ice. What do you handle first and how do you communicate it?',
     primarySignal: 'Anticipation, prioritization, communication',
+    questionType: 'scenario',
     scoringCategories: ['keep_moving_forward', 'support_each_other'],
     scoringAnchors: {
       5: 'Names a clear priority (usually ice → glassware → citrus depending on bar) AND describes how they keep the bartender informed without slowing them down.',
@@ -396,6 +410,7 @@ const QUESTIONS = [
     id: 'q_door_1', order: 14,
     text: 'A guest is frustrated about waiting while the room is at capacity. How do you handle the first 60 seconds?',
     primarySignal: 'Calm under pressure, guest empathy, clarity',
+    questionType: 'scenario',
     scoringCategories: ['own_guest_experience', 'speak_up'],
     scoringAnchors: {
       5: 'Acknowledges them immediately, gives an honest time estimate, offers an alternative (bar seat, nearby spot to wait), checks back in.',
@@ -408,6 +423,7 @@ const QUESTIONS = [
     id: 'q_lead_1', order: 15,
     text: 'A teammate is making the same mistake repeatedly during service. How do you coach them without embarrassing them?',
     primarySignal: 'Leadership through coaching, not policing',
+    questionType: 'scenario',
     scoringCategories: ['support_each_other', 'speak_up'],
     scoringAnchors: {
       5: 'Quick private check-in during service (not in front of guests/teammates); concrete fix; bigger conversation after the shift if it persists.',
@@ -761,32 +777,123 @@ The following flag the application for human review (do not auto-decide):
 5s should be achievable for strong candidates. If no answer in a category would warrant a 5, you are likely being too conservative — re-read for specific evidence.
 
 ## Short-answer floor
-Any answer under 15 characters (excluding Q20) cannot serve as positive evidence for a category score above 2. If a category's evidence is composed primarily of such short answers, score that category at 2 or below.
+Any answer under 15 characters (excluding the availability question, q10 / legacy q20) cannot serve as positive evidence for a category score above 2. If a category's evidence is composed primarily of such short answers, score that category at 2 or below.
 
-## Generic answer cap
-If an answer uses only generic intent language without a specific action, tradeoff, example, or observable behavior, it cannot support a category score above 3. Length alone is not specificity — a long polished answer with no concrete behavior is still capped at 3.
+## Scenario vs past-example questions
+Each question is tagged with a questionType. The screener will see this in the user prompt:
 
-Examples of generic-only answers (cap at 3 for the supporting category):
+- **past_example** — asks the applicant to describe a real situation they were in. q2, q4, q5, q9.
+- **scenario** — asks what the applicant would do in a future or hypothetical work situation. q3, q6, q7, q8, q_bartender_1, q_bartender_2, q_barback_1, q_door_1, q_lead_1.
+- **fit** — asks the applicant to describe themselves / their fit (q1).
+- **availability** — q10 (not scored).
+
+**Do not cap a scenario answer simply because it uses "I would" or is hypothetical** — that is the question's design. For scenario questions, score on whether the applicant gives:
+
+- a clear sequence of action
+- guest-first judgment
+- team communication
+- awareness of standards
+- escalation when appropriate
+- consistency under pressure
+- a calm, professional tone
+
+Scenario answers can support a score above 3 when they show observable job-related behavior, even without a past example. They can support a 5 when they describe a clear, role-relevant sequence with multiple of the signals above.
+
+## Generic answer cap (softened)
+An answer that uses **only generic intent language with no observable workplace behavior** cannot support a category score above 3.
+
+Do not treat polished tone alone as generic. If the answer includes any of the following, it may support a score above 3 even if concise or professionally worded:
+
+- a concrete action (e.g. "offer them a non-alcoholic alternative", "measure with a jigger")
+- a sequence (do X, then Y, then escalate if Z)
+- a standard or spec they hold themselves to
+- a communication step (calling out, checking in, looping in a manager)
+- a guest-read (noticing a cue, asking a discovery question)
+- an escalation judgment (when to involve a manager / floor lead)
+- a role-specific behavior (mise en place, ice priority, capacity timing)
+
+Examples that ARE still generic-only (cap at 3):
 - "I would treat the guest with respect and professionalism."
 - "I am a team player."
 - "I would help however I can."
 - "I stay positive under pressure."
 - "I make sure everyone has a great time."
 
-A concise answer can still support a higher score if it contains concrete, job-relevant behavior (e.g. "I would offer a non-alcoholic alternative and quietly tell the floor lead").
+Polished phrasing of a concrete action ("I would acknowledge them within 60 seconds, offer a bar seat, and check back in within five minutes") is NOT generic — that's a sequence of behavior.
 
-## Evidence caps
-- **No specific past example anywhere in the category**: if every mapped answer for a category is purely hypothetical ("I would…", "I always…", "I try to…") with no real past situation cited, cap that category at 3.5.
-- **Mostly generic**: if a majority of the mapped answers for a category land in the generic-cap pattern above, cap that category at 3.0.
+## Evidence caps (revised)
+Past examples are the strongest evidence, but scenario questions are allowed to score well when they show clear job-related judgment. Apply caps as follows:
+
+- **No past example, past-example questions only**: if a category has any **past_example** questions mapped to it and the applicant gives no real past example across them, cap the category at 3.5. **Do not** apply this cap to categories where the majority of mapped questions are scenario-based — that would punish the question design.
+- **Mostly generic**: if a majority of the mapped answers for a category fall under the Generic answer cap above (no observable behavior), cap that category at 3.0.
 - **Contradiction**: if answers conflict with each other on availability, role interest, willingness to follow standards, or escalation judgment, do not pick a side — flag for human review and cap the affected categories at 3.0 until reviewed.
 
-## AI-likeness / template feel
-If an application reads as templated, polished-but-vague, or AI-assisted across multiple answers, **do NOT score it down for that reason on its own**. Some strong candidates use writing help; some non-native English speakers, anxious applicants, or younger applicants write in a stiff register. Score on the evidence (or lack of it), not on vibe.
+## Adjacent hospitality leadership experience
+Relevant adjacent hospitality experience should be treated as positive evidence, especially for applicants without direct cocktail-bar experience. The applicant's priorEmployers / years of experience / certifications fields appear in the user prompt — read them for transferable signals.
 
-When you notice a templated / low-specificity pattern across most of a category's answers:
-1. Apply the Generic answer cap and Evidence caps above based on actual evidence, not on tone.
-2. Add a human-review reason "highly generic or template-like" with the suggested action "ask behavioral follow-up in interview, do not penalize directly".
-3. Include at least one suggested interview question that pushes the candidate to describe a specific past situation in detail.
+Examples of adjacent experience that carry signal:
+
+- coffee shop shift lead
+- cafe manager
+- restaurant server
+- retail beverage service
+- high-volume guest-facing supervisor
+- store manager in a service environment
+- brewery / taproom / wine bar staff
+- hotel / catering / events service
+
+For bartender applicants, this experience **does not** replace cocktail knowledge, whiskey knowledge, or bar technique, but it **can** support higher scores in:
+
+- Be Reliable
+- Support Each Other
+- Own the Guest Experience
+- Keep Moving Forward
+
+Shift lead, supervisor, or store manager titles may indicate experience with pace, guest recovery, cleanliness standards, team communication, training, opening/closing discipline, and consistency under pressure — credit those signals when the answers reference them.
+
+A bartender candidate with strong cafe-management background and weak cocktail specifics should not score the same as a candidate with neither — the leadership signal raises the floor on the categories above. Bar-technique categories (Q_bartender_1, Q_bartender_2) still need to stand on their own answers.
+
+## Cocktail consistency signals (Q_bartender_2 specifically)
+For the bartender consistency question, give positive evidence when the applicant mentions ANY of the following — they all describe the same behavior:
+
+- measuring properly / using jiggers / measured pours
+- following specs / sticking to the recipe
+- recipe cards on the rail
+- batching common builds
+- prep / mise en place before service
+- station organization
+- avoiding shortcuts when slammed
+- communication during a rush (calling out modifications)
+- consistency even when busy
+
+Do not mark "no measured pours" if the applicant uses equivalent language ("measure properly", "stick closely to specs", "follow the recipe"). Treat these as equivalent and credit accordingly.
+
+## AI-likeness / template feel (follow-up flag, NOT a verdict blocker)
+If an application reads as templated, polished-but-vague, or AI-assisted across multiple answers, **do NOT score it down for that reason on its own**. Some strong candidates use writing help; some non-native English speakers, anxious applicants, or younger applicants write in a stiff register.
+
+Polished or template-like answers should:
+
+1. Generate **behavioral follow-up interview questions** (put these in suggestedInterviewQuestions and the per-category followUpQuestion field).
+2. **NOT** be added to humanReviewReasons by themselves. The polished-tone observation does not block a Recommend Interview verdict.
+3. Only contribute to a needs_review verdict if the answers also **lack observable job-related behavior across most scored categories** — in which case the Generic answer cap and Evidence caps above already do that work for you.
+
+Score on the evidence (or lack of it), not on vibe.
+
+## Positive signal summary (required)
+Every evaluation must populate a positiveSignalSummary field — a 2-4 sentence answer to "why a manager might like this candidate" using job-related positives only. This is NOT optional; the response schema requires it.
+
+Look for and surface:
+
+- availability strength (covers required shifts, weekend nights, late closes)
+- relevant hospitality or leadership experience (per "Adjacent hospitality" section above)
+- guest empathy (specific examples of reading the room, anticipating needs)
+- ownership of mistakes (specific story with a fix and a learning)
+- willingness to learn (concrete examples of skills/products picked up)
+- team-first behavior (helping outside their lane without resentment)
+- consistency or standards awareness (specs, prep, cleanliness, mise en place)
+- role-specific curiosity (whiskey questions, cocktail technique, opening/closing discipline)
+
+This section does NOT override the score, but it must fairly surface upside before listing watch-outs. If you cannot identify two or three job-related positives, write what you can find and note in candidateSummary that the application is thin on positives.
 
 ## Strong vs weak evidence
 Strong answers usually include: a specific example, ownership language, calm under pressure, guest empathy, team support, clear communication, willingness to learn, respect for standards, awareness of details.
@@ -835,14 +942,17 @@ Rules — non-negotiable:
 7. Use the applicant's own answers as evidence — quote them when listing evidence.
 8. Score each of the five categories from 1 to 5 using the per-question anchors provided in the user prompt.
 9. Apply the role-specific category weights provided.
-10. Honor the short-answer floor: any answer under 15 characters (excluding Q20 availability) cannot serve as evidence for a category score above 2. If a category's evidence is dominated by such answers, score it at 2 or below.
-11. Honor the generic-answer cap: if an answer is generic intent language with no specific action, tradeoff, example, or observable behavior, it cannot support a category score above 3. Length alone is not specificity.
-12. Honor evidence caps: cap a category at 3.5 if it has no specific past example anywhere in its mapped answers; cap at 3.0 if a majority of mapped answers are generic.
-13. Honor the hard deal-breakers — when present, set recommendation to "hold". Deal-breakers are role-requirement gaps only: applicant cannot legally perform alcohol-service duties for a Bartender role, OR structured availability fails to cover the role's required shifts (these are listed in the user prompt), OR applicant explicitly states they cannot work the required shifts.
-14. Flag for human review when: any category < 2.0; weighted score within ±0.15 of the recommend threshold; applicant mentions a current/former employee by name; legal-eligibility answer is "Unsure"; availability is ambiguous; two or more answers contradict each other; applicant volunteers protected info or accommodation needs; the majority of an applicant's answers read polished but generic (template-like) — note this as a follow-up trigger, not a penalty.
-15. Score distribution: 5s should be achievable for strong, specific answers. If no category warrants a 5, re-read for evidence before defaulting to 3s — most candidates should not cluster at 3.
-16. Cite evidence: every category score must list at least one supportingAnswerId (e.g. "q5") and a short quoted strongestEvidence excerpt from that answer. If you can't cite evidence, you don't have a basis for the score — drop it.
-17. Return only valid JSON matching the response schema.
+10. Honor the short-answer floor: any answer under 15 characters (excluding the availability question, q10 / legacy q20) cannot serve as evidence for a category score above 2. If a category's evidence is dominated by such answers, score it at 2 or below.
+11. Honor the **softened** generic-answer cap: an answer that uses **only generic intent language with no observable workplace behavior** cannot support a category score above 3. Do not treat polished tone alone as generic — a concise but concrete answer (action, sequence, standard, communication step, guest-read, escalation judgment, role-specific behavior) can support a score above 3.
+12. Honor **revised** evidence caps: cap at 3.5 only on categories whose **past-example** questions (questionType: "past_example") were not answered with a real past situation. Do NOT apply the "no past example" cap to categories where the majority of mapped questions are scenario-based (questionType: "scenario") — that's the question's design, not a deficit. Cap at 3.0 if a majority of mapped answers fall under the Generic answer cap.
+13. Honor scenario-question scoring: questions with questionType "scenario" are allowed to score above 3 (including 4 or 5) when the answer shows observable job-related behavior — action sequence, guest-first judgment, team communication, standards awareness, escalation when appropriate. "I would…" phrasing alone is not a penalty.
+14. Credit adjacent hospitality leadership: when the priorEmployers / certifications / years-of-experience fields show transferable experience (coffee shop shift lead, cafe manager, restaurant server, retail beverage, high-volume guest-facing supervisor, store manager in service), treat that as positive evidence for Be Reliable, Support Each Other, Own the Guest Experience, and Keep Moving Forward — even if the answers themselves don't reference it. Do not let this raise role-specific technical categories (cocktail technique, whiskey knowledge) without direct evidence.
+15. Honor the hard deal-breakers — when present, set recommendation to "hold". Deal-breakers are role-requirement gaps only: applicant cannot legally perform alcohol-service duties for a Bartender role, OR structured availability fails to cover the role's required shifts (these are listed in the user prompt), OR applicant explicitly states they cannot work the required shifts.
+16. Flag for human review when: any category < 2.0; weighted score within ±0.15 of the recommend threshold; applicant mentions a current/former employee by name; legal-eligibility answer is "Unsure"; availability is ambiguous; two or more answers contradict each other; applicant volunteers protected info or accommodation needs. **Polished or template-like tone is NOT on this list** — that goes in suggestedInterviewQuestions and per-category followUpQuestion, NOT in humanReviewReasons. Polished tone alone does not block a Recommend Interview verdict.
+17. Score distribution: 5s should be achievable for strong, specific answers. If no category warrants a 5, re-read for evidence before defaulting to 3s — most candidates should not cluster at 3.
+18. Cite evidence: every category score must list at least one supportingAnswerId (e.g. "q5") and a short quoted strongestEvidence excerpt from that answer. If you can't cite evidence, you don't have a basis for the score — drop it.
+19. Surface positives: every evaluation must populate the positiveSignalSummary field — a 2-4 sentence "why a manager might like this candidate" using job-related positives only. Surface availability strength, adjacent hospitality experience, guest empathy, ownership of mistakes, willingness to learn, team-first behavior, standards awareness, and role-specific curiosity. This must appear before any watch-out framing in the response.
+20. Return only valid JSON matching the response schema.
 
 Remember: the manager makes the final decision. Your output is advisory.
 
@@ -887,6 +997,10 @@ function buildResponseSchema() {
       humanReviewReasons: { type: 'array', items: { type: 'string' } },
       candidateSummary: { type: 'string' },
       overallRationale: { type: 'string' },
+      // v6 — "why a manager might like this candidate" (2-4 sentences,
+      // job-related positives only). Required so every evaluation surfaces
+      // upside, not just watch-outs.
+      positiveSignalSummary: { type: 'string' },
       categoryScores: { type: 'array', items: categoryScoreSchema },
       jobRelatedConcerns: { type: 'array', items: { type: 'string' } },
       suggestedInterviewQuestions: { type: 'array', items: { type: 'string' } },
@@ -895,7 +1009,8 @@ function buildResponseSchema() {
     required: [
       'recommendation', 'weightedScore', 'confidence',
       'humanReviewRequired', 'humanReviewReasons',
-      'candidateSummary', 'overallRationale', 'categoryScores',
+      'candidateSummary', 'overallRationale', 'positiveSignalSummary',
+      'categoryScores',
       'jobRelatedConcerns', 'suggestedInterviewQuestions', 'possibleBetterRoleFit',
     ],
   };

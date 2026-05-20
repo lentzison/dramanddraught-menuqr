@@ -1557,6 +1557,7 @@ async function runAndPersistEvaluation(prisma, application, questionnaire) {
         humanReviewRequired: evaluation.humanReviewRequired,
         humanReviewReasons: evaluation.humanReviewReasons || [],
         candidateSummary: evaluation.candidateSummary || '',
+        positiveSignalSummary: evaluation.positiveSignalSummary || null,
         overallRationale: evaluation.overallRationale || '',
         jobRelatedConcerns: evaluation.jobRelatedConcerns || [],
         suggestedInterviewQuestions: evaluation.suggestedInterviewQuestions || [],

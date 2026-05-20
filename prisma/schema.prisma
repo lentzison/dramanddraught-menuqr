@@ -440,6 +440,10 @@ model JobApplicationAiEvaluation {
 
   // Narrative
   candidateSummary        String
+  // "Why a manager might like this candidate" — required by v6 of the rubric
+  // so every evaluation surfaces job-related upside before listing watch-outs.
+  // Nullable for backfill compatibility with older rows.
+  positiveSignalSummary   String?
   overallRationale        String
   jobRelatedConcerns      Json     // string[]
   suggestedInterviewQuestions Json // string[]

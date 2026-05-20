@@ -408,6 +408,10 @@ function applicantStyles() {
       }
 
       /* === AI watchouts / followups / categories === */
+      .ai-positive { background:rgba(98,210,143,0.08); border:1px solid rgba(98,210,143,0.35); border-left-width: 4px; border-radius: var(--radius); padding:14px 18px; margin-bottom:14px; }
+      .ai-positive h3 { margin:0 0 6px; color: #a4f4c2; font-size:0.92rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 800; }
+      .ai-positive p { margin: 0; color: var(--text); line-height: 1.55; font-size: 0.96rem; }
+
       .ai-watchout { background:rgba(242,166,90,0.10); border:1px solid rgba(242,166,90,0.40); border-radius: var(--radius); padding:14px 18px; margin-bottom:14px; }
       .ai-watchout h3 { margin:0 0 8px; color: var(--amber); font-size:0.92rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 800; }
       .ai-watchout ul { margin:0; padding-left:22px; line-height:1.55; }
@@ -927,6 +931,17 @@ function aiEvaluationPanel(application) {
       <div class="ai-verdict-summary">${summary ? escHTML(summary) : ''}</div>
     </div>`;
 
+  // Positive signal summary — "why a manager might like this candidate".
+  // Renders ABOVE watch-outs so the upside is read first. Required field as
+  // of rubric v6; falls back to candidateSummary on legacy rows.
+  const positiveSummaryText = (ev.positiveSignalSummary && ev.positiveSignalSummary.trim())
+    || (ev.candidateSummary && !summary ? ev.candidateSummary.trim() : '');
+  const positiveBlock = positiveSummaryText ? `
+    <div class="ai-positive">
+      <h3>Why a manager might like this candidate</h3>
+      <p>${escHTML(positiveSummaryText)}</p>
+    </div>` : '';
+
   // Watch outs — only render when there's something the GM needs to know
   const watchoutItems = [];
   if (ev.humanReviewRequired && reviewReasons.length) {
@@ -999,7 +1014,7 @@ function aiEvaluationPanel(application) {
       ${ev.possibleBetterRoleFit ? ` &middot; Possible better fit: ${escHTML(ev.possibleBetterRoleFit)}` : ''}
     </div>`;
 
-  return `${verdict}${watchouts}${followupsBlock}${categories}${meta}`;
+  return `${verdict}${positiveBlock}${watchouts}${followupsBlock}${categories}${meta}`;
 }
 
 const CATEGORY_LABEL_MAP = {

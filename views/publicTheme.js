@@ -58,18 +58,17 @@ function vintageThemeCss() {
           font-family: var(--brand-display);
           letter-spacing: 0.01em;
         }
-        /* Small-caps section labels + kickers + button text use Mostra too —
-           the geometric Art Deco letterforms shine at small letter-spaced
-           sizes. */
+        /* Small-caps section labels, kickers, and the homepage location
+           marquee use Mostra — the geometric Art Deco letterforms shine
+           at letter-spaced uppercase labels. Buttons and body-size metadata
+           stay on the body serif (Mostra is too heavy at CTA sizes; .q-
+           progress is body-size metadata, not a label). */
         .apply-section-title,
         .hi-kicker,
         .hi-now-hiring,
-        .hi-cta,
-        .location-controls button,
-        .view-location,
         .pv-day,
         .pv-section-head,
-        .q-progress,
+        .location-name,
         .badge {
           font-family: var(--brand-display);
         }

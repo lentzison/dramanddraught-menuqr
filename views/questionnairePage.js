@@ -16,7 +16,7 @@ function pageShell(title, bodyHtml) {
     ${brandMarkCss()}
     .q-shell { max-width: 760px; margin: 0 auto; padding: 24px 18px 96px; }
     .q-head { margin-bottom: 18px; }
-    .q-title { font-family: var(--brand-serif, 'Cormorant Garamond', serif); font-size: 1.9rem; line-height: 1.1; margin: 6px 0 4px; color: #f5f1e6; }
+    .q-title { font-family: var(--brand-display, 'Mostra One', 'Futura', sans-serif); font-size: 1.75rem; line-height: 1.1; margin: 6px 0 4px; color: #f5f1e6; letter-spacing: 0.02em; }
     .q-sub { color: #a8acb3; font-size: 0.9rem; margin: 0 0 10px; }
     .q-card { background: rgba(20,21,24,0.85); border: 1px solid rgba(212,175,55,0.18); border-radius: 14px; padding: 22px 20px; margin-bottom: 18px; }
     .q-notice { color: #c8b770; font-size: 0.86rem; line-height: 1.5; white-space: pre-line; }
@@ -57,7 +57,7 @@ function pageShell(title, bodyHtml) {
       border: 1px solid rgba(212,175,55,0.25);
       border-radius: 14px;
     }
-    .q-done-card h1 { font-family: var(--brand-serif, 'Cormorant Garamond', serif); color: var(--gold); margin: 0 0 12px; }
+    .q-done-card h1 { font-family: var(--brand-display, 'Mostra One', 'Futura', sans-serif); color: var(--gold); margin: 0 0 12px; letter-spacing: 0.02em; }
     .q-done-card p { color: #c8b770; line-height: 1.5; }
     .q-back-link { color: var(--gold); font-size: 0.85rem; text-decoration: none; }
     .q-back-link:hover { text-decoration: underline; }

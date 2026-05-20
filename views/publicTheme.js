@@ -1,5 +1,23 @@
 function vintageThemeCss() {
   return `
+        /* Mostra One — Art Deco display face for hero titles, brand tags, and
+           public section labels. Loaded from /assets/fonts/. font-display:swap
+           keeps the page legible if the font is slow to arrive. */
+        @font-face {
+          font-family: 'Mostra One';
+          font-style: normal;
+          font-weight: 400;
+          font-display: swap;
+          src: url('/assets/fonts/MostraOne-Regular.ttf') format('truetype');
+        }
+        @font-face {
+          font-family: 'Mostra One';
+          font-style: normal;
+          font-weight: 700;
+          font-display: swap;
+          src: url('/assets/fonts/MostraOne-Bold.ttf') format('truetype');
+        }
+
         * { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
           --bg-a: #191a1d;
@@ -23,6 +41,37 @@ function vintageThemeCss() {
           --accent-soft: rgba(210, 170, 103, 0.14);
           --accent-soft-strong: rgba(210, 170, 103, 0.22);
           --accent-dark: rgba(138, 86, 53, 0.22);
+          /* Display face for headings + brand tags. Fall back to a sturdy
+             geometric stack if Mostra One hasn't arrived yet. */
+          --brand-display: 'Mostra One', 'Futura', 'Avenir Next', 'Trade Gothic', 'Helvetica Neue', sans-serif;
+          --brand-serif: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+        }
+
+        /* Default public-side headings use the Mostra display face. Letter
+           spacing is widened on small caps tags via the .brand-mark-tag /
+           kicker rules elsewhere. */
+        h1, h2, h3,
+        .hero-title,
+        .apply-title,
+        .q-title,
+        .hi-hero h1 {
+          font-family: var(--brand-display);
+          letter-spacing: 0.01em;
+        }
+        /* Small-caps section labels + kickers + button text use Mostra too —
+           the geometric Art Deco letterforms shine at small letter-spaced
+           sizes. */
+        .apply-section-title,
+        .hi-kicker,
+        .hi-now-hiring,
+        .hi-cta,
+        .location-controls button,
+        .view-location,
+        .pv-day,
+        .pv-section-head,
+        .q-progress,
+        .badge {
+          font-family: var(--brand-display);
         }
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(8px); }

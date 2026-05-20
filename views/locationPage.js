@@ -507,8 +507,9 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
         .loc-events-head h3 {
           margin: 0;
           color: var(--cream);
-          font-family: 'Playfair Display', 'Iowan Old Style', Georgia, serif;
-          font-size: 1.9rem;
+          font-family: var(--brand-display, 'Mostra One', 'Futura', sans-serif);
+          font-size: 1.7rem;
+          letter-spacing: 0.02em;
         }
         .loc-events-head p {
           margin: 6px 0 0;

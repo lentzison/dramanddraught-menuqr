@@ -73,11 +73,11 @@ function generateHiringIndexPage(allLocations) {
     }
     .hi-hero h1 {
       position: relative;
-      font-family: var(--brand-serif, 'Cormorant Garamond', Georgia, serif);
-      font-size: clamp(1.85rem, 4vw, 2.6rem);
+      font-family: var(--brand-display, 'Mostra One', 'Futura', sans-serif);
+      font-size: clamp(1.7rem, 3.8vw, 2.4rem);
       line-height: 1.1; color: var(--cream);
       margin: 0 0 10px;
-      letter-spacing: 0.01em;
+      letter-spacing: 0.02em;
     }
     .hi-hero p {
       position: relative;
@@ -159,8 +159,8 @@ function generateHiringIndexPage(allLocations) {
       max-width: 620px; margin: 0 auto;
     }
     .hi-empty h2 {
-      font-family: var(--brand-serif, 'Cormorant Garamond', Georgia, serif);
-      color: var(--gold); font-size: 1.5rem; margin: 0 0 10px;
+      font-family: var(--brand-display, 'Mostra One', 'Futura', sans-serif);
+      color: var(--gold); font-size: 1.4rem; margin: 0 0 10px; letter-spacing: 0.02em;
     }
     .hi-empty p { color: #cfcabe; line-height: 1.55; margin: 0; }
     .hi-back { color: var(--gold); text-decoration: none; font-size: 0.92rem; }

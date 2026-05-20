@@ -38,7 +38,7 @@ function pageShell(location, title, bodyHtml) {
         .apply-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
         .apply-back { color: var(--gold); font-size: 0.85rem; text-decoration: none; }
         .apply-back:hover { text-decoration: underline; }
-        .apply-title { font-family: var(--brand-serif, 'Cormorant Garamond', serif); font-size: 1.9rem; line-height: 1.1; margin: 0 0 4px; color: #f5f1e6; }
+        .apply-title { font-family: var(--brand-display, 'Mostra One', 'Futura', sans-serif); font-size: 2.1rem; line-height: 1.05; margin: 0 0 4px; color: #f5f1e6; letter-spacing: 0.01em; }
         .apply-sub { color: #a8acb3; font-size: 0.9rem; margin: 0 0 22px; }
         .apply-card { background: rgba(20,21,24,0.85); border: 1px solid rgba(212,175,55,0.18); border-radius: 14px; padding: 22px 20px; margin-bottom: 18px; }
         .apply-notice { background: rgba(20,21,24,0.6); border-left: 3px solid var(--gold); border-color: rgba(212,175,55,0.35); }
@@ -53,7 +53,7 @@ function pageShell(location, title, bodyHtml) {
           line-height: 1.55;
         }
         .apply-commit-notice strong { color: var(--gold); }
-        .apply-section-title { font-family: var(--brand-serif, 'Cormorant Garamond', serif); font-size: 1.2rem; color: var(--gold); margin: 0 0 14px; letter-spacing: 0.02em; }
+        .apply-section-title { font-family: var(--brand-display, 'Mostra One', 'Futura', sans-serif); font-size: 1.05rem; color: var(--gold); margin: 0 0 14px; letter-spacing: 0.08em; text-transform: uppercase; }
         .apply-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 12px; }
         @media (max-width: 560px) { .apply-row { grid-template-columns: 1fr; } }
         .apply-field { display: block; }
@@ -95,7 +95,7 @@ function pageShell(location, title, bodyHtml) {
         .apply-btn:hover { filter: brightness(1.05); }
         .apply-error { background: rgba(180,40,40,0.15); border: 1px solid rgba(180,40,40,0.35); color: #f7c4c4; padding: 12px 14px; border-radius: 10px; margin-bottom: 16px; font-size: 0.9rem; }
         .apply-success { padding: 28px 22px; text-align: center; }
-        .apply-success h1 { font-family: var(--brand-serif, 'Cormorant Garamond', serif); color: var(--gold); margin: 0 0 8px; font-size: 1.8rem; }
+        .apply-success h1 { font-family: var(--brand-display, 'Mostra One', 'Futura', sans-serif); color: var(--gold); margin: 0 0 8px; font-size: 2rem; letter-spacing: 0.02em; }
         .apply-success p { color: #d6d2c5; line-height: 1.5; }
         .apply-success a.action-link { display: inline-block; margin-top: 16px; color: var(--gold); text-decoration: none; font-size: 0.92rem; border: 1px solid rgba(212,175,55,0.3); padding: 10px 20px; border-radius: 999px; }
       </style>

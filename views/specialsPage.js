@@ -970,11 +970,12 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         .lto-image { width: 100%; height: 100%; object-fit: cover; display: block; }
         .lto-body { padding: 18px 18px 20px; }
         .lto-title {
-          font-family: var(--brand-serif, 'Cormorant Garamond', serif);
+          font-family: var(--brand-display, 'Mostra One', 'Futura', sans-serif);
           color: var(--gold);
-          font-size: 1.55rem;
+          font-size: 1.4rem;
           margin: 0 0 6px;
           line-height: 1.15;
+          letter-spacing: 0.02em;
           letter-spacing: 0.01em;
         }
         .lto-desc { color: #d6d2c5; font-size: 0.92rem; line-height: 1.5; margin: 0 0 14px; }

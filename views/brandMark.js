@@ -15,18 +15,19 @@ function brandMarkCss() {
           display: block;
           margin-top: 10px;
           color: var(--gold);
-          font-size: 0.7rem;
-          font-weight: 800;
+          font-family: var(--brand-display, 'Mostra One', 'Futura', sans-serif);
+          font-size: 0.78rem;
+          font-weight: 700;
           line-height: 1.15;
-          letter-spacing: 0.26em;
+          letter-spacing: 0.22em;
           text-transform: uppercase;
           text-align: center;
         }
         @media (max-width: 640px) {
           .brand-mark-tag {
             margin-top: 8px;
-            font-size: 0.64rem;
-            letter-spacing: 0.22em;
+            font-size: 0.7rem;
+            letter-spacing: 0.18em;
           }
         }
       `;

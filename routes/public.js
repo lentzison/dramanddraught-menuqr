@@ -1814,6 +1814,10 @@ async function handlePublic(req, res, pathname, prisma) {
         '.gif': 'image/gif',
         '.svg': 'image/svg+xml',
         '.ico': 'image/x-icon',
+        '.ttf': 'font/ttf',
+        '.otf': 'font/otf',
+        '.woff': 'font/woff',
+        '.woff2': 'font/woff2',
       })[ext] || 'application/octet-stream';
       res.writeHead(200, {
         'Content-Type': mime,

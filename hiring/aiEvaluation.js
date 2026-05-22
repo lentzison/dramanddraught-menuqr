@@ -26,12 +26,22 @@ const MODEL = 'claude-opus-4-7';
 
 // Keywords that mean "stop, flag for human review" — accommodation,
 // disability, medical, religious, pregnancy, family obligations.
-// Conservative on purpose; false positives just route to a human.
+//
+// The accommodate/accommodation pattern is intentionally narrow: we only flag
+// the noun form ("accommodation"/"accommodations") which almost always means
+// ADA-style accommodation. The verb ("accommodate", "accommodated") is normal
+// hospitality English ("we accommodate dietary requests", "I made the guest
+// feel accommodated") and was producing false positives. Real ADA disclosure
+// usually surfaces via "ADA", "disability", "reasonable accommodation", or
+// "accommodation request" — all of those still fire below.
+//
+// "medical" is also narrowed to require a context word so phrases like
+// "medical-grade cleaner" or "first-aid medical kit" don't trip.
 const HUMAN_REVIEW_KEYWORDS = [
-  /\baccommodat(e|ion|ions|ed|ing)\b/i,
+  /\baccommodation(s)?\b/i,
   /\bdisabilit(y|ies)\b/i,
   /\bdisabled\b/i,
-  /\bmedical\b/i,
+  /\bmedical\s+(condition|leave|issue|treatment|history|appointment|exemption)\b/i,
   /\billness\b/i,
   /\bpregnan(t|cy)\b/i,
   /\bmaternity\b/i,

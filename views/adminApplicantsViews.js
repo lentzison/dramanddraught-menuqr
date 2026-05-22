@@ -464,7 +464,26 @@ function applicantStyles() {
       details.ai-collapse .answer-q:first-of-type { margin-top:0; }
       details.ai-collapse .answer-a { color:var(--text); font-size:0.92rem; line-height:1.55; white-space:pre-wrap; }
 
-      .ai-meta { color:var(--text-muted); font-size:0.74rem; margin-top:6px; padding:4px 2px; line-height: 1.5; }
+      .ai-meta {
+        color: var(--text-muted); font-size: 0.74rem; margin-top: 6px;
+        padding: 8px 2px; line-height: 1.5;
+        display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+      }
+      .ai-meta-text { flex: 1 1 auto; min-width: 240px; }
+      .ai-meta-actions { display: inline-flex; align-items: center; gap: 10px; flex-shrink: 0; }
+      .ai-version {
+        font-family: 'SF Mono', Menlo, monospace; font-size: 0.7rem;
+        color: var(--text-soft); padding: 2px 8px; border: 1px solid var(--line);
+        border-radius: 999px; background: rgba(255,255,255,0.03);
+      }
+      .ai-rerun-btn {
+        background: rgba(255,255,255,0.05); border: 1px solid var(--line);
+        color: var(--text-muted); padding: 5px 12px; border-radius: 6px;
+        font-size: 0.78rem; font-weight: 700; cursor: pointer;
+        font-family: inherit; transition: all 0.15s;
+        display: inline-flex; align-items: center; gap: 5px;
+      }
+      .ai-rerun-btn:hover { border-color: var(--gold-strong); color: var(--gold-strong); background: rgba(240,199,102,0.08); }
 
       /* === Onboarding card (hired-only, right rail) === */
       .ap-onb-status {
@@ -1008,10 +1027,27 @@ function aiEvaluationPanel(application) {
       ${categoryRows}
     </div>` : '';
 
+  // Re-run screening control. Always visible when there's a questionnaire on
+  // file (not just on error). Useful after a rubric / KB change so the manager
+  // can refresh the verdict without manual prompting. Uses API credits — the
+  // confirm dialog says so.
+  const rerunControl = application.questionnaire ? `
+    <form method="POST" action="/admin/applicants/${escHTML(application.id)}/retry-screening" style="display:inline; margin:0;" onsubmit="return confirm('Re-run screening for ${escAttr(application.name)}? This will use API credits and replace the current evaluation.');">
+      <button type="submit" class="ai-rerun-btn">↻ Re-run screening</button>
+    </form>` : '';
+
+  const versionTag = ev.knowledgeBaseVersion ? `<span class="ai-version">${escHTML(ev.knowledgeBaseVersion)}</span>` : '';
+
   const meta = `
     <div class="ai-meta">
-      Reminder: this screening is advisory only. Manager review required before any callback.
-      ${ev.possibleBetterRoleFit ? ` &middot; Possible better fit: ${escHTML(ev.possibleBetterRoleFit)}` : ''}
+      <div class="ai-meta-text">
+        Reminder: this screening is advisory only. Manager review required before any callback.
+        ${ev.possibleBetterRoleFit ? ` &middot; Possible better fit: ${escHTML(ev.possibleBetterRoleFit)}` : ''}
+      </div>
+      <div class="ai-meta-actions">
+        ${versionTag}
+        ${rerunControl}
+      </div>
     </div>`;
 
   return `${verdict}${positiveBlock}${watchouts}${followupsBlock}${categories}${meta}`;

@@ -299,6 +299,15 @@ async function handlePublicReviews(req, res, prisma) {
 // non-cancelled + started no more than 30 days ago (so the public mirror
 // shows recent-past events for archive purposes, but doesn't drown in old
 // data).
+// Slice a string to at most `max` Unicode code points. String.slice cuts at
+// UTF-16 code units, which splits surrogate pairs (emoji) and produces
+// invalid JSON like "\ud83c" without its trailing low surrogate.
+function truncateCodePoints(str, max) {
+  if (!str) return '';
+  const arr = Array.from(str);
+  return arr.length <= max ? str : arr.slice(0, max).join('');
+}
+
 async function handlePublicEventsFeed(req, res, prisma) {
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return true; }
   if (req.method !== 'GET') {
@@ -353,7 +362,7 @@ async function handlePublicEventsFeed(req, res, prisma) {
       slug: ev.slug,
       title: ev.title,
       description: ev.description || null,
-      summary: (ev.description ? String(ev.description).replace(/<[^>]+>/g, '').trim().slice(0, 240) : null),
+      summary: (ev.description ? truncateCodePoints(String(ev.description).replace(/<[^>]+>/g, '').trim(), 240) : null),
       startAt: ev.startDate,
       endAt: ev.endDate,
       capacity: ev.capacity,

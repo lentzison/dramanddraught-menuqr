@@ -309,19 +309,26 @@ async function handleAdminEvents(req, res, pathname, prisma) {
   // ─── List all events ───
   if (pathname === '/admin/events') {
     const flashMsg = getFlashMsg(req.url);
+    const urlObj = new URL(req.url, 'http://x');
+    const filter = (urlObj.searchParams.get('filter') || 'upcoming').toLowerCase();
+    const validFilters = new Set(['upcoming', 'past', 'hidden', 'cancelled', 'all']);
+    const safeFilter = validFilters.has(filter) ? filter : 'upcoming';
     const eventWhere = userIsCompanyWide
       ? {}
       : { locationId: { in: Array.from(allowedLocationIds).length > 0 ? Array.from(allowedLocationIds) : ['__none__'] } };
+    // For Upcoming filter the most useful sort is ascending by startDate;
+    // for everything else the latest-first feel is what admins expect.
+    const orderBy = safeFilter === 'upcoming' ? [{ startDate: 'asc' }] : [{ startDate: 'desc' }];
     const events = await prisma.event.findMany({
       where: eventWhere,
-      orderBy: [{ startDate: 'desc' }],
+      orderBy,
       include: {
         location: { select: { slug: true, name: true } },
         _count: { select: { signups: true } },
       },
     }).catch(async (err) => {
       console.warn('Events list include failed, falling back:', err.message);
-      const rows = await prisma.event.findMany({ where: eventWhere, orderBy: [{ startDate: 'desc' }] }).catch(() => []);
+      const rows = await prisma.event.findMany({ where: eventWhere, orderBy }).catch(() => []);
       for (const ev of rows) {
         const loc = locations.find(l => l.id === ev.locationId);
         ev.location = loc ? { slug: loc.slug, name: loc.name } : { slug: '', name: '' };
@@ -330,7 +337,7 @@ async function handleAdminEvents(req, res, pathname, prisma) {
       return rows;
     });
 
-    sendHTML(res, 200, eventsList(events, user, flashMsg));
+    sendHTML(res, 200, eventsList(events, user, flashMsg, safeFilter));
     return true;
   }
 
@@ -398,6 +405,68 @@ async function handleAdminEvents(req, res, pathname, prisma) {
 
     const flashMsg = getFlashMsg(req.url);
     sendHTML(res, 200, eventEditor(null, locations, user, flashMsg));
+    return true;
+  }
+
+  // ─── Per-event QR code (PNG by default, ?fmt=svg for vector) ───
+  // GET /admin/events/:id/qr?fmt=png|svg&size=600
+  const qrMatch = pathname.match(/^\/admin\/events\/([a-zA-Z0-9-]+)\/qr$/);
+  if (qrMatch) {
+    const eventId = qrMatch[1];
+    const event = await prisma.event.findUnique({
+      where: { id: eventId },
+      include: { location: { select: { slug: true } } },
+    }).catch(() => null);
+    if (!event) { sendHTML(res, 404, '<h1>Event not found</h1>'); return true; }
+    if (!userIsCompanyWide && !canAccessLocation(user, event.location?.slug)) {
+      redirect(res, '/admin/events');
+      return true;
+    }
+    if (!event.location?.slug || !event.slug) {
+      sendHTML(res, 400, '<h1>Event has no public URL yet</h1>');
+      return true;
+    }
+
+    const QRCode = require('qrcode');
+    const urlObj = new URL(req.url, 'http://x');
+    const fmt = (urlObj.searchParams.get('fmt') || 'png').toLowerCase();
+    const size = Math.min(2000, Math.max(200, parseInt(urlObj.searchParams.get('size') || '800', 10)));
+    const baseUrl = process.env.MENUQR_BASE_URL || 'https://menuqr.apps.dramanddraught.com';
+    const target = `${baseUrl}/${event.location.slug}/events/${event.slug}`;
+    const filename = `event-${event.slug}-qr.${fmt === 'svg' ? 'svg' : 'png'}`;
+
+    try {
+      if (fmt === 'svg') {
+        const svg = await QRCode.toString(target, {
+          type: 'svg',
+          margin: 2,
+          color: { dark: '#0f1012', light: '#ffffff' },
+        });
+        res.writeHead(200, {
+          'Content-Type': 'image/svg+xml',
+          'Content-Disposition': `inline; filename="${filename}"`,
+          'Cache-Control': 'public, max-age=300',
+        });
+        res.end(svg);
+      } else {
+        const png = await QRCode.toBuffer(target, {
+          type: 'png',
+          margin: 2,
+          width: size,
+          color: { dark: '#0f1012', light: '#ffffff' },
+        });
+        res.writeHead(200, {
+          'Content-Type': 'image/png',
+          'Content-Length': png.length,
+          'Content-Disposition': `inline; filename="${filename}"`,
+          'Cache-Control': 'public, max-age=300',
+        });
+        res.end(png);
+      }
+    } catch (err) {
+      console.warn('[adminEvents] QR generation failed:', err.message);
+      sendHTML(res, 500, '<h1>Could not generate QR</h1>');
+    }
     return true;
   }
 

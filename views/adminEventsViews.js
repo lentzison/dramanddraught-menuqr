@@ -297,88 +297,278 @@ function eventStatusBadge(event) {
   return '<span class="ev-badge ev-badge-live">Live</span>';
 }
 
-// ─── Events list ───
-function eventsList(events, user, flashMsg) {
+// ─── Events list (redesigned) ───
+// Same data, much more scannable: hero thumbnail, status pill, signup count
+// bar, inline action menu (Copy / QR / Public / Signups / Edit).
+function eventsList(events, user, flashMsg, filter = 'upcoming') {
+  const now = new Date();
+  const bucketOf = (ev) => {
+    if (ev.isCancelled) return 'cancelled';
+    if (!ev.isActive) return 'hidden';
+    if (ev.startDate && new Date(ev.startDate) < now) return 'past';
+    return 'upcoming';
+  };
+
+  // Compute counts before filtering so chips reflect the full set.
   const counts = events.reduce((acc, ev) => {
-    if (ev.isCancelled) acc.cancelled += 1;
-    else if (!ev.isActive) acc.hidden += 1;
-    else if (ev.startDate && new Date(ev.startDate) < new Date()) acc.past += 1;
-    else acc.live += 1;
+    acc[bucketOf(ev)] = (acc[bucketOf(ev)] || 0) + 1;
+    acc.all += 1;
     acc.signups += ev._count?.signups || 0;
     return acc;
-  }, { live: 0, hidden: 0, past: 0, cancelled: 0, signups: 0 });
-  const rows = events.map(ev => {
+  }, { all: 0, upcoming: 0, past: 0, hidden: 0, cancelled: 0, signups: 0 });
+
+  const visible = filter === 'all'
+    ? events
+    : events.filter((ev) => bucketOf(ev) === filter);
+
+  const filterChip = (key, label, count) => {
+    const active = filter === key;
+    const href = key === 'upcoming' ? '/admin/events' : `/admin/events?filter=${key}`;
+    return `<a class="ev-chip ${active ? 'is-active' : ''}" href="${escHTML(href)}">${escHTML(label)}<span class="ev-chip-count">${count}</span></a>`;
+  };
+
+  const cards = visible.map(ev => {
     const signupCount = ev._count?.signups || 0;
-    const capacityText = ev.capacity ? `${signupCount} / ${ev.capacity}` : `${signupCount}`;
+    const cap = ev.capacity || 0;
+    const fillPct = cap ? Math.min(100, Math.round((signupCount / cap) * 100)) : 0;
     const locName = ev.location?.name || '';
     const locSlug = ev.location?.slug || '';
     const publicPath = locSlug && ev.slug ? `/${locSlug}/events/${ev.slug}` : '';
+    const qrPath = `/admin/events/${ev.id}/qr`;
+    const imgUrl = ev.image && /^(https?:|data:image\/)/i.test(ev.image) ? ev.image : null;
+    const startDate = ev.startDate ? new Date(ev.startDate) : null;
+    const startMonth = startDate ? startDate.toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short' }) : '';
+    const startDay = startDate ? startDate.toLocaleString('en-US', { timeZone: 'America/New_York', day: 'numeric' }) : '';
+    const startTime = startDate ? startDate.toLocaleString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' }) : '';
+    const typeLabel = ev.isVendorEvent ? 'Vendor event' : 'Guest RSVPs';
+
     return `
-      <div class="admin-row ev-row">
-        <div class="admin-row-main">
-          <div class="admin-row-title">
-            <a href="/admin/events/${escHTML(ev.id)}">${escHTML(ev.title)}</a>
+      <div class="ev-card ${bucketOf(ev)}">
+        <div class="ev-card-date" aria-hidden="true">
+          ${startDate ? `<span class="ev-card-date-month">${escHTML(startMonth)}</span><span class="ev-card-date-day">${escHTML(startDay)}</span><span class="ev-card-date-time">${escHTML(startTime)}</span>` : '<span class="ev-card-date-none">No date</span>'}
+        </div>
+        <div class="ev-card-thumb">
+          ${imgUrl ? `<img src="${escHTML(imgUrl)}" alt="" loading="lazy" />` : '<span class="ev-card-thumb-empty" aria-hidden="true">◎</span>'}
+        </div>
+        <div class="ev-card-body">
+          <div class="ev-card-head">
+            <a class="ev-card-title" href="/admin/events/${escHTML(ev.id)}">${escHTML(ev.title)}</a>
             ${eventStatusBadge(ev)}
           </div>
-          <div class="admin-row-meta">
-            <span>${escHTML(locName)}</span>
-            <span>•</span>
-            <span>${escHTML(formatFriendlyDate(ev.startDate))}</span>
-            <span>•</span>
-            <span>${capacityText} signup${signupCount === 1 ? '' : 's'}</span>
+          <div class="ev-card-meta">
+            <span>${escHTML(locName) || 'No location'}</span>
+            <span class="dot">•</span>
+            <span>${escHTML(typeLabel)}</span>
+            ${ev.themeKey ? `<span class="dot">•</span><span class="ev-card-theme">${escHTML(ev.themeKey)}</span>` : ''}
+          </div>
+          <div class="ev-card-signups">
+            <div class="ev-card-signups-line">
+              <strong>${signupCount}</strong> signup${signupCount === 1 ? '' : 's'}${cap ? ` / ${cap}` : ''}
+              ${ev.signupsEnabled === false ? '<span class="ev-card-signups-off">signups off</span>' : ''}
+            </div>
+            ${cap ? `<div class="ev-card-bar"><span style="width:${fillPct}%;"></span></div>` : ''}
           </div>
         </div>
-        <div class="admin-row-actions">
-            <a href="/admin/events/${escHTML(ev.id)}/signups" class="btn btn-secondary btn-sm">View Signups</a>
-            <a href="/admin/events/${escHTML(ev.id)}" class="btn btn-secondary btn-sm">Edit</a>
-            <form method="POST" action="/admin/events/${escHTML(ev.id)}" style="display:inline; margin:0;">
-              <input type="hidden" name="_action" value="duplicate" />
-              <button type="submit" class="btn btn-secondary btn-sm" title="Make a copy of this event">Copy</button>
-            </form>
-            ${publicPath ? `<a href="${escHTML(publicPath)}" class="btn btn-secondary btn-sm" target="_blank">Public Page</a>` : ''}
+        <div class="ev-card-actions">
+          <a class="btn btn-primary btn-sm" href="/admin/events/${escHTML(ev.id)}">Edit</a>
+          <a class="btn btn-secondary btn-sm" href="/admin/events/${escHTML(ev.id)}/signups">Signups${signupCount ? ` (${signupCount})` : ''}</a>
+          <details class="ev-card-more">
+            <summary class="btn btn-secondary btn-sm">More ▾</summary>
+            <div class="ev-card-menu">
+              ${publicPath ? `<a href="${escHTML(publicPath)}" target="_blank" rel="noopener">Open public page ↗</a>` : ''}
+              ${publicPath ? `<button type="button" class="ev-copy-link" data-href="${escHTML(publicPath)}">Copy public link</button>` : ''}
+              <a href="${escHTML(qrPath)}" target="_blank" rel="noopener">QR code (PNG)</a>
+              <a href="${escHTML(qrPath)}?fmt=svg" target="_blank" rel="noopener">QR code (SVG)</a>
+              <hr />
+              <form method="POST" action="/admin/events/${escHTML(ev.id)}" style="margin:0;">
+                <input type="hidden" name="_action" value="duplicate" />
+                <button type="submit">Duplicate</button>
+              </form>
+            </div>
+          </details>
         </div>
-      </div>
-    `;
+      </div>`;
   }).join('');
 
   return adminLayout('Events', `
     <style>
-      .ev-empty { text-align:center; padding:60px 20px; color:#666; }
-      .ev-empty-icon { font-size:2.5rem; opacity:0.3; margin-bottom:8px; }
-      .ev-row:hover { border-color:rgba(214,173,75,0.38); }
+      :root { --ev-card-radius: 12px; }
+      .ev-hero {
+        display: flex; align-items: flex-start; justify-content: space-between;
+        gap: 18px; margin-bottom: 14px; padding: 22px 24px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.01)), var(--surface);
+        border: 1px solid var(--line); border-radius: var(--ev-card-radius);
+      }
+      .ev-hero-left h1 { margin: 4px 0 6px; font-size: clamp(1.6rem, 2.6vw, 2.1rem); }
+      .ev-hero .ev-hero-stats {
+        display: flex; gap: 18px; margin-top: 8px;
+        color: var(--text-muted); font-size: 0.88rem;
+      }
+      .ev-hero .ev-hero-stats strong { color: var(--gold-strong); font-size: 1.4rem; display: block; line-height: 1; }
+      .ev-hero .ev-hero-stats span.sub { display: block; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; margin-top: 4px; }
 
-      .ev-badge { display:inline-block; padding:3px 9px; border-radius:10px; font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; }
-      .ev-badge-live { background:rgba(34,197,94,0.18); color:#4ade80; }
-      .ev-badge-scheduled { background:rgba(96,165,250,0.18); color:#93c5fd; }
-      .ev-badge-closed { background:rgba(251,146,60,0.18); color:#fdba74; }
-      .ev-badge-past { background:rgba(150,150,150,0.15); color:#999; }
-      .ev-badge-cancelled { background:rgba(239,68,68,0.18); color:#f87171; }
-      .ev-badge-inactive { background:rgba(150,150,150,0.15); color:#888; }
+      .ev-chip-rail { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+      .ev-chip {
+        display: inline-flex; align-items: center; gap: 8px;
+        padding: 7px 13px; border-radius: 999px;
+        background: rgba(255,255,255,0.04); border: 1px solid var(--line);
+        color: var(--text-muted); text-decoration: none; font-size: 0.84rem; font-weight: 700;
+        transition: all 0.15s;
+      }
+      .ev-chip:hover { color: var(--text); border-color: rgba(240,199,102,0.4); text-decoration: none; }
+      .ev-chip.is-active { background: var(--gold-strong); color: #17110a; border-color: var(--gold-strong); }
+      .ev-chip-count { font-size: 0.72rem; font-weight: 800; padding: 1px 7px; border-radius: 999px; background: rgba(255,255,255,0.06); color: var(--text-muted); }
+      .ev-chip.is-active .ev-chip-count { background: rgba(0,0,0,0.18); color: #17110a; }
+
+      .ev-list { display: flex; flex-direction: column; gap: 12px; }
+
+      .ev-card {
+        display: grid;
+        grid-template-columns: 72px 84px 1fr auto;
+        gap: 16px; align-items: center;
+        padding: 14px 16px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.01)), var(--surface);
+        border: 1px solid var(--line); border-radius: var(--ev-card-radius);
+        transition: border-color 0.18s, box-shadow 0.18s;
+      }
+      .ev-card:hover { border-color: rgba(240,199,102,0.45); box-shadow: 0 8px 24px rgba(0,0,0,0.25); }
+      .ev-card.cancelled, .ev-card.past { opacity: 0.7; }
+
+      .ev-card-date {
+        display: flex; flex-direction: column; align-items: center;
+        background: rgba(255,255,255,0.04); border: 1px solid var(--line); border-radius: 10px;
+        padding: 10px 6px;
+      }
+      .ev-card-date-month { font-size: 0.74rem; color: var(--gold-strong); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 800; }
+      .ev-card-date-day { font-size: 1.7rem; color: var(--text); font-weight: 800; line-height: 1; }
+      .ev-card-date-time { font-size: 0.7rem; color: var(--text-muted); margin-top: 4px; }
+      .ev-card-date-none { font-size: 0.74rem; color: var(--text-muted); text-align: center; padding: 14px 4px; }
+
+      .ev-card-thumb {
+        width: 84px; height: 84px; border-radius: 8px; overflow: hidden;
+        background: rgba(255,255,255,0.03); border: 1px solid var(--line);
+        display: flex; align-items: center; justify-content: center;
+      }
+      .ev-card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+      .ev-card-thumb-empty { color: var(--text-soft); font-size: 1.8rem; opacity: 0.4; }
+
+      .ev-card-body { min-width: 0; }
+      .ev-card-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+      .ev-card-title { font-size: 1.05rem; font-weight: 800; color: var(--text); text-decoration: none; }
+      .ev-card-title:hover { color: var(--gold-strong); text-decoration: none; }
+      .ev-card-meta { color: var(--text-muted); font-size: 0.84rem; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+      .ev-card-meta .dot { color: var(--text-soft); }
+      .ev-card-theme { font-family: 'SF Mono', Menlo, monospace; font-size: 0.72rem; color: var(--text-soft); }
+      .ev-card-signups { margin-top: 6px; }
+      .ev-card-signups-line { display: flex; gap: 8px; align-items: center; color: var(--text-muted); font-size: 0.82rem; }
+      .ev-card-signups-line strong { color: var(--text); font-weight: 800; }
+      .ev-card-signups-off {
+        display: inline-block; padding: 1px 8px; border-radius: 999px;
+        font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.05em;
+        background: rgba(255,255,255,0.05); color: var(--text-soft);
+      }
+      .ev-card-bar { height: 4px; border-radius: 2px; background: rgba(255,255,255,0.06); overflow: hidden; margin-top: 4px; }
+      .ev-card-bar > span { display: block; height: 100%; background: linear-gradient(90deg, #62d28f, var(--gold-strong)); }
+
+      .ev-card-actions { display: flex; gap: 6px; align-items: center; }
+      .ev-card-actions .btn { white-space: nowrap; }
+
+      .ev-card-more { position: relative; }
+      .ev-card-more summary { list-style: none; cursor: pointer; }
+      .ev-card-more summary::-webkit-details-marker { display: none; }
+      .ev-card-menu {
+        position: absolute; right: 0; top: calc(100% + 6px); z-index: 30;
+        min-width: 220px; padding: 6px;
+        background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--ev-card-radius);
+        box-shadow: var(--shadow);
+      }
+      .ev-card-menu a, .ev-card-menu button {
+        display: block; width: 100%; text-align: left; padding: 8px 12px;
+        background: transparent; border: none; color: var(--text); font: inherit;
+        font-size: 0.86rem; border-radius: 6px; cursor: pointer; text-decoration: none;
+      }
+      .ev-card-menu a:hover, .ev-card-menu button:hover { background: rgba(255,255,255,0.05); }
+      .ev-card-menu hr { border: none; border-top: 1px solid var(--line); margin: 4px 0; }
+
+      .ev-empty {
+        text-align: center; padding: 50px 20px;
+        background: rgba(255,255,255,0.02); border: 1px dashed rgba(255,255,255,0.16); border-radius: var(--ev-card-radius);
+      }
+      .ev-empty-icon { font-size: 2.2rem; opacity: 0.35; margin-bottom: 10px; }
+      .ev-empty p { color: var(--text-muted); }
+
+      .ev-badge { display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 0.68rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; }
+      .ev-badge-live { background: rgba(98,210,143,0.22); color: #a4f4c2; }
+      .ev-badge-scheduled { background: rgba(143,183,255,0.16); color: #a8c6ff; }
+      .ev-badge-closed { background: rgba(242,166,90,0.18); color: var(--amber); }
+      .ev-badge-past { background: rgba(255,255,255,0.06); color: var(--text-muted); }
+      .ev-badge-cancelled { background: rgba(255,123,123,0.18); color: #ffb3b3; }
+      .ev-badge-inactive { background: rgba(255,255,255,0.05); color: var(--text-soft); }
+
+      @media (max-width: 760px) {
+        .ev-card { grid-template-columns: 60px 1fr; row-gap: 8px; }
+        .ev-card-thumb { display: none; }
+        .ev-card-actions { grid-column: 1 / -1; justify-content: flex-end; flex-wrap: wrap; }
+      }
     </style>
 
-    <div class="page-header">
-      <div>
+    <div class="ev-hero">
+      <div class="ev-hero-left">
         <div class="admin-kicker">Event pages</div>
         <h1>Events</h1>
-        <p class="page-subtitle">Create public signup pages, manage RSVPs, and build event landing pages.</p>
+        <p class="page-subtitle" style="margin: 0;">Create public signup pages, manage RSVPs, share QR codes, and build event landing pages.</p>
+        <div class="ev-hero-stats">
+          <div><strong>${counts.upcoming}</strong><span class="sub">Upcoming</span></div>
+          <div><strong>${counts.signups}</strong><span class="sub">Total signups</span></div>
+          <div><strong>${counts.past}</strong><span class="sub">Past</span></div>
+        </div>
       </div>
-      <a href="/admin/events/new" class="btn btn-primary">+ New Event</a>
+      <div>
+        <a href="/admin/events/new" class="btn btn-primary">+ New event</a>
+      </div>
     </div>
 
-    <div class="admin-stat-grid">
-      <div class="admin-stat"><strong>${counts.live}</strong><span>Live / Upcoming</span></div>
-      <div class="admin-stat"><strong>${counts.signups}</strong><span>Total Signups</span></div>
-      <div class="admin-stat"><strong>${counts.hidden}</strong><span>Hidden</span></div>
-      <div class="admin-stat"><strong>${counts.past}</strong><span>Past</span></div>
+    <div class="ev-chip-rail">
+      ${filterChip('upcoming', 'Upcoming', counts.upcoming)}
+      ${filterChip('past', 'Past', counts.past)}
+      ${filterChip('hidden', 'Hidden', counts.hidden)}
+      ${filterChip('cancelled', 'Cancelled', counts.cancelled)}
+      ${filterChip('all', 'All', counts.all)}
     </div>
 
-    ${events.length === 0 ? `
+    ${visible.length === 0 ? `
       <div class="ev-empty">
         <div class="ev-empty-icon">◎</div>
-        <p style="font-size:1rem; color:#888; margin-bottom:4px">No events yet</p>
-        <p style="font-size:0.85rem">Click &ldquo;New Event&rdquo; above to create your first one.</p>
+        <p style="font-size: 1rem; margin-bottom: 4px;">No events in this view.</p>
+        <p style="font-size: 0.85rem;">${filter === 'upcoming' ? 'Click "+ New event" above to create one.' : `<a href="/admin/events" style="color: var(--gold-strong);">Back to Upcoming</a>`}</p>
       </div>
-    ` : `<div class="admin-list">${rows}</div>`}
+    ` : `<div class="ev-list">${cards}</div>`}
+
+    <script>
+      // Copy public-page link to clipboard from the More menu.
+      document.addEventListener('click', function (e) {
+        var btn = e.target.closest && e.target.closest('.ev-copy-link');
+        if (!btn) return;
+        e.preventDefault();
+        var href = btn.getAttribute('data-href') || '';
+        var full = window.location.origin.replace(/\\/$/, '') + href;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(full).then(function () {
+            var orig = btn.textContent;
+            btn.textContent = 'Copied!';
+            setTimeout(function () { btn.textContent = orig; }, 1500);
+          });
+        } else {
+          window.prompt('Copy this URL:', full);
+        }
+      });
+      // Close the More menu when clicking outside.
+      document.addEventListener('click', function (e) {
+        document.querySelectorAll('details.ev-card-more[open]').forEach(function (d) {
+          if (!d.contains(e.target)) d.removeAttribute('open');
+        });
+      });
+    </script>
   `, user, { pathname: '/admin/events', flashMsg });
 }
 
@@ -733,11 +923,13 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
   `).join('');
 
   // Public URL preview (shown when editing) — with quick source-tag buttons
-  // so each social post gets a properly tagged share link.
+  // so each social post gets a properly tagged share link, plus per-event QR
+  // download links.
   let publicUrlBlock = '';
   if (!isNew) {
     const locSlug = event.location?.slug || '';
     const publicUrl = locSlug && event.slug ? `/${locSlug}/events/${event.slug}` : '';
+    const qrUrl = `/admin/events/${escHTML(event.id)}/qr`;
     publicUrlBlock = `
       <div class="ev-public-url" id="ev-public-url" hidden>
         <div class="ev-public-url-label">Share link</div>
@@ -760,6 +952,23 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
           <button type="button" class="ev-share-btn" data-src="qr">QR Code</button>
         </div>
         <div id="ev-share-status" class="ev-share-status"></div>
+
+        ${publicUrl ? `
+        <div class="ev-qr-row">
+          <div class="ev-qr-thumb">
+            <img src="${escHTML(qrUrl)}?size=300" alt="QR preview" loading="lazy" />
+          </div>
+          <div class="ev-qr-meta">
+            <div class="ev-qr-label">QR code</div>
+            <p>Print this for your QR holders, table tents, posters, or anywhere people will scan into the event page.</p>
+            <div class="ev-qr-actions">
+              <a class="btn btn-primary btn-sm" href="${escHTML(qrUrl)}?size=1200" download="event-${escHTML(event.slug)}-qr.png">Download PNG</a>
+              <a class="btn btn-secondary btn-sm" href="${escHTML(qrUrl)}?fmt=svg" download="event-${escHTML(event.slug)}-qr.svg">Download SVG</a>
+              <a class="btn btn-secondary btn-sm" href="${escHTML(qrUrl)}" target="_blank">View full size ↗</a>
+            </div>
+          </div>
+        </div>
+        ` : ''}
       </div>
     `;
   }
@@ -912,6 +1121,22 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
       .ev-share-btn:hover { border-color:#93c5fd; color:#93c5fd; }
       .ev-share-btn.ev-share-btn-active { background:rgba(96,165,250,0.18); border-color:#60a5fa; color:#93c5fd; }
       .ev-share-status { color:#4ade80; font-size:0.8rem; margin-top:8px; min-height:1.2em; }
+
+      .ev-qr-row {
+        display: grid; grid-template-columns: 200px 1fr; gap: 18px;
+        margin-top: 18px; padding: 16px;
+        background: rgba(255,255,255,0.025); border: 1px solid var(--line); border-radius: 10px;
+      }
+      .ev-qr-thumb {
+        background: #fff; padding: 10px; border-radius: 8px;
+        display: flex; align-items: center; justify-content: center;
+      }
+      .ev-qr-thumb img { display: block; max-width: 100%; height: auto; }
+      .ev-qr-meta { display: flex; flex-direction: column; gap: 8px; }
+      .ev-qr-label { font-size: 0.72rem; color: var(--gold-strong); font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; }
+      .ev-qr-meta p { color: var(--text-muted); font-size: 0.86rem; margin: 0; line-height: 1.5; }
+      .ev-qr-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+      @media (max-width: 600px) { .ev-qr-row { grid-template-columns: 1fr; } .ev-qr-thumb { max-width: 240px; margin: 0 auto; } }
 
       .ev-section {
         background:linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.015)), var(--surface);

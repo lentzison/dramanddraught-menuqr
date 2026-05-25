@@ -2129,6 +2129,21 @@ async function handlePublic(req, res, pathname, prisma) {
       ? await prisma.visitorSession.findFirst({ where: { visitorId }, orderBy: { updatedAt: 'desc' } }).catch(() => null)
       : null;
 
+    // Defense-in-depth: re-count right before create so a flurry of
+    // concurrent submissions can't slip a few signups past the capacity gate
+    // that eventStatus checked earlier in the handler.
+    if (event.capacity) {
+      const liveCount = await prisma.eventSignup.count({ where: { eventId: event.id } }).catch(() => 0);
+      if (liveCount >= event.capacity) {
+        const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/events/${event.slug}/signup`, getQueryString(req));
+        sendHTML(res, 200, injectTracking(generateEventPage(location, event, liveCount, {
+          prevValues: { name, email, phone, partySize, notes, ...customAnswers },
+          errorMessage: 'This event just filled up. We are not able to take more signups.',
+        }), sid));
+        return true;
+      }
+    }
+
     let signup;
     try {
       signup = await prisma.eventSignup.create({

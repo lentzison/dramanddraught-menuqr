@@ -384,8 +384,15 @@ function applicantStyles() {
       .ap-notes-status.is-error { color: #ffb3b3; }
 
       /* === Resume === */
-      .ap-resume { display: flex; align-items: center; gap: 10px; }
+      /* Stack the preview + action row vertically. The previous flex/center
+         layout treated the 540px preview and the action row as siblings on
+         one row, which made the buttons visually escape the card. */
+      .ap-resume { display: block; }
       .ap-resume .ap-resume-empty { color: var(--text-muted); font-style: italic; }
+      .ap-resume-actions {
+        display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+        margin-top: 8px;
+      }
 
       /* === AI verdict hero === */
       .ai-verdict {
@@ -2275,19 +2282,20 @@ function applicantDetail({ application, interviews, user, flashMsg, dashboardInv
       return '<span class="ap-resume-empty">No resume attached</span>';
     }
     const url = `/admin/applicants/${escHTML(application.id)}/resume`;
+    const dlUrl = url + '?download=1';
     const mime = String(application.resumeMimeType || '').toLowerCase();
     const isPdf = mime === 'application/pdf' || /\.pdf$/i.test(application.resumeFileName);
     const isImage = mime.startsWith('image/') || /\.(jpe?g|png|gif|webp)$/i.test(application.resumeFileName);
     const downloadRow = `
-      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-        <a class="btn btn-secondary btn-sm" href="${url}" target="_blank">Open in new tab</a>
-        <a class="btn btn-secondary btn-sm" href="${url}" download="${escAttr(application.resumeFileName)}">Download</a>
+      <div class="ap-resume-actions">
+        <a class="btn btn-secondary btn-sm" href="${url}" target="_blank" rel="noopener">Open in new tab</a>
+        <a class="btn btn-secondary btn-sm" href="${dlUrl}" download="${escAttr(application.resumeFileName)}">Download</a>
         <span class="app-meta" style="font-size:0.78rem;">${escHTML(application.resumeFileName)}</span>
       </div>`;
     let preview = '';
     if (isPdf) {
       preview = `<object data="${url}" type="application/pdf" class="ap-resume-preview" aria-label="Resume preview">
-        <div class="ap-resume-fallback">Inline preview blocked by browser — use the buttons below.</div>
+        <div class="ap-resume-fallback">Inline preview not available — use the buttons below.</div>
       </object>`;
     } else if (isImage) {
       preview = `<img src="${url}" alt="Resume preview" class="ap-resume-preview" />`;

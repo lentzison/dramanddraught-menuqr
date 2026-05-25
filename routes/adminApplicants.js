@@ -321,9 +321,17 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
     }
     const buf = Buffer.from(m[2], 'base64');
     const fileName = (app.resumeFileName || 'resume').replace(/[^A-Za-z0-9._-]+/g, '_');
+    // Default to inline so <object> / <img> previews on the detail page can
+    // actually render the PDF. The Download button on the page sends
+    // ?download=1 to force the attachment disposition.
+    const url = new URL(req.url, 'http://x');
+    const forceDownload = url.searchParams.get('download') === '1';
+    const disposition = forceDownload
+      ? `attachment; filename="${fileName}"`
+      : `inline; filename="${fileName}"`;
     res.writeHead(200, {
       'Content-Type': m[1],
-      'Content-Disposition': `attachment; filename="${fileName}"`,
+      'Content-Disposition': disposition,
       'Content-Length': buf.length,
     });
     res.end(buf);

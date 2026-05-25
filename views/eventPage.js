@@ -533,15 +533,10 @@ function generateEventPage(location, event, signupCount, options = {}) {
     </a>
   ` : '';
 
-  const sideCard = canSignup ? `
-    <aside class="ev-side-card" id="apply">
-      ${ticketCta}
-      <div class="ev-side-kicker">${escHTML(sideKicker)}</div>
-      <h2 class="ev-side-title">${escHTML(sideTitle)}</h2>
-      <p class="ev-side-copy">${escHTML(sideCopy)}</p>
-      ${signupForm}
-    </aside>
-  ` : status.key === 'no-signups' ? (ticketUrl ? `
+  // When a ticket URL is set, tickets are the primary CTA and the in-page
+  // signup form is hidden — showing both made visitors unsure whether to
+  // buy on Eventbrite or fill in the form here.
+  const sideCard = ticketUrl ? `
     <aside class="ev-side-card" id="apply">
       ${ticketCta}
       <div class="ev-side-actions">
@@ -549,9 +544,15 @@ function generateEventPage(location, event, signupCount, options = {}) {
         <a href="/${escHTML(location.slug)}" class="ev-side-link ev-side-link-muted">Back to ${escHTML(location.name)}</a>
       </div>
     </aside>
-  ` : '') : `
+  ` : canSignup ? `
     <aside class="ev-side-card" id="apply">
-      ${ticketCta}
+      <div class="ev-side-kicker">${escHTML(sideKicker)}</div>
+      <h2 class="ev-side-title">${escHTML(sideTitle)}</h2>
+      <p class="ev-side-copy">${escHTML(sideCopy)}</p>
+      ${signupForm}
+    </aside>
+  ` : status.key === 'no-signups' ? '' : `
+    <aside class="ev-side-card" id="apply">
       ${renderStatusBanner(status, event)}
       <div class="ev-side-actions">
         <a href="${escHTML(eventsPath)}" class="ev-side-link">Browse all events</a>

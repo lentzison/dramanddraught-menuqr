@@ -500,6 +500,40 @@ function applicantStyles() {
       .ap-onb-status.is-pending { border-color: rgba(143,183,255,0.45); background: rgba(143,183,255,0.06); }
       .ap-onb-status.is-pending strong { color: #a8c6ff; }
 
+      /* === Resume inline preview === */
+      .ap-resume-preview {
+        display: block; width: 100%; height: 540px;
+        margin-bottom: 10px;
+        border: 1px solid var(--line); border-radius: var(--radius);
+        background: rgba(0,0,0,0.25);
+      }
+      .ap-resume-fallback { padding: 14px; color: var(--text-muted); font-size: 0.86rem; text-align: center; }
+
+      /* === History timeline === */
+      .ap-history {
+        display: flex; flex-direction: column; gap: 0;
+      }
+      .ap-history-item {
+        display: grid; grid-template-columns: 12px 1fr; gap: 10px;
+        padding: 8px 0; border-bottom: 1px solid var(--line-soft);
+        position: relative;
+      }
+      .ap-history-item:last-child { border-bottom: none; }
+      .ap-history-dot {
+        width: 8px; height: 8px; border-radius: 50%; margin-top: 6px;
+        background: var(--line);
+      }
+      .ap-history-item.is-status .ap-history-dot { background: var(--gold-strong); }
+      .ap-history-item.is-interview .ap-history-dot { background: var(--blue); }
+      .ap-history-item.is-invite .ap-history-dot { background: #a4f4c2; }
+      .ap-history-item.is-screening .ap-history-dot { background: var(--amber); }
+      .ap-history-body { min-width: 0; }
+      .ap-history-action { color: var(--text); font-size: 0.9rem; font-weight: 600; }
+      .ap-history-meta { color: var(--text-muted); font-size: 0.78rem; margin-top: 2px; }
+      .ap-history-meta .actor { color: var(--text); }
+      .ap-history-detail { color: var(--text-soft); font-size: 0.76rem; margin-top: 3px; font-family: 'SF Mono', Menlo, monospace; word-break: break-word; }
+      .ap-history-empty { color: var(--text-muted); font-style: italic; padding: 12px 4px; }
+
       /* === Keyboard shortcut hint === */
       .ap-kbd { display:inline-block; padding: 1px 6px; border:1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; background: rgba(255,255,255,0.05); font-family: 'SF Mono', Menlo, monospace; font-size: 0.72rem; color: var(--text); }
       .ap-shortcut-hint { color: var(--text-muted); font-size: 0.78rem; margin-top: 8px; }
@@ -1145,9 +1179,14 @@ function timeAgo(value) {
 // chip rail "toggle" the corresponding param without losing the other filters.
 function buildListUrl(filters, overrides) {
   const merged = { ...filters, ...overrides };
+  // matchingTotal is a render-only count — never include it in the URL.
+  // limit only when explicitly overridden and != the default.
+  const SKIP_KEYS = new Set(['matchingTotal']);
   const params = new URLSearchParams();
   Object.entries(merged).forEach(([k, v]) => {
+    if (SKIP_KEYS.has(k)) return;
     if (v == null || v === '' || v === 'none' || (k === 'sort' && v === 'newest')) return;
+    if (k === 'limit' && (v === 200 || v === '200')) return;
     // Map view-side keys to URL keys
     const urlKey = k === 'aiRec' ? 'ai_rec'
       : k === 'hasInterview' ? 'has_interview'
@@ -1274,7 +1313,15 @@ function rejectModalScript() {
         if (n === 1) {
           sub.textContent = 'Move ' + (pending.names[0] || 'this applicant') + ' to Rejected.';
         } else {
-          sub.textContent = 'Move ' + n + ' applicants to Rejected.';
+          // Show the first few names so the user can spot-check they really
+          // selected what they meant to. Falls back to a count if names
+          // weren't attached for some reason.
+          var visibleNames = (pending.names || []).filter(Boolean).slice(0, 5);
+          var more = Math.max(0, n - visibleNames.length);
+          var nameList = visibleNames.length ? visibleNames.join(', ') + (more > 0 ? ', +' + more + ' more' : '') : '';
+          sub.textContent = nameList
+            ? 'Move ' + n + ' applicants to Rejected — ' + nameList + '.'
+            : 'Move ' + n + ' applicants to Rejected.';
         }
         reason.value = '';
         sendEmail.checked = false;
@@ -1356,6 +1403,8 @@ function applicantsList({ applications, locations, filters, counts, user, flashM
     hasInterview: filters.hasInterview || '',
     sort: filters.sort || 'newest',
     group: filters.group || 'none',
+    limit: Number.isFinite(filters.limit) ? filters.limit : 200,
+    matchingTotal: Number.isFinite(filters.matchingTotal) ? filters.matchingTotal : null,
   };
 
   const positionOptions = ['', ...POSITIONS].map((p) => {
@@ -1566,7 +1615,24 @@ function applicantsList({ applications, locations, filters, counts, user, flashM
       </form>
     </details>
 
-    <div class="al-result-meta">Showing <strong>${applications.length}</strong> of ${totalApplicants}${applications.length === 200 ? ' (capped — narrow filters to see older results)' : ''}</div>
+    <div class="al-result-meta">
+      ${(() => {
+        const shown = applications.length;
+        const matching = (typeof f.matchingTotal === 'number') ? f.matchingTotal : shown;
+        const limit = f.limit || 200;
+        const moreAvailable = matching > shown;
+        let parts = `Showing <strong>${shown}</strong>`;
+        if (matching > shown) parts += ` of <strong>${matching}</strong> matching`;
+        if (!matching || matching === shown) parts += matching === shown ? '' : ` (no matches)`;
+        let loadMore = '';
+        if (moreAvailable) {
+          const nextLimit = Math.min(2000, limit * 2);
+          const nextHref = buildListUrl(f, { limit: nextLimit });
+          loadMore = ` · <a href="${escAttr(nextHref)}" style="color:var(--gold-strong); text-decoration:underline;">Show ${Math.min(nextLimit, matching) - shown} more</a>`;
+        }
+        return parts + loadMore;
+      })()}
+    </div>
 
     ${listBody}
 
@@ -1649,21 +1715,46 @@ function applicantsList({ applications, locations, filters, counts, user, flashM
           var status = parts[1];
           var label = actionSel.options[actionSel.selectedIndex].textContent.trim();
           if (!confirm(label + ' for ' + ids.length + ' applicant' + (ids.length === 1 ? '' : 's') + '?')) return;
-          // POST sequentially to existing /admin/applicants/:id/status. Fire-and-forget;
-          // then full-page reload to refresh the list with updated state.
+          // Sequential (not parallel) POSTs so we don't slam the server with
+          // 50 simultaneous status changes. Tracks failures and reports them
+          // after the batch instead of silently swallowing 500s.
           applyBtn.disabled = true;
-          applyBtn.textContent = 'Working…';
-          Promise.all(ids.map(function (id) {
+          var done = 0;
+          var failed = [];
+          var lookupRow = function (id) {
+            var card = document.querySelector('.al-card[data-applicant-id="' + id + '"]');
+            return card ? (card.getAttribute('data-applicant-name') || id) : id;
+          };
+          (function next() {
+            if (done >= ids.length) {
+              if (failed.length === 0) {
+                applyBtn.textContent = 'Done — reloading';
+                window.location.reload();
+                return;
+              }
+              applyBtn.textContent = 'Done with errors';
+              alert(failed.length + ' of ' + ids.length + ' failed:\\n' + failed.map(lookupRow).join('\\n') + '\\n\\nThe page will reload.');
+              window.location.reload();
+              return;
+            }
+            var id = ids[done];
+            applyBtn.textContent = 'Working ' + (done + 1) + '/' + ids.length + '…';
             var body = new URLSearchParams();
             body.set('status', status);
-            return fetch('/admin/applicants/' + encodeURIComponent(id) + '/status', {
+            fetch('/admin/applicants/' + encodeURIComponent(id) + '/status', {
               method: 'POST',
               headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
               body: body.toString(),
               credentials: 'same-origin',
               redirect: 'manual',
-            }).catch(function () { return null; });
-          })).then(function () { window.location.reload(); });
+            }).then(function (resp) {
+              // 'manual' redirects look like opaqueredirect — treat as success.
+              if (resp && resp.type !== 'opaqueredirect' && !resp.ok) failed.push(id);
+            }).catch(function () { failed.push(id); }).finally(function () {
+              done += 1;
+              next();
+            });
+          })();
         });
 
         // ---------- Keyboard nav ----------
@@ -1971,6 +2062,86 @@ function renderNarrative(label, value) {
     </div>`;
 }
 
+// History card — pulls audit log events for the application and its
+// interviews, rendered as a compact timeline. Helps managers see who did
+// what when, without leaving the page.
+function renderHistoryCard(application, auditEvents, interviews) {
+  const events = Array.isArray(auditEvents) ? auditEvents : [];
+  const interviewIds = new Set((interviews || []).map((i) => i.id));
+
+  if (events.length === 0) {
+    return `
+    <div class="ap-card">
+      <div class="ap-card-head"><h2>History</h2></div>
+      <div class="ap-history-empty">No recorded events yet.</div>
+    </div>`;
+  }
+
+  const items = events.map((ev) => {
+    const detailsObj = ev.details || {};
+    const isInterview = ev.resourceType === 'interview' || interviewIds.has(ev.resourceId);
+    const isInvite = ev.resourceType === 'employeeInvite';
+    const isScreening = ev.resourceType === 'screening';
+    const isStatus = ev.resourceType === 'jobApplication' && ev.action === 'update' && detailsObj.from && detailsObj.to;
+
+    let actionLine = '';
+    let detailLine = '';
+    let typeCls = '';
+    if (isStatus) {
+      typeCls = 'is-status';
+      const from = STATUS_LABELS[detailsObj.from] || detailsObj.from;
+      const to = STATUS_LABELS[detailsObj.to] || detailsObj.to;
+      actionLine = `Moved <strong>${escHTML(from)}</strong> → <strong>${escHTML(to)}</strong>`;
+      const bits = [];
+      if (detailsObj.sendEmail) bits.push('rejection email sent');
+      if (detailsObj.interviewsCancelled) bits.push(`${detailsObj.interviewsCancelled} interview${detailsObj.interviewsCancelled === 1 ? '' : 's'} cancelled`);
+      if (bits.length) detailLine = bits.join(' · ');
+    } else if (isInterview) {
+      typeCls = 'is-interview';
+      if (ev.action === 'create') {
+        const when = detailsObj.scheduledAt ? formatFriendly(detailsObj.scheduledAt) : 'unspecified';
+        actionLine = `Interview scheduled for ${escHTML(when)}`;
+      } else if (ev.action === 'update' && detailsObj.cancelled) {
+        actionLine = `Interview cancelled`;
+        if (detailsObj.reason) detailLine = `Reason: ${detailsObj.reason}`;
+      } else {
+        actionLine = `Interview ${escHTML(ev.action)}`;
+      }
+    } else if (isInvite) {
+      typeCls = 'is-invite';
+      const reused = detailsObj.reusedExisting ? ' (reused active invite)' : '';
+      actionLine = `Bartender Dashboard invite sent${escHTML(reused)}`;
+      if (detailsObj.role) detailLine = `Role: ${detailsObj.role}`;
+    } else if (isScreening) {
+      typeCls = 'is-screening';
+      actionLine = `Screening ${escHTML(ev.action)}`;
+      if (detailsObj.error) detailLine = `Error: ${String(detailsObj.error).slice(0, 200)}`;
+    } else {
+      actionLine = `${escHTML(ev.resourceType)} ${escHTML(ev.action)}`;
+    }
+
+    const actor = ev.userName || ev.userEmail || 'system';
+    return `
+      <div class="ap-history-item ${typeCls}">
+        <span class="ap-history-dot"></span>
+        <div class="ap-history-body">
+          <div class="ap-history-action">${actionLine}</div>
+          <div class="ap-history-meta"><span class="actor">${escHTML(actor)}</span> · ${escHTML(formatFriendly(ev.createdAt))}</div>
+          ${detailLine ? `<div class="ap-history-detail">${escHTML(detailLine)}</div>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+
+  return `
+    <details class="ap-card" open>
+      <summary style="cursor: pointer; list-style: none; padding: 0; margin: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+        <h2 style="margin: 0; font-size: 1rem; color: var(--gold-strong); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 800;">History</h2>
+        <span class="aside" style="color: var(--text-muted); font-size: 0.82rem;">${events.length} event${events.length === 1 ? '' : 's'} (most recent first)</span>
+      </summary>
+      <div class="ap-history" style="margin-top: 12px;">${items}</div>
+    </details>`;
+}
+
 // Onboarding card for hired applicants — sits in the right rail when the
 // pipeline state is "hired". Shows the dashboard-invite state and lets the
 // admin send / resend / pick a different role.
@@ -2040,7 +2211,7 @@ function renderOnboardingCard(application, dashboardInviteStatus, roleOptions) {
     </div>`;
 }
 
-function applicantDetail({ application, interviews, user, flashMsg, dashboardInviteStatus, dashboardRoleOptions }) {
+function applicantDetail({ application, interviews, user, flashMsg, dashboardInviteStatus, dashboardRoleOptions, auditEvents }) {
   const flash = flashMsg ? `<div class="app-flash ${flashMsg.type === 'error' ? 'error' : 'success'}">${escHTML(flashMsg.text)}</div>` : '';
   const locName = application.location?.name || '';
   const positionLabel = application.position === 'Other' && application.positionOther
@@ -2061,10 +2232,32 @@ function applicantDetail({ application, interviews, user, flashMsg, dashboardInv
     return acc;
   }, null);
 
-  const resumeBlock = application.resumeFileName
-    ? `<a class="btn btn-secondary btn-sm" href="/admin/applicants/${escHTML(application.id)}/resume" target="_blank">Download resume</a>
-       <span class="app-meta" style="font-size:0.78rem;">${escHTML(application.resumeFileName)}</span>`
-    : '<span class="ap-resume-empty">No resume attached</span>';
+  // Resume — inline preview for PDFs and images, download for everything
+  // else. Saves a click per applicant when reviewing at volume.
+  const resumeBlock = (function () {
+    if (!application.resumeFileName) {
+      return '<span class="ap-resume-empty">No resume attached</span>';
+    }
+    const url = `/admin/applicants/${escHTML(application.id)}/resume`;
+    const mime = String(application.resumeMimeType || '').toLowerCase();
+    const isPdf = mime === 'application/pdf' || /\.pdf$/i.test(application.resumeFileName);
+    const isImage = mime.startsWith('image/') || /\.(jpe?g|png|gif|webp)$/i.test(application.resumeFileName);
+    const downloadRow = `
+      <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+        <a class="btn btn-secondary btn-sm" href="${url}" target="_blank">Open in new tab</a>
+        <a class="btn btn-secondary btn-sm" href="${url}" download="${escAttr(application.resumeFileName)}">Download</a>
+        <span class="app-meta" style="font-size:0.78rem;">${escHTML(application.resumeFileName)}</span>
+      </div>`;
+    let preview = '';
+    if (isPdf) {
+      preview = `<object data="${url}" type="application/pdf" class="ap-resume-preview" aria-label="Resume preview">
+        <div class="ap-resume-fallback">Inline preview blocked by browser — use the buttons below.</div>
+      </object>`;
+    } else if (isImage) {
+      preview = `<img src="${url}" alt="Resume preview" class="ap-resume-preview" />`;
+    }
+    return preview + downloadRow;
+  })();
 
   // Contact rail card
   const contactCard = `
@@ -2269,6 +2462,7 @@ function applicantDetail({ application, interviews, user, flashMsg, dashboardInv
         ${questionnaireAnswersPanel(application)}
         ${narrativeCard}
         ${interviewsCard}
+        ${renderHistoryCard(application, auditEvents, interviews)}
       </div>
       <aside class="ap-rail">
         ${renderOnboardingCard(application, dashboardInviteStatus, dashboardRoleOptions)}
@@ -2335,16 +2529,27 @@ function applicantDetail({ application, interviews, user, flashMsg, dashboardInv
             body.set('internalNotes', val);
             fetch(notesForm.action, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                // Asks the server to respond with JSON + a real status code
+                // (200 success / 500 failure) instead of a redirect, so we
+                // can tell the difference.
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json',
+              },
               body: body.toString(),
               credentials: 'same-origin',
-              redirect: 'manual',
-            }).then(function () {
+            }).then(function (resp) {
+              if (!resp.ok) throw new Error('HTTP ' + resp.status);
               lastSaved = val;
               setStatus('Saved ✓', 'is-saved');
               setTimeout(function () { if (notesStatus.textContent === 'Saved ✓') setStatus('', null); }, 2500);
-            }).catch(function () {
-              setStatus('Save failed', 'is-error');
+            }).catch(function (err) {
+              setStatus('Save failed — your changes are NOT saved. Click to retry.', 'is-error');
+              if (notesStatus) {
+                notesStatus.style.cursor = 'pointer';
+                notesStatus.onclick = function () { save(); };
+              }
             });
           };
           notesInput.addEventListener('input', function () {

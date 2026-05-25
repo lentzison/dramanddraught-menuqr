@@ -466,19 +466,45 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
   }
 
   // ─── Internal notes: POST /admin/applicants/:id/notes ───
+  // For XHR autosave calls (header X-Requested-With: XMLHttpRequest), reply
+  // with a small JSON body and an explicit 200/500 so the autosave can show
+  // a real error indicator instead of guessing. Browser form posts still get
+  // the flashRedirect path.
   const notesMatch = pathname.match(/^\/admin\/applicants\/([0-9a-f-]{8,})\/notes$/i);
   if (notesMatch && req.method === 'POST') {
     const id = notesMatch[1];
+    const isXhr = String(req.headers['x-requested-with'] || '').toLowerCase() === 'xmlhttprequest';
     const app = await prisma.jobApplication.findUnique({ where: { id } }).catch(() => null);
     if (!app || (!userIsCompanyWide && !allowedLocationIds.has(app.locationId))) {
+      if (isXhr) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'not_found' }));
+        return true;
+      }
       sendHTML(res, 404, '<h1>Not found</h1>');
       return true;
     }
     const body = await parseBody(req);
-    await prisma.jobApplication.update({
-      where: { id },
-      data: { internalNotes: body.internalNotes ? String(body.internalNotes).slice(0, 8000) : null },
-    });
+    try {
+      await prisma.jobApplication.update({
+        where: { id },
+        data: { internalNotes: body.internalNotes ? String(body.internalNotes).slice(0, 8000) : null },
+      });
+    } catch (err) {
+      console.warn('[applicants] notes save failed:', err.message);
+      if (isXhr) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+        return true;
+      }
+      flashRedirect(res, `/admin/applicants/${id}`, 'error', `Notes save failed: ${err.message}`);
+      return true;
+    }
+    if (isXhr) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, savedAt: new Date().toISOString() }));
+      return true;
+    }
     flashRedirect(res, `/admin/applicants/${id}`, 'success', 'Notes saved.');
     return true;
   }
@@ -650,6 +676,16 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
       dashboardInviteStatus = await fetchInviteStatus(application.dashboardInviteId);
     }
 
+    // History — pulled from the audit log for both jobApplication and any of
+    // the applicant's interviews. Most recent first.
+    const interviewIds = interviews.map((iv) => iv.id);
+    const auditResources = [id, ...interviewIds];
+    const auditEvents = await prisma.auditLog.findMany({
+      where: { resourceId: { in: auditResources } },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    }).catch(() => []);
+
     const flashMsg = decodeFlash(req);
     sendHTML(res, 200, applicantDetail({
       application,
@@ -658,6 +694,7 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
       flashMsg,
       dashboardInviteStatus,
       dashboardRoleOptions: DASHBOARD_ROLE_OPTIONS,
+      auditEvents,
     }));
     return true;
   }
@@ -730,37 +767,49 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
       where.aiEvaluation = { ...(where.aiEvaluation || {}), humanReviewRequired: true };
     }
 
-    // Sort: default newest. Score-based sorts require ordering by the relation;
-    // applicants without an aiEvaluation row sort to the end.
+    // Sort: default newest. Score-based sorts use Prisma's nulls:'last' so
+    // applicants without an aiEvaluation row deterministically sort to the
+    // end instead of jumping around between Postgres versions.
     let orderBy;
     switch (filters.sort) {
       case 'oldest':     orderBy = { createdAt: 'asc' }; break;
-      case 'score_desc': orderBy = [{ aiEvaluation: { weightedScore: 'desc' } }, { createdAt: 'desc' }]; break;
-      case 'score_asc':  orderBy = [{ aiEvaluation: { weightedScore: 'asc' } },  { createdAt: 'desc' }]; break;
+      case 'score_desc': orderBy = [{ aiEvaluation: { weightedScore: { sort: 'desc', nulls: 'last' } } }, { createdAt: 'desc' }]; break;
+      case 'score_asc':  orderBy = [{ aiEvaluation: { weightedScore: { sort: 'asc',  nulls: 'last' } } }, { createdAt: 'desc' }]; break;
       case 'name_asc':   orderBy = { name: 'asc' }; break;
       case 'newest':
       default:           orderBy = { createdAt: 'desc' }; break;
     }
 
-    const applications = await prisma.jobApplication.findMany({
-      where,
-      orderBy,
-      include: {
-        location: { select: { name: true, slug: true } },
-        questionnaire: { select: { id: true } },
-        aiEvaluation: {
-          select: {
-            recommendation: true,
-            weightedScore: true,
-            confidence: true,
-            humanReviewRequired: true,
-            errorDetail: true,
+    // Pagination via a growing ?limit= param. Default is 200; "Load more"
+    // doubles it (up to 2000). Simpler than cursor pagination for an admin
+    // list and keeps URLs bookmarkable.
+    const limitRaw = parseInt(url.searchParams.get('limit') || '', 10);
+    const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(2000, limitRaw) : 200;
+    filters.limit = limit;
+
+    const [applications, matchingTotal] = await Promise.all([
+      prisma.jobApplication.findMany({
+        where,
+        orderBy,
+        include: {
+          location: { select: { name: true, slug: true } },
+          questionnaire: { select: { id: true } },
+          aiEvaluation: {
+            select: {
+              recommendation: true,
+              weightedScore: true,
+              confidence: true,
+              humanReviewRequired: true,
+              errorDetail: true,
+            },
           },
+          _count: { select: { interviews: true } },
         },
-        _count: { select: { interviews: true } },
-      },
-      take: 200,
-    }).catch(() => []);
+        take: limit,
+      }).catch(() => []),
+      prisma.jobApplication.count({ where }).catch(() => 0),
+    ]);
+    filters.matchingTotal = matchingTotal;
 
     // Count of applicants who still owe a questionnaire and have not yet been
     // reminded — drives the "Send invites" button label.

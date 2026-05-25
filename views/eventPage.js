@@ -524,15 +524,34 @@ function generateEventPage(location, event, signupCount, options = {}) {
     </form>
   ` : '';
 
+  const ticketUrl = event.ticketUrl || '';
+  const ticketProvider = event.ticketProvider || (ticketUrl ? 'external' : null);
+  const ticketCta = ticketUrl ? `
+    <a href="${escHTML(ticketUrl)}" target="_blank" rel="noopener noreferrer" class="ev-ticket-cta">
+      <span class="ev-ticket-cta-label">Get Tickets</span>
+      <span class="ev-ticket-cta-provider">${escHTML(ticketProvider === 'eventbrite' ? 'Eventbrite ↗' : 'External link ↗')}</span>
+    </a>
+  ` : '';
+
   const sideCard = canSignup ? `
     <aside class="ev-side-card" id="apply">
+      ${ticketCta}
       <div class="ev-side-kicker">${escHTML(sideKicker)}</div>
       <h2 class="ev-side-title">${escHTML(sideTitle)}</h2>
       <p class="ev-side-copy">${escHTML(sideCopy)}</p>
       ${signupForm}
     </aside>
-  ` : status.key === 'no-signups' ? '' : `
+  ` : status.key === 'no-signups' ? (ticketUrl ? `
     <aside class="ev-side-card" id="apply">
+      ${ticketCta}
+      <div class="ev-side-actions">
+        <a href="${escHTML(eventsPath)}" class="ev-side-link">Browse all events</a>
+        <a href="/${escHTML(location.slug)}" class="ev-side-link ev-side-link-muted">Back to ${escHTML(location.name)}</a>
+      </div>
+    </aside>
+  ` : '') : `
+    <aside class="ev-side-card" id="apply">
+      ${ticketCta}
       ${renderStatusBanner(status, event)}
       <div class="ev-side-actions">
         <a href="${escHTML(eventsPath)}" class="ev-side-link">Browse all events</a>
@@ -2017,6 +2036,27 @@ function generateEventPage(location, event, signupCount, options = {}) {
         .ev-submit-btn:hover { filter: brightness(1.1); box-shadow: 0 14px 36px rgba(210,170,103,0.32); }
         .ev-submit-btn:active { transform: translateY(1px); }
         .ev-submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .ev-ticket-cta {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 4px;
+          width: 100%;
+          margin-bottom: 22px;
+          padding: 16px 18px;
+          background: linear-gradient(135deg, var(--gold), var(--amber));
+          color: #0c0c0c;
+          text-decoration: none;
+          border-radius: 12px;
+          font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+          transition: filter 0.2s, box-shadow 0.2s, transform 0.05s;
+          box-shadow: 0 10px 28px rgba(210,170,103,0.22);
+        }
+        .ev-ticket-cta:hover { filter: brightness(1.08); box-shadow: 0 14px 36px rgba(210,170,103,0.32); }
+        .ev-ticket-cta:active { transform: translateY(1px); }
+        .ev-ticket-cta-label { font-size: 1.05rem; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+        .ev-ticket-cta-provider { font-size: 0.78rem; font-weight: 600; letter-spacing: 0.04em; opacity: 0.78; text-transform: none; }
         .ev-error {
           background: rgba(239,68,68,0.1);
           border: 1px solid rgba(239,68,68,0.3);

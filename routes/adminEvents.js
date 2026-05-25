@@ -106,6 +106,22 @@ function parseDateTimeLocal(value) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+function normalizeTicketUrl(value) {
+  const v = normalizeText(value);
+  if (!v) return null;
+  // Bare http(s) URLs only — silently drop anything else so we never render
+  // a junk href on the event page.
+  if (!/^https?:\/\//i.test(v)) return null;
+  return v;
+}
+
+function detectTicketProvider(value) {
+  const v = normalizeTicketUrl(value);
+  if (!v) return null;
+  if (/eventbrite\.(com|ca|co\.uk)/i.test(v)) return 'eventbrite';
+  return 'other';
+}
+
 function parseCapacity(value) {
   if (value == null || value === '') return null;
   const n = parseInt(value, 10);
@@ -391,6 +407,9 @@ async function handleAdminEvents(req, res, pathname, prisma) {
             // Keep isVendorEvent in sync so existing read paths still work
             // until they're all migrated to read signupType directly.
             isVendorEvent: String(body.signupType) === 'vendor',
+            ticketUrl: normalizeTicketUrl(body.ticketUrl),
+            ticketProvider: detectTicketProvider(body.ticketUrl),
+            remindersEnabled: body.remindersEnabled === 'on',
           },
         });
         // Find slug for audit context
@@ -818,6 +837,9 @@ async function handleAdminEvents(req, res, pathname, prisma) {
             isCancelled: body.isCancelled === 'on',
             signupType: SIGNUP_TYPES.includes(String(body.signupType)) ? String(body.signupType) : (event.signupType || 'guest'),
             isVendorEvent: String(body.signupType) === 'vendor',
+            ticketUrl: normalizeTicketUrl(body.ticketUrl),
+            ticketProvider: detectTicketProvider(body.ticketUrl),
+            remindersEnabled: body.remindersEnabled === 'on',
           },
         });
         writeAudit(prisma, req, user, {

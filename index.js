@@ -13,6 +13,7 @@ const { handleAdminEvents } = require('./routes/adminEvents');
 const { handleAdminApplicants } = require('./routes/adminApplicants');
 const { handleAdminLtos } = require('./routes/adminLtos');
 const { scheduleInterviewReminders } = require('./interviewReminders');
+const { scheduleEventReminders } = require('./eventReminders');
 const { scheduleScreeningRetry } = require('./screeningRetry');
 const { scheduleApplicantDailyRecap } = require('./applicantDailyRecap');
 const { scheduleQuestionnaireReminders } = require('./questionnaireReminders');
@@ -223,6 +224,7 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log('Ready to serve location pages!');
   scheduleGiftCardDrawing();
   scheduleInterviewReminders(prisma);
+  scheduleEventReminders(prisma);
   scheduleApplicantDailyRecap(prisma);
   scheduleQuestionnaireReminders(prisma);
   scheduleScreeningRetry(prisma);

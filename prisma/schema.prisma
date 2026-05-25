@@ -301,6 +301,16 @@ model Event {
   // null/unknown falls back to the default dark vintage theme.
   themeKey         String?
 
+  // Ticketing. ticketUrl is the customer-facing buy-tickets link (currently
+  // always Eventbrite; future providers possible). ticketProvider is the
+  // canonical source so we can render provider-specific UI (logo, copy).
+  ticketUrl        String?
+  ticketProvider   String?   // "eventbrite" | null
+
+  // Reminder emails for confirmed signups. Defaults to on; can be disabled
+  // per event (e.g. info-only events that don't really need a T-24h ping).
+  remindersEnabled Boolean   @default(true)
+
   location         Location       @relation(fields: [locationId], references: [id], onDelete: Cascade)
   signups          EventSignup[]
 
@@ -332,6 +342,15 @@ model EventSignup {
   approvedBy       String?   // Email of GM who approved/rejected
   approvedAt       DateTime?
   rejectionReason  String?
+
+  // Reminder email tracking. Flag-then-send pattern (see eventReminders.js):
+  // we set the flag BEFORE attempting send so a crash mid-send can't fire a
+  // duplicate. unsubscribeToken is a random per-signup secret used to honor
+  // one-click opt-out without exposing signup IDs.
+  reminderSent24h  Boolean   @default(false)
+  reminderSent1h   Boolean   @default(false)
+  remindersOptOut  Boolean   @default(false)
+  unsubscribeToken String?
 
   event         Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
 

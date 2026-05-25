@@ -1419,6 +1419,18 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
           </div>
         </div>
 
+        <div class="ev-field-grid" style="margin-top:18px">
+          <div>
+            <label for="ev-ticket-url">Ticket URL <span style="color:#888; font-weight:400; font-size:0.8rem">(Eventbrite, optional)</span></label>
+            <input type="url" id="ev-ticket-url" name="ticketUrl" value="${escHTML(event?.ticketUrl || '')}" placeholder="https://www.eventbrite.com/e/..." />
+            <p style="color:#888; font-size:0.78rem; margin:6px 0 0">Adds a &ldquo;Get Tickets&rdquo; button to the public event page and surfaces on the calendar.</p>
+          </div>
+          <div>
+            <label class="ev-check" style="margin-top:24px"><input type="checkbox" name="remindersEnabled" ${!event || event.remindersEnabled !== false ? 'checked' : ''} /> Send reminder emails (T-24h &amp; T-1h)</label>
+            <p style="color:#888; font-size:0.78rem; margin:6px 0 0">Only approved signups with an email get reminders. Recipients can opt out via a one-click link.</p>
+          </div>
+        </div>
+
         <label style="margin-top:18px; margin-bottom:8px">Standard Fields</label>
         <div class="ev-standard-fields">
           <label class="ev-check"><input type="checkbox" name="collectEmail" ${!event || event.collectEmail ? 'checked' : ''} /> Email address</label>

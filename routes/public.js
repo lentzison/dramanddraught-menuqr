@@ -374,15 +374,65 @@ async function handlePublicEventsFeed(req, res, prisma) {
       isCancelled: ev.isCancelled,
       isActive: ev.isActive,
       updatedAt: ev.updatedAt,
-      // Eventbrite ticket URL would live here once Phase D ships.
-      ticketUrl: null,
-      ticketingMode: 'internal',
+      ticketUrl: ev.ticketUrl || null,
+      ticketProvider: ev.ticketProvider || null,
+      ticketingMode: ev.ticketUrl ? (ev.ticketProvider || 'external') : 'internal',
     }));
 
     sendJSON(res, 200, { ok: true, count: items.length, items, fetchedAt: new Date().toISOString() });
   } catch (err) {
     console.warn('[public/events feed] failed:', err.message);
     sendJSON(res, 500, { ok: false, error: err.message });
+  }
+  return true;
+}
+
+async function handleEventReminderUnsubscribe(req, res, prisma) {
+  const url = new URL(req.url, 'http://x');
+  const token = (url.searchParams.get('token') || '').trim();
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+
+  function htmlPage(title, body) {
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title><meta name="viewport" content="width=device-width, initial-scale=1">
+      <style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#0f1012;color:#eee;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px}
+      .card{max-width:480px;text-align:center;background:#1a1b1f;border:1px solid #2a2b30;border-radius:14px;padding:36px}
+      h1{margin:0 0 12px;font-size:1.4rem;color:#d2aa67}
+      p{color:#bbb;line-height:1.55;margin:8px 0}</style></head><body><div class="card">${body}</div></body></html>`;
+  }
+
+  if (!token) {
+    res.writeHead(400);
+    res.end(htmlPage('Invalid link', '<h1>Invalid link</h1><p>This unsubscribe link is missing its token.</p>'));
+    return true;
+  }
+
+  try {
+    const signup = await prisma.eventSignup.findFirst({
+      where: { unsubscribeToken: token },
+      include: { event: true },
+    });
+    if (!signup) {
+      res.writeHead(404);
+      res.end(htmlPage('Not found', '<h1>Not found</h1><p>This link has already been used or is no longer valid.</p>'));
+      return true;
+    }
+    if (!signup.remindersOptOut) {
+      await prisma.eventSignup.update({
+        where: { id: signup.id },
+        data: { remindersOptOut: true, reminderSent24h: true, reminderSent1h: true },
+      });
+    }
+    res.writeHead(200);
+    res.end(htmlPage(
+      'Unsubscribed',
+      `<h1>You're unsubscribed</h1>
+       <p>You won't get any more reminder emails for <strong>${String(signup.event?.title || 'this event').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}</strong>.</p>
+       <p>Your signup is still confirmed — only the email reminders are off.</p>`
+    ));
+  } catch (err) {
+    console.warn('[event unsubscribe] failed:', err.message);
+    res.writeHead(500);
+    res.end(htmlPage('Error', '<h1>Something went wrong</h1><p>Please try again, or reply to the reminder email and we\'ll take care of it.</p>'));
   }
   return true;
 }
@@ -1992,6 +2042,13 @@ async function handlePublic(req, res, pathname, prisma) {
   // intentional auth).
   if (pathname === '/api/public/events') {
     return handlePublicEventsFeed(req, res, prisma);
+  }
+
+  // One-click reminder opt-out from the email footer. Public, idempotent —
+  // looking up by random per-signup token, so leaking a token only lets a
+  // recipient stop their own reminders.
+  if (pathname === '/api/public/events/unsubscribe') {
+    return handleEventReminderUnsubscribe(req, res, prisma);
   }
 
   if (pathname === '/api/lubrication-cup-signup') {

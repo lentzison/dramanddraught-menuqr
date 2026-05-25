@@ -34,6 +34,18 @@ function buildBody(application, kind) {
 
 async function sendReminder(prisma, application, kind) {
   if (!application.email) return;
+  // Set the flag FIRST so a process restart between the email send and the
+  // DB write can't cause a double-send next poll. If the send fails, we
+  // rely on the manager noticing — vs. risking spamming candidates with
+  // duplicate reminders.
+  const flagField = kind === '24h' ? 'questionnaireReminder24hSent' : 'questionnaireReminder72hSent';
+  const flagData = { [flagField]: true, questionnaireInviteSentAt: new Date() };
+  try {
+    await prisma.jobApplication.update({ where: { id: application.id }, data: flagData });
+  } catch (err) {
+    console.warn(`[questionnaire-reminders] ${kind} flag-write failed for ${application.email}: ${err.message}`);
+    return;
+  }
   try {
     const result = await sendEmailViaGoogle({
       to: application.email,
@@ -44,13 +56,6 @@ async function sendReminder(prisma, application, kind) {
       console.warn(`[questionnaire-reminders] ${kind} send rejected for ${application.email}: ${result.reason || 'unknown'}`);
       return;
     }
-    const data = kind === '24h'
-      ? { questionnaireReminder24hSent: true }
-      : { questionnaireReminder72hSent: true };
-    // Also stamp questionnaireInviteSentAt so manual "Send invites" buttons
-    // skip this person on the next click.
-    data.questionnaireInviteSentAt = new Date();
-    await prisma.jobApplication.update({ where: { id: application.id }, data });
     console.log(`[questionnaire-reminders] ${kind} sent to ${application.email}`);
   } catch (err) {
     console.warn(`[questionnaire-reminders] ${kind} send failed for ${application.email}: ${err.message}`);
@@ -60,12 +65,17 @@ async function sendReminder(prisma, application, kind) {
 async function runQuestionnaireReminders(prisma) {
   if (!prisma) return;
   const now = Date.now();
-  // 24h window: applied between 23h and 49h ago, no quiz, no 24h reminder yet.
-  const lo24 = new Date(now - 49 * 60 * 60 * 1000);
-  const hi24 = new Date(now - 23 * 60 * 60 * 1000);
-  // 72h window: applied between 71h and 168h ago (cap at 7 days), no quiz, no 72h reminder yet.
-  const lo72 = new Date(now - 168 * 60 * 60 * 1000);
-  const hi72 = new Date(now - 71 * 60 * 60 * 1000);
+  // Tighter windows than before (was 26h and 97h spans). Each window is now
+  // 4-6h wide; combined with the flag-first-then-send change above, the
+  // chance of either a missed reminder or a double-send is small.
+  // 24h: applied between 24h and 30h ago.
+  const lo24 = new Date(now - 30 * 60 * 60 * 1000);
+  const hi24 = new Date(now - 24 * 60 * 60 * 1000);
+  // 72h: applied between 72h and 78h ago. Cap re-fire at 7 days so an
+  // application that lingers without a quiz still ends up in the "expired"
+  // bucket cleanly (matches the new 30-day questionnaire link expiry).
+  const lo72 = new Date(now - 78 * 60 * 60 * 1000);
+  const hi72 = new Date(now - 72 * 60 * 60 * 1000);
 
   try {
     const due24 = await prisma.jobApplication.findMany({
@@ -98,8 +108,9 @@ async function runQuestionnaireReminders(prisma) {
 
 function scheduleQuestionnaireReminders(prisma) {
   runQuestionnaireReminders(prisma);
-  // Hourly poll. Plenty of resolution since each reminder window is ~24h wide.
-  setInterval(() => runQuestionnaireReminders(prisma), 60 * 60 * 1000);
+  // Poll every 30 minutes. Windows are 6h wide, so two polls always cover
+  // any single applicant once.
+  setInterval(() => runQuestionnaireReminders(prisma), 30 * 60 * 1000);
 }
 
 module.exports = { runQuestionnaireReminders, scheduleQuestionnaireReminders };

@@ -13,6 +13,7 @@ const { handleAdminEvents } = require('./routes/adminEvents');
 const { handleAdminApplicants } = require('./routes/adminApplicants');
 const { handleAdminLtos } = require('./routes/adminLtos');
 const { scheduleInterviewReminders } = require('./interviewReminders');
+const { scheduleScreeningRetry } = require('./screeningRetry');
 const { scheduleApplicantDailyRecap } = require('./applicantDailyRecap');
 const { scheduleQuestionnaireReminders } = require('./questionnaireReminders');
 const { generateNotFoundPage } = require('./views/notFoundPage');
@@ -224,4 +225,5 @@ server.listen(PORT, '0.0.0.0', () => {
   scheduleInterviewReminders(prisma);
   scheduleApplicantDailyRecap(prisma);
   scheduleQuestionnaireReminders(prisma);
+  scheduleScreeningRetry(prisma);
 });

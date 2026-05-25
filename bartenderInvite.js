@@ -45,12 +45,15 @@ const ROLE_OPTIONS = [
 const ROLE_LABELS = ROLE_OPTIONS.reduce((acc, o) => { acc[o.value] = o.label; return acc; }, {});
 
 // First/last name split: trim, split on whitespace, last token is lastName,
-// rest joined back into firstName. Empty fallback is " " because the bartender
-// columns are NOT NULL.
+// rest joined back into firstName. The bartender User columns are NOT NULL,
+// so single-name applicants used to ship as lastName=" " (single space).
+// That rendered as a blank "Last name" in the bartender register form, which
+// felt broken. Fall back to "—" instead so the candidate sees something
+// intentional and can edit it themselves during signup.
 function splitName(name) {
   const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return { firstName: 'Friend', lastName: ' ' };
-  if (parts.length === 1) return { firstName: parts[0], lastName: ' ' };
+  if (parts.length === 0) return { firstName: 'Friend', lastName: '—' };
+  if (parts.length === 1) return { firstName: parts[0], lastName: '—' };
   return { firstName: parts.slice(0, -1).join(' '), lastName: parts[parts.length - 1] };
 }
 
@@ -102,6 +105,18 @@ async function findActiveInvite(db, email) {
   return r.rows[0] || null;
 }
 
+// Block on an existing User row — bartender app's own register API errors
+// out with "user with this email already exists" mid-signup if we don't
+// catch this here, leaving the candidate confused and the admin thinking
+// the invite went through.
+async function findExistingUser(db, email) {
+  const r = await db.query(
+    `SELECT id, "firstName", "lastName", "isActive" FROM "User" WHERE email = $1 LIMIT 1`,
+    [String(email).toLowerCase()],
+  );
+  return r.rows[0] || null;
+}
+
 function buildEmailBody({ firstName, locationName, roleLabel, registrationUrl, senderName }) {
   // Mirrors the bartender app's default template so the candidate gets the
   // same onboarding instructions.
@@ -143,6 +158,21 @@ async function createAndSendInvite({ application, locationSlug, role, adminEmail
     const { firstName, lastName } = splitName(application.name);
 
     const db = getPool();
+
+    // Block early if a User already exists for this email in the bartender
+    // DB. The bartender app's POST /api/employees/invites errors with
+    // "a user with this email already exists" — replicate that check here
+    // so admins get an honest "already onboarded" message instead of a
+    // confusing "we sent an invite but the candidate can't sign up".
+    const existingUser = await findExistingUser(db, application.email);
+    if (existingUser) {
+      return {
+        ok: false,
+        error: `A bartender-dashboard account already exists for ${application.email}` +
+          (existingUser.firstName ? ` (${existingUser.firstName} ${existingUser.lastName})` : '') +
+          `. If they need their account re-activated or the password reset, do that in the Bartender Dashboard directly.`,
+      };
+    }
 
     // De-dupe: if there's already an active invite, reuse it (don't create a
     // second row). The candidate already has a working link.

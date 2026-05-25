@@ -43,15 +43,25 @@ async function sendReminder(prisma, interview, kind) {
     ? `Reminder: interview tomorrow — Dram & Draught`
     : `Heads up — interview in 1 hour`;
 
+  // Flag-then-send: write the reminderSent flag BEFORE attempting the
+  // email so a process restart between send and DB write can't cause
+  // the next poll to re-fire the same reminder. If the send fails, the
+  // manager will notice via the missing confirmation — better than
+  // double-sending candidates.
+  try {
+    await prisma.interview.update({
+      where: { id: interview.id },
+      data: kind === '24h' ? { reminderSent24h: true } : { reminderSent1h: true },
+    });
+  } catch (err) {
+    console.warn(`[interview reminders] ${kind} flag-write failed for ${interview.id}:`, err.message);
+    return;
+  }
   try {
     await sendEmailViaGoogle({
       to: recipients,
       subject,
       body: reminderBody(application, interview, kind),
-    });
-    await prisma.interview.update({
-      where: { id: interview.id },
-      data: kind === '24h' ? { reminderSent24h: true } : { reminderSent1h: true },
     });
   } catch (err) {
     console.warn(`[interview reminders] ${kind} send failed for ${interview.id}:`, err.message);
@@ -61,12 +71,15 @@ async function sendReminder(prisma, interview, kind) {
 async function runInterviewReminders(prisma) {
   if (!prisma) return;
   const now = Date.now();
-  // 24h window: scheduledAt between now+22h and now+25h, not yet 24h-sent
-  const lo24 = new Date(now + 22 * 60 * 60 * 1000);
-  const hi24 = new Date(now + 25 * 60 * 60 * 1000);
-  // 1h window: scheduledAt between now+30min and now+90min, not yet 1h-sent
-  const lo1 = new Date(now + 30 * 60 * 1000);
-  const hi1 = new Date(now + 90 * 60 * 1000);
+  // Tighter windows centered on the target offset. Poll runs every 5
+  // minutes; the 24h window is now 23h45m-24h15m (30-min span — covers two
+  // consecutive polls cleanly), and the 1h window is 50min-70min (20-min
+  // span). Combined with the flag-first-then-send change above, doubles
+  // and misses are both unlikely.
+  const lo24 = new Date(now + 23 * 60 * 60 * 1000 + 45 * 60 * 1000);
+  const hi24 = new Date(now + 24 * 60 * 60 * 1000 + 15 * 60 * 1000);
+  const lo1 = new Date(now + 50 * 60 * 1000);
+  const hi1 = new Date(now + 70 * 60 * 1000);
 
   try {
     const due24 = await prisma.interview.findMany({

@@ -582,6 +582,35 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
       details: { scheduledAt, type, locationDetail, skipEmail: !!skipEmail, contactMethod },
     }).catch(() => {});
 
+    // Conflict detection — find other scheduled interviews for the same
+    // interviewer within ±90 minutes of the new slot, so we can warn (but
+    // not block — the user might genuinely want overlapping interviews).
+    let conflictWarn = '';
+    if (interviewerEmail) {
+      try {
+        const windowMs = 90 * 60 * 1000;
+        const conflicts = await prisma.interview.findMany({
+          where: {
+            id: { not: interview.id },
+            interviewerEmail,
+            status: 'scheduled',
+            scheduledAt: {
+              gte: new Date(scheduledAt.getTime() - windowMs),
+              lte: new Date(scheduledAt.getTime() + windowMs),
+            },
+          },
+          include: { application: { select: { name: true } } },
+          take: 3,
+        });
+        if (conflicts.length) {
+          conflictWarn = ' ⚠ ' + conflicts.length + ' overlapping interview' + (conflicts.length === 1 ? '' : 's') + ' for ' + interviewerEmail + ' within 90 min: '
+            + conflicts.map((c) => (c.application?.name || 'unknown') + ' at ' + formatEasternDateTime(c.scheduledAt)).join('; ');
+        }
+      } catch (err) {
+        console.warn('[applicants] conflict check failed:', err.message);
+      }
+    }
+
     let flashText;
     if (skipEmail) {
       flashText = contactMethod
@@ -593,7 +622,125 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
       flashText = 'Interview scheduled. Confirmation email sent.';
     }
 
-    flashRedirect(res, `/admin/applicants/${id}`, 'success', flashText);
+    flashRedirect(res, `/admin/applicants/${id}`, conflictWarn ? 'error' : 'success', flashText + conflictWarn);
+    return true;
+  }
+
+  // ─── Mark interview complete: POST /admin/applicants/interviews/:id/complete ───
+  const completeInterviewMatch = pathname.match(/^\/admin\/applicants\/interviews\/([0-9a-f-]{8,})\/complete$/i);
+  if (completeInterviewMatch && req.method === 'POST') {
+    const id = completeInterviewMatch[1];
+    const interview = await prisma.interview.findUnique({
+      where: { id },
+      include: { application: true },
+    }).catch(() => null);
+    if (!interview || (!userIsCompanyWide && !allowedLocationIds.has(interview.locationId))) {
+      sendHTML(res, 404, '<h1>Not found</h1>');
+      return true;
+    }
+    await prisma.interview.update({
+      where: { id },
+      data: { status: 'completed' },
+    });
+    // Auto-advance applicant if still 'interview_scheduled' — manager can
+    // still override to interviewed/offer_extended via the menu.
+    if (interview.application && interview.application.status === 'interview_scheduled') {
+      await prisma.jobApplication.update({
+        where: { id: interview.applicationId },
+        data: {
+          status: 'interviewed',
+          decisionBy: user.email || null,
+          decisionAt: new Date(),
+        },
+      }).catch(() => {});
+    }
+    writeAudit(prisma, req, user, {
+      action: 'update',
+      resourceType: 'interview',
+      resourceId: id,
+      resourceLabel: `${interview.application?.name || ''}`,
+      details: { completed: true },
+    }).catch(() => {});
+    flashRedirect(res, `/admin/applicants/${interview.applicationId}`, 'success', 'Interview marked completed. Applicant moved to Interviewed.');
+    return true;
+  }
+
+  // ─── Mark interview no-show: POST /admin/applicants/interviews/:id/no-show ───
+  const noShowInterviewMatch = pathname.match(/^\/admin\/applicants\/interviews\/([0-9a-f-]{8,})\/no-show$/i);
+  if (noShowInterviewMatch && req.method === 'POST') {
+    const id = noShowInterviewMatch[1];
+    const interview = await prisma.interview.findUnique({
+      where: { id },
+      include: { application: true },
+    }).catch(() => null);
+    if (!interview || (!userIsCompanyWide && !allowedLocationIds.has(interview.locationId))) {
+      sendHTML(res, 404, '<h1>Not found</h1>');
+      return true;
+    }
+    await prisma.interview.update({
+      where: { id },
+      data: { status: 'no_show' },
+    });
+    writeAudit(prisma, req, user, {
+      action: 'update',
+      resourceType: 'interview',
+      resourceId: id,
+      resourceLabel: `${interview.application?.name || ''}`,
+      details: { noShow: true },
+    }).catch(() => {});
+    flashRedirect(res, `/admin/applicants/${interview.applicationId}`, 'success', 'Interview marked no-show. Applicant status unchanged — use Change status to reject if appropriate.');
+    return true;
+  }
+
+  // ─── Reschedule interview: POST /admin/applicants/interviews/:id/reschedule ───
+  const rescheduleInterviewMatch = pathname.match(/^\/admin\/applicants\/interviews\/([0-9a-f-]{8,})\/reschedule$/i);
+  if (rescheduleInterviewMatch && req.method === 'POST') {
+    const id = rescheduleInterviewMatch[1];
+    const interview = await prisma.interview.findUnique({
+      where: { id },
+      include: { application: true },
+    }).catch(() => null);
+    if (!interview || (!userIsCompanyWide && !allowedLocationIds.has(interview.locationId))) {
+      sendHTML(res, 404, '<h1>Not found</h1>');
+      return true;
+    }
+    const body = await parseBody(req);
+    const newScheduledAt = parseDateTimeLocal(body.scheduledAt);
+    if (!newScheduledAt) {
+      flashRedirect(res, `/admin/applicants/${interview.applicationId}`, 'error', 'Could not parse the new date/time.');
+      return true;
+    }
+    const notify = body.notifyCandidate === '1' || body.notifyCandidate === 'on';
+
+    await prisma.interview.update({
+      where: { id },
+      data: {
+        scheduledAt: newScheduledAt,
+        // Reset reminder flags so the new time gets fresh reminders.
+        reminderSent24h: false,
+        reminderSent1h: false,
+        // Re-stamp confirmationSentAt only if we actually email.
+        confirmationSentAt: notify ? new Date() : interview.confirmationSentAt,
+      },
+    });
+    writeAudit(prisma, req, user, {
+      action: 'update',
+      resourceType: 'interview',
+      resourceId: id,
+      resourceLabel: `${interview.application?.name || ''}`,
+      details: { rescheduledFrom: interview.scheduledAt, rescheduledTo: newScheduledAt, notify: !!notify },
+    }).catch(() => {});
+
+    if (notify && interview.application?.email) {
+      // Reuse the confirmation template — same body the original send used,
+      // with the new time.
+      const updated = { ...interview, scheduledAt: newScheduledAt };
+      sendInterviewConfirmation(interview.application, updated).catch((err) => console.warn('[applicants] reschedule email failed:', err.message));
+    }
+
+    flashRedirect(res, `/admin/applicants/${interview.applicationId}`, 'success', notify
+      ? 'Interview rescheduled. Updated confirmation emailed to the candidate.'
+      : 'Interview rescheduled. No email sent (you opted out).');
     return true;
   }
 

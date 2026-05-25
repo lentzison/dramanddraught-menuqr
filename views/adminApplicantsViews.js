@@ -314,6 +314,14 @@ function applicantStyles() {
       .ap-tl-meta + .ap-tl-meta { margin-top: 3px; }
       .ap-tl-foot { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; color: var(--text-soft); font-size: 0.76rem; }
       .ap-tl-foot .ap-tl-foot-item { display: inline-flex; align-items: center; gap: 4px; }
+      .ap-tl-outcome {
+        margin-top: 12px; padding: 10px 12px;
+        background: rgba(240,199,102,0.06); border: 1px solid rgba(240,199,102,0.32);
+        border-radius: var(--radius);
+      }
+      .ap-tl-outcome-q { font-size: 0.86rem; color: var(--gold-strong); font-weight: 700; margin-bottom: 8px; }
+      .ap-tl-outcome-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+      .ap-tl-outcome-actions .btn { min-height: 32px; padding: 5px 10px; font-size: 0.78rem; }
       .ap-tl-cancel-toggle {
         margin-top: 8px;
       }
@@ -1996,6 +2004,34 @@ function renderInterview(interview) {
           <span>·</span>
           <span class="ap-tl-foot-item">${interview.reminderSent1h ? '✓' : '○'} 1h reminder</span>
         </div>
+
+        ${interview.status === 'scheduled' && new Date(interview.scheduledAt) < new Date() ? `
+        <div class="ap-tl-outcome">
+          <div class="ap-tl-outcome-q">How did this interview go?</div>
+          <div class="ap-tl-outcome-actions">
+            <form method="POST" action="/admin/applicants/interviews/${escHTML(interview.id)}/complete" style="margin:0;" onsubmit="return confirm('Mark this interview as completed?');">
+              <button type="submit" class="btn btn-success btn-sm">✓ Completed</button>
+            </form>
+            <form method="POST" action="/admin/applicants/interviews/${escHTML(interview.id)}/no-show" style="margin:0;" onsubmit="return confirm('Mark this interview as a no-show? The candidate did not arrive.');">
+              <button type="submit" class="btn btn-secondary btn-sm">✕ No-show</button>
+            </form>
+            <details class="ap-tl-reschedule" style="display:inline-block;">
+              <summary style="cursor:pointer; list-style:none;" class="btn btn-secondary btn-sm">Reschedule</summary>
+              <form method="POST" action="/admin/applicants/interviews/${escHTML(interview.id)}/reschedule" style="margin-top:8px; padding:10px 12px; background:rgba(255,255,255,0.03); border:1px dashed var(--line); border-radius:6px;">
+                <div class="ap-form-block">
+                  <label>New date &amp; time (Eastern)</label>
+                  <input type="datetime-local" name="scheduledAt" required />
+                </div>
+                <label style="display:flex; align-items:center; gap:6px; margin-top:8px; font-size:0.84rem;">
+                  <input type="checkbox" name="notifyCandidate" value="1" checked /> Email the candidate the new time
+                </label>
+                <div style="margin-top:10px; text-align:right;">
+                  <button type="submit" class="btn btn-primary btn-sm">Save new time</button>
+                </div>
+              </form>
+            </details>
+          </div>
+        </div>` : ''}
 
         ${interview.status === 'scheduled' ? `
         <details class="ap-tl-cancel-toggle">

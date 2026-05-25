@@ -51,6 +51,29 @@ function pageShell(title, bodyHtml) {
       color: #8d9299; font-size: 0.8rem; margin: 6px 0 18px;
       letter-spacing: 0.04em; text-transform: uppercase;
     }
+    .q-progress-bar {
+      position: sticky; top: 0; z-index: 5;
+      margin: 0 -18px 16px; padding: 8px 18px;
+      background: rgba(15,16,18,0.92); backdrop-filter: blur(8px);
+      border-bottom: 1px solid rgba(212,175,55,0.18);
+    }
+    .q-progress-bar .pb-track {
+      height: 4px; border-radius: 2px;
+      background: rgba(255,255,255,0.08); overflow: hidden;
+    }
+    .q-progress-bar .pb-fill {
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg, var(--accent-light, #e8c87a), var(--gold));
+      transition: width 0.22s ease;
+    }
+    .q-progress-bar .pb-label {
+      font-size: 0.72rem; color: #b9aea0; margin-top: 4px;
+      display: flex; justify-content: space-between; align-items: center;
+      letter-spacing: 0.05em; text-transform: uppercase; font-weight: 700;
+    }
+    .q-progress-bar .pb-status { color: #8d9299; font-weight: 600; text-transform: none; letter-spacing: 0; }
+    .q-progress-bar .pb-status.is-saved { color: #b9f7cc; }
+    .q-progress-bar .pb-status.is-saving { color: #f2a65a; }
     .q-done-card {
       text-align: center; padding: 36px 22px;
       background: rgba(20,21,24,0.85);
@@ -99,6 +122,14 @@ function generateQuestionnairePage({ application, locationName, locationSlug, pr
 
     ${errorMessage ? `<div class="q-error">${escHTML(errorMessage)}</div>` : ''}
 
+    <div class="q-progress-bar" aria-hidden="true">
+      <div class="pb-track"><div class="pb-fill" id="q-pb-fill"></div></div>
+      <div class="pb-label">
+        <span id="q-pb-count">0 of ${roleQuestions.length} answered</span>
+        <span class="pb-status" id="q-pb-status">Saving as you type…</span>
+      </div>
+    </div>
+
     <form method="POST" action="/apply/q/${escHTML(application.id)}" id="q-form">
       ${fields}
       <button type="submit" class="q-submit">Submit questionnaire</button>
@@ -106,7 +137,73 @@ function generateQuestionnairePage({ application, locationName, locationSlug, pr
 
     <p style="margin-top:18px; text-align:center;">
       <a class="q-back-link" href="/${escHTML(locationSlug)}">&larr; Back to ${escHTML(locationName)}</a>
-    </p>`;
+    </p>
+
+    <script>
+      (function () {
+        var form = document.getElementById('q-form');
+        if (!form) return;
+        var KEY = 'dd-quiz-draft-${escHTML(application.id)}';
+        var fill = document.getElementById('q-pb-fill');
+        var count = document.getElementById('q-pb-count');
+        var status = document.getElementById('q-pb-status');
+        var textareas = Array.from(form.querySelectorAll('textarea[required]'));
+        var total = textareas.length;
+        var saveTimer = null;
+
+        function refreshProgress() {
+          var answered = textareas.filter(function (t) { return (t.value || '').trim().length > 0; }).length;
+          if (fill) fill.style.width = (total ? (answered / total) * 100 : 0) + '%';
+          if (count) count.textContent = answered + ' of ' + total + ' answered';
+        }
+        function snapshot() {
+          var data = {};
+          textareas.forEach(function (t) { data[t.name] = t.value; });
+          return data;
+        }
+        function restore() {
+          try {
+            var raw = localStorage.getItem(KEY);
+            if (!raw) return;
+            var data = JSON.parse(raw);
+            if (!data || typeof data !== 'object') return;
+            var restored = 0;
+            textareas.forEach(function (t) {
+              if (typeof data[t.name] === 'string' && !t.value) {
+                t.value = data[t.name];
+                if (data[t.name].trim()) restored++;
+              }
+            });
+            if (restored > 0 && status) status.textContent = 'Restored ' + restored + ' answer' + (restored === 1 ? '' : 's') + ' from your draft.';
+          } catch (e) { /* ignore */ }
+        }
+        function setStatus(text, cls) {
+          if (!status) return;
+          status.textContent = text;
+          status.classList.remove('is-saved', 'is-saving');
+          if (cls) status.classList.add(cls);
+        }
+        function saveSoon() {
+          if (saveTimer) clearTimeout(saveTimer);
+          setStatus('Saving…', 'is-saving');
+          saveTimer = setTimeout(function () {
+            try {
+              localStorage.setItem(KEY, JSON.stringify(snapshot()));
+              setStatus('Draft saved.', 'is-saved');
+            } catch (e) { setStatus('Could not save draft.', ''); }
+          }, 500);
+        }
+        restore();
+        refreshProgress();
+        form.addEventListener('input', function () {
+          refreshProgress();
+          saveSoon();
+        });
+        form.addEventListener('submit', function () {
+          try { localStorage.removeItem(KEY); } catch (e) {}
+        });
+      })();
+    </script>`;
 
   return pageShell('Hospitality questionnaire', body);
 }
@@ -138,8 +235,29 @@ function generateQuestionnaireExpiredPage({ locationName, locationSlug }) {
   return pageShell('Questionnaire already submitted', body);
 }
 
+// New: shown when the application is older than the soft expiry window (30
+// days) and the questionnaire was never submitted. Gives the candidate a
+// clear path back in rather than a confusing 404 or silent re-submit.
+function generateQuestionnaireLinkExpiredPage({ application, locationName, locationSlug, daysOld }) {
+  const body = `
+    <div class="q-head">
+      ${renderBrandMark()}
+    </div>
+    <div class="q-done-card">
+      <h1>This link has expired</h1>
+      <p>Your application was submitted ${escHTML(String(daysOld))} days ago and the questionnaire link expires after 30 days. If you're still interested in joining ${escHTML(locationName)}, the easiest thing to do is start a fresh application — it only takes a few minutes.</p>
+      <p style="margin-top:22px;">
+        <a class="action-link" href="/${escHTML(locationSlug)}/apply">Start a new application &rarr;</a>
+      </p>
+      <p style="margin-top:14px; color:#8d9299; font-size:0.85rem;">If you'd rather not re-apply, email <a href="mailto:hiring@dramanddraught.com" style="color:var(--gold);">hiring@dramanddraught.com</a> and ask us to reopen reference ${escHTML(application.id)}.</p>
+      <p style="margin-top:18px;"><a class="q-back-link" href="/${escHTML(locationSlug)}">&larr; Back to ${escHTML(locationName)}</a></p>
+    </div>`;
+  return pageShell('Questionnaire link expired', body);
+}
+
 module.exports = {
   generateQuestionnairePage,
   generateQuestionnaireDonePage,
   generateQuestionnaireExpiredPage,
+  generateQuestionnaireLinkExpiredPage,
 };

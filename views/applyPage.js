@@ -58,6 +58,9 @@ function pageShell(location, title, bodyHtml) {
         @media (max-width: 560px) { .apply-row { grid-template-columns: 1fr; } }
         .apply-field { display: block; }
         .apply-field label, .apply-label { display: block; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; color: #c8b770; margin-bottom: 6px; font-weight: 600; }
+        .apply-req { color: #f7c4c4; margin-left: 2px; font-weight: 800; }
+        .apply-field.has-error input, .apply-field.has-error select, .apply-field.has-error textarea { border-color: rgba(247,196,196,0.6); box-shadow: 0 0 0 2px rgba(247,196,196,0.18); }
+        .apply-field-error { color: #f7c4c4; font-size: 0.78rem; margin-top: 4px; }
         .apply-field input[type="text"],
         .apply-field input[type="email"],
         .apply-field input[type="tel"],
@@ -160,22 +163,22 @@ function generateApplyPage(location, opts = {}) {
         <div class="apply-section-title">About you</div>
         <div class="apply-row">
           <div class="apply-field">
-            <label>Full name *</label>
-            <input type="text" name="name" required value="${escHTML(prev.name || '')}" />
+            <label for="ap-name">Full name <span class="apply-req">*</span></label>
+            <input type="text" id="ap-name" name="name" required autocomplete="name" autocapitalize="words" value="${escHTML(prev.name || '')}" />
           </div>
           <div class="apply-field">
-            <label>Email *</label>
-            <input type="email" name="email" required value="${escHTML(prev.email || '')}" />
+            <label for="ap-email">Email <span class="apply-req">*</span></label>
+            <input type="email" id="ap-email" name="email" required inputmode="email" autocomplete="email" autocapitalize="none" autocorrect="off" spellcheck="false" value="${escHTML(prev.email || '')}" />
           </div>
         </div>
         <div class="apply-row">
           <div class="apply-field">
-            <label>Phone *</label>
-            <input type="tel" name="phone" required value="${escHTML(prev.phone || '')}" />
+            <label for="ap-phone">Phone <span class="apply-req">*</span></label>
+            <input type="tel" id="ap-phone" name="phone" required inputmode="tel" autocomplete="tel" value="${escHTML(prev.phone || '')}" />
           </div>
           <div class="apply-field">
-            <label>Referred by</label>
-            <input type="text" name="referredBy" value="${escHTML(prev.referredBy || '')}" />
+            <label for="ap-ref">Referred by</label>
+            <input type="text" id="ap-ref" name="referredBy" autocomplete="off" value="${escHTML(prev.referredBy || '')}" />
           </div>
         </div>
       </div>
@@ -208,15 +211,24 @@ function generateApplyPage(location, opts = {}) {
             <input type="date" name="earliestStart" value="${escHTML(prev.earliestStart || '')}" />
           </div>
         </div>
-        <div class="apply-row" data-bartender-only>
+        <div class="apply-row" data-alc-row>
           <div class="apply-field" style="grid-column: 1 / -1;">
-            <span class="apply-label">Are you legally eligible to perform all alcohol-service duties required for this role at this location? <span data-bartender-required style="color:#f7c4c4;">*</span></span>
+            <span class="apply-label">Are you legally eligible to perform alcohol-service duties for this role at this location? <span class="apply-req" data-alc-required>*</span></span>
             <div class="yesno-pair">
               <label><input type="radio" name="alcoholEligibility" value="yes"${prev.alcoholEligibility === 'yes' ? ' checked' : ''} /> Yes</label>
               <label><input type="radio" name="alcoholEligibility" value="no"${prev.alcoholEligibility === 'no' ? ' checked' : ''} /> No</label>
               <label><input type="radio" name="alcoholEligibility" value="unsure"${prev.alcoholEligibility === 'unsure' ? ' checked' : ''} /> Unsure</label>
             </div>
-            <div class="apply-helper">Required for Bartender. We use this in place of asking your age directly. "Unsure" routes to a manager for review and never penalizes you.</div>
+            <div class="apply-helper">
+              Required for Bartender, Barback, Server, and Floor Manager — any role that pours or serves alcohol.
+              We use this in place of asking your age directly.
+              <details style="display:inline-block; margin-left:4px;"><summary style="cursor:pointer; color:var(--gold); display:inline;">What does this mean?</summary>
+              <div style="margin-top:6px; padding:10px 12px; background:rgba(255,255,255,0.04); border-left:2px solid var(--gold); border-radius:0 6px 6px 0; color:#d6d2c5; font-size:0.84rem; line-height:1.5;">
+                North Carolina requires alcohol-service staff to be at least 18 (servers / barbacks) or 21 (bartenders mixing or pouring spirits).
+                Some roles also require a TIPS or ABC certification you can get after hire. Pick <strong>Yes</strong> only if you can lawfully
+                perform every alcohol-related duty for the role you applied to. Pick <strong>Unsure</strong> if you don't know — a manager will reach out, and it never counts against you.
+              </div></details>
+            </div>
           </div>
         </div>
       </div>
@@ -276,12 +288,123 @@ function generateApplyPage(location, opts = {}) {
         </div>
       </div>
 
-      <div class="apply-actions">
+      <div class="apply-actions" style="flex-direction: column; align-items: flex-end; gap: 8px;">
+        <div id="ap-draft-status" class="apply-helper" style="font-size:0.78rem; color:#8d9299;"></div>
         <button type="submit" class="apply-btn">Submit application</button>
       </div>
     </form>
 
     <script>
+      // ---- localStorage draft autosave ----
+      (function(){
+        var form = document.getElementById('apply-form');
+        if (!form) return;
+        var KEY = 'dd-apply-draft-${escHTML(location.slug || '')}';
+        var status = document.getElementById('ap-draft-status');
+        var saveTimer = null;
+        var fields = ['name','email','phone','referredBy','position','positionOther','age21','alcoholEligibility','earliestStart','yearsExperience','certifications','priorEmployers','spiritKnowledge','whyDD'];
+        function snapshot() {
+          var data = {};
+          fields.forEach(function (n) {
+            var el = form.querySelector('[name="' + n + '"]:checked') || form.querySelector('[name="' + n + '"]');
+            if (!el) return;
+            if (el.type === 'radio') {
+              var picked = form.querySelector('[name="' + n + '"]:checked');
+              data[n] = picked ? picked.value : '';
+            } else {
+              data[n] = el.value;
+            }
+          });
+          // availability checkboxes
+          var avail = {};
+          form.querySelectorAll('input[type="checkbox"][name^="avail_"]:checked').forEach(function (cb) {
+            var day = cb.name.replace('avail_', '');
+            (avail[day] = avail[day] || []).push(cb.value);
+          });
+          data.__avail = avail;
+          return data;
+        }
+        function restore() {
+          try {
+            var raw = localStorage.getItem(KEY);
+            if (!raw) return false;
+            var data = JSON.parse(raw);
+            if (!data || typeof data !== 'object') return false;
+            // Skip restore if any prev values are already set (server re-render path).
+            var hasServerPrev = fields.some(function (n) {
+              var el = form.querySelector('[name="' + n + '"]:not([type=radio])');
+              return el && el.value;
+            });
+            if (hasServerPrev) return false;
+            fields.forEach(function (n) {
+              if (data[n] == null) return;
+              if (n === 'age21' || n === 'alcoholEligibility') {
+                var r = form.querySelector('[name="' + n + '"][value="' + CSS.escape(data[n]) + '"]');
+                if (r) r.checked = true;
+              } else {
+                var el = form.querySelector('[name="' + n + '"]');
+                if (el) el.value = data[n];
+              }
+            });
+            if (data.__avail && typeof data.__avail === 'object') {
+              Object.keys(data.__avail).forEach(function (day) {
+                (data.__avail[day] || []).forEach(function (shift) {
+                  var cb = form.querySelector('input[type="checkbox"][name="avail_' + day + '"][value="' + CSS.escape(shift) + '"]');
+                  if (cb) cb.checked = true;
+                });
+              });
+            }
+            if (status) status.textContent = 'Restored an unsaved draft.';
+            return true;
+          } catch (e) { return false; }
+        }
+        function saveSoon() {
+          if (saveTimer) clearTimeout(saveTimer);
+          saveTimer = setTimeout(function () {
+            try {
+              localStorage.setItem(KEY, JSON.stringify(snapshot()));
+              if (status) status.textContent = 'Draft saved.';
+            } catch (e) { /* private mode etc. */ }
+          }, 600);
+        }
+        restore();
+        form.addEventListener('input', saveSoon);
+        form.addEventListener('change', saveSoon);
+        form.addEventListener('submit', function () {
+          try { localStorage.removeItem(KEY); } catch (e) {}
+        });
+      })();
+
+      // ---- Inline error focus on server-side validation failure ----
+      (function () {
+        var bannerEl = document.querySelector('.apply-error');
+        if (!bannerEl) return;
+        var text = (bannerEl.textContent || '').toLowerCase();
+        var form = document.getElementById('apply-form');
+        if (!form) return;
+        var firstBad = null;
+        var checks = [
+          { word: 'name', name: 'name' },
+          { word: 'email', name: 'email' },
+          { word: 'phone', name: 'phone' },
+          { word: 'position', name: 'position' },
+          { word: '21 or older', name: 'age21' },
+          { word: 'alcohol-service', name: 'alcoholEligibility' },
+        ];
+        checks.forEach(function (c) {
+          if (text.indexOf(c.word) === -1) return;
+          var el = form.querySelector('[name="' + c.name + '"]');
+          if (!el) return;
+          var wrap = el.closest('.apply-field') || el.parentElement;
+          if (wrap) wrap.classList.add('has-error');
+          if (!firstBad) firstBad = el;
+        });
+        if (firstBad) {
+          firstBad.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          setTimeout(function () { try { firstBad.focus(); } catch (e) {} }, 250);
+        }
+      })();
+
       (function(){
         var fileInput = document.getElementById('resume-file');
         var dataIn = document.getElementById('resume_data');

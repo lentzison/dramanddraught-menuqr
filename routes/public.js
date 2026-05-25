@@ -47,6 +47,7 @@ const {
   generateQuestionnairePage,
   generateQuestionnaireDonePage,
   generateQuestionnaireExpiredPage,
+  generateQuestionnaireLinkExpiredPage,
 } = require('../views/questionnairePage');
 const { QUESTIONS: HIRING_QUESTIONS, QUESTIONNAIRE_VERSION, effectiveQuestionsForApplicant } = require('../hiring/knowledgeBase');
 const { runAiEvaluation } = require('../hiring/aiEvaluation');
@@ -1341,8 +1342,11 @@ async function handleApply(req, res, prisma, locationSlug) {
   if (!position || !APPLY_POSITIONS_SET.has(position)) errors.push('Please select a position.');
   if (position === 'Other' && !positionOther) errors.push('Please tell us which "Other" role.');
   if (!age21Raw) errors.push('Please tell us if you are 21 or older.');
-  if (position === 'Bartender' && !alcoholEligibility) {
-    errors.push('Please answer whether you are legally eligible to perform alcohol-service duties.');
+  // Required for any role that pours or serves alcohol. Host is the only
+  // applied position that doesn't, so they're exempt.
+  const ALCOHOL_ROLES = new Set(['Bartender', 'Barback', 'Server', 'Floor Manager']);
+  if (ALCOHOL_ROLES.has(position) && !alcoholEligibility) {
+    errors.push('Please answer whether you are legally eligible to perform alcohol-service duties for this role.');
   }
 
   let earliestStart = null;
@@ -1439,9 +1443,20 @@ async function handleQuestionnaire(req, res, prisma, applicationId) {
   const locationName = application.location?.name || 'Dram & Draught';
   const locationSlug = application.location?.slug || '';
 
+  // Soft 30-day expiry on the questionnaire link. Computed from the
+  // application's createdAt so we don't need a new column.
+  const QUIZ_EXPIRY_DAYS = 30;
+  const ageMs = Date.now() - new Date(application.createdAt).getTime();
+  const daysOld = Math.max(0, Math.floor(ageMs / (1000 * 60 * 60 * 24)));
+  const isExpired = !application.questionnaire && daysOld > QUIZ_EXPIRY_DAYS;
+
   if (req.method === 'GET') {
     if (application.questionnaire) {
       sendHTML(res, 200, generateQuestionnaireDonePage({ application, locationName, locationSlug }));
+      return true;
+    }
+    if (isExpired) {
+      sendHTML(res, 200, generateQuestionnaireLinkExpiredPage({ application, locationName, locationSlug, daysOld }));
       return true;
     }
     sendHTML(res, 200, generateQuestionnairePage({ application, locationName, locationSlug }));
@@ -1456,6 +1471,13 @@ async function handleQuestionnaire(req, res, prisma, applicationId) {
   // Block re-submission.
   if (application.questionnaire) {
     sendHTML(res, 200, generateQuestionnaireExpiredPage({ locationName, locationSlug }));
+    return true;
+  }
+
+  // Block expired submissions too — POSTs that arrive after the 30-day window
+  // (e.g., from a cached browser tab) get the same friendly expiry page.
+  if (isExpired) {
+    sendHTML(res, 200, generateQuestionnaireLinkExpiredPage({ application, locationName, locationSlug, daysOld }));
     return true;
   }
 
@@ -1576,11 +1598,21 @@ async function runAndPersistEvaluation(prisma, application, questionnaire) {
 }
 
 async function notifyApplicationSubmitted(location, application) {
-  // Email applicant a confirmation.
+  // Email applicant a confirmation. Includes the questionnaire link so the
+  // candidate can come back to it later if they closed the tab right after
+  // submit (the apply route redirects them straight into the quiz, but not
+  // everyone finishes in one sitting).
+  const quizUrl = `https://menuqr.apps.dramanddraught.com/apply/q/${application.id}`;
+  const positionLabel = application.position + (application.positionOther ? ` (${application.positionOther})` : '');
   const applicantBody = [
     `Hi ${application.name.split(' ')[0] || 'there'},`,
     '',
-    `Thanks for applying to Dram & Draught – ${location.name}. We've received your application for the ${application.position}${application.positionOther ? ` (${application.positionOther})` : ''} role and our team will be in touch.`,
+    `Thanks for applying to Dram & Draught — ${location.name}. We've received your application for the ${positionLabel} role.`,
+    '',
+    `Next step: a short hospitality questionnaire (about 8 minutes). If you haven't already finished it, you can pick it up here any time in the next 30 days:`,
+    quizUrl,
+    '',
+    `Once that's in, our team reviews it and reaches out to schedule an interview if you're a fit.`,
     '',
     `Reference: ${application.id}`,
     '',

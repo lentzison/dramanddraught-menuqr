@@ -2123,7 +2123,10 @@ async function handlePublic(req, res, pathname, prisma) {
     const fwd = req.headers['x-forwarded-for'];
     const ip = fwd ? String(fwd).split(',')[0].trim() : (req.socket?.remoteAddress || null);
 
-    const isVendorEvent = event.isVendorEvent === true;
+    const { effectiveSignupType, needsApproval } = require('../eventSignupTypes');
+    const signupType = effectiveSignupType(event);
+    const requiresApproval = needsApproval(event);
+    const isVendorEvent = signupType === 'vendor'; // retained for downstream copy below
     const visitorId = getVisitorId(req);
     const currentSession = visitorId && prisma?.visitorSession
       ? await prisma.visitorSession.findFirst({ where: { visitorId }, orderBy: { updatedAt: 'desc' } }).catch(() => null)
@@ -2159,7 +2162,7 @@ async function handlePublic(req, res, pathname, prisma) {
           visitorId: visitorId || null,
           sessionId: currentSession?.id || null,
           source: currentSession?.source || null,
-          status: isVendorEvent ? 'pending' : 'approved',
+          status: requiresApproval ? 'pending' : 'approved',
         },
       });
     } catch (err) {
@@ -2197,30 +2200,36 @@ async function handlePublic(req, res, pathname, prisma) {
       entityName: event.title,
       metadata: {
         eventSlug: event.slug,
-        status: isVendorEvent ? 'pending' : 'approved',
+        status: requiresApproval ? 'pending' : 'approved',
         partySize,
-        isVendorEvent,
+        signupType,
       },
     });
 
-    // Best-effort notification email. For vendor events, always notify the
-    // location's GM/admin list in addition to the configured notifyEmail so
-    // the approval queue never gets missed.
+    // Best-effort notification email. For vendor + participant events,
+    // always notify the location's GM/admin list in addition to the
+    // configured notifyEmail so the approval queue never gets missed.
     try {
       const recipients = new Set();
       if (event.notifyEmail) recipients.add(String(event.notifyEmail).trim().toLowerCase());
-      if (isVendorEvent) {
+      if (requiresApproval) {
         const gmEmails = await getBarSupportEmailsForLocation(location.slug).catch(() => []);
         for (const e of gmEmails) recipients.add(e);
       }
       if (recipients.size > 0) {
-        const subject = isVendorEvent
-          ? `New vendor application: ${event.title}`
-          : `New signup: ${event.title}`;
+        const subjectByType = {
+          guest: `New signup: ${event.title}`,
+          vendor: `New vendor application: ${event.title}`,
+          participant: `New participant signup: ${event.title}`,
+        };
+        const subject = subjectByType[signupType] || subjectByType.guest;
+        const leadByType = {
+          guest: `New signup for "${event.title}" at ${location.name}`,
+          vendor: `New vendor application for "${event.title}" at ${location.name}`,
+          participant: `New participant signup for "${event.title}" at ${location.name}`,
+        };
         const bodyLines = [
-          isVendorEvent
-            ? `New vendor application for "${event.title}" at ${location.name}`
-            : `New signup for "${event.title}" at ${location.name}`,
+          leadByType[signupType] || leadByType.guest,
           `Event date: ${event.startDate ? new Date(event.startDate).toLocaleString('en-US', { timeZone: 'America/New_York' }) : ''}`,
           '',
           `Name: ${name}`,
@@ -2243,7 +2252,7 @@ async function handlePublic(req, res, pathname, prisma) {
             bodyLines.push(`${q.label}: ${v}`);
           }
         }
-        if (isVendorEvent) {
+        if (requiresApproval) {
           bodyLines.push('', 'Review & approve: https://menuqr.apps.dramanddraught.com/admin/events/' + event.id + '/signups');
         } else {
           bodyLines.push('', `Total signups: ${signupCount + 1}${event.capacity ? ' / ' + event.capacity : ''}`);

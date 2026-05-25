@@ -284,7 +284,16 @@ model Event {
 
   // Vendor events route signups through a GM approval queue instead of
   // confirming instantly. Re-labels the signup form as a vendor application.
+  // Kept for backward compatibility; new code should read `signupType`.
   isVendorEvent    Boolean   @default(false)
+
+  // Signup mode. "guest" (default) = standard RSVP that confirms instantly.
+  // "vendor" = outside business / artist applying for a slot, gated by
+  //   approval queue (legacy isVendorEvent = true maps here).
+  // "participant" = anyone signing up to *take part* in the event (e.g.
+  //   bartenders entering a cocktail competition, performers, contestants).
+  //   Also gated by an approval queue. Form copy adapts based on this value.
+  signupType       String    @default("guest")
 
   // Optional visual theme override for the public event page.
   // Known values: "spring-market" (soft green/peach garden party),

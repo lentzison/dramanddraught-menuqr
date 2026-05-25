@@ -444,7 +444,10 @@ function generateEventPage(location, event, signupCount, options = {}) {
   const publicPath = `/${location.slug}/events/${event.slug}`;
   const eventsPath = `/${location.slug}/events`;
   const spotsLeft = event.capacity ? Math.max(event.capacity - signupCount, 0) : null;
-  const isVendor = event.isVendorEvent === true;
+  const { effectiveSignupType, isVendor: isVendorFn, isParticipant: isParticipantFn } = require('../eventSignupTypes');
+  const signupType = effectiveSignupType(event);
+  const isVendor = isVendorFn(event);
+  const isParticipant = isParticipantFn(event);
   // themeKey drives the visual look. Historical spring-market events set no
   // themeKey but rely on the spring palette — preserve that fallback so old
   // data keeps rendering the same way. Known themes: "spring-market",
@@ -456,25 +459,35 @@ function generateEventPage(location, event, signupCount, options = {}) {
       ? 'ev-vendor'
       : '';
 
-  // Vendor-event copy: re-label the form as an application and hint that
-  // there's a review step before the vendor is confirmed. Art pop-ups call
-  // their form an "artist application" instead of generic "vendor" copy.
+  // Form copy adapts to the signup mode. Art pop-ups (vendor + art-gallery
+  // theme) still get the existing "artist application" wording; participant
+  // events get their own "Sign up to take part" framing.
   const isArt = themeKey === 'art-gallery';
   const heroEyebrow = isArt
     ? 'Artists Wanted'
-    : isVendor ? 'Vendor Applications' : 'Presents';
+    : isVendor ? 'Vendor Applications'
+    : isParticipant ? 'Sign up to take part'
+    : 'Presents';
   const sideKicker = isArt
     ? 'Artist Application'
-    : isVendor ? 'Vendor Application' : 'Reserve Your Spot';
+    : isVendor ? 'Vendor Application'
+    : isParticipant ? 'Participant Signup'
+    : 'Reserve Your Spot';
   const sideTitle = isArt
     ? 'Apply to show your work'
-    : isVendor ? 'Apply to be a vendor' : 'Join this event';
+    : isVendor ? 'Apply to be a vendor'
+    : isParticipant ? 'Sign up to take part'
+    : 'Join this event';
   const sideCopy = isArt
     ? 'Tell us about your work. We send invites to accepted artists as slots open up.'
     : isVendor
       ? 'Tell us about your business below. Our team reviews each application and will reach out once a decision has been made.'
-      : 'Signups are open now.';
-  const submitLabel = isVendor ? 'Submit Application' : 'Sign Up';
+      : isParticipant
+        ? 'Tell us about yourself and what you\'re bringing. The team reviews participant signups and will email you when a slot is confirmed.'
+        : 'Signups are open now.';
+  const submitLabel = isVendor ? 'Submit Application'
+    : isParticipant ? 'Submit Signup'
+    : 'Sign Up';
 
   const descriptionHtml = event.description ? renderRichText(event.description) : '';
 
@@ -482,7 +495,7 @@ function generateEventPage(location, event, signupCount, options = {}) {
     <form method="POST" action="${escHTML(publicPath)}/signup" class="ev-form">
       ${errorMessage ? `<div class="ev-error">${escHTML(errorMessage)}</div>` : ''}
 
-      <label for="ev-name">${isVendor ? 'Contact Name' : 'Name'} <span style="color:var(--amber)">*</span></label>
+      <label for="ev-name">${isVendor ? 'Contact Name' : isParticipant ? 'Your Name' : 'Name'} <span style="color:var(--amber)">*</span></label>
       <input type="text" id="ev-name" name="name" required value="${escHTML(prevValues.name || '')}" autocomplete="name" />
 
       ${event.collectEmail ? `
@@ -501,8 +514,8 @@ function generateEventPage(location, event, signupCount, options = {}) {
       ` : ''}
 
       ${event.collectNotes ? `
-        <label for="ev-notes">${isVendor ? 'Anything else we should know?' : 'Notes or Special Requests'}</label>
-        <textarea id="ev-notes" name="notes" rows="3">${escHTML(prevValues.notes || '')}</textarea>
+        <label for="ev-notes">${isVendor ? 'Anything else we should know?' : isParticipant ? 'Tell us what you\'re bringing' : 'Notes or Special Requests'}</label>
+        <textarea id="ev-notes" name="notes" rows="3" placeholder="${isParticipant ? 'Cocktail concept, dish description, performance length, equipment you\'ll bring, etc.' : ''}">${escHTML(prevValues.notes || '')}</textarea>
       ` : ''}
 
       ${renderCustomFields(event, prevValues)}
@@ -2562,7 +2575,10 @@ function generateEventPage(location, event, signupCount, options = {}) {
 }
 
 function generateEventConfirmationPage(location, event, signup) {
-  const isVendor = event.isVendorEvent === true;
+  const { effectiveSignupType, isVendor: isVendorFn, isParticipant: isParticipantFn } = require('../eventSignupTypes');
+  const signupType = effectiveSignupType(event);
+  const isVendor = isVendorFn(event);
+  const isParticipant = isParticipantFn(event);
   const themeKey = event.themeKey || (isVendor ? 'spring-market' : null);
   const bodyClass = themeKey === 'art-gallery'
     ? 'ev-art'
@@ -2571,11 +2587,13 @@ function generateEventConfirmationPage(location, event, signup) {
       : '';
   const defaultMsg = isVendor
     ? "Thanks for applying! Our team will review your application and reach out once a decision has been made."
-    : "Thanks for signing up! We'll see you at the event.";
+    : isParticipant
+      ? "Thanks for signing up to take part. The team reviews each signup and will email you when your slot is confirmed."
+      : "Thanks for signing up! We'll see you at the event.";
   const message = (event.confirmationMessage && event.confirmationMessage.trim()) || defaultMsg;
   const messageHtml = renderRichText(message);
-  const eyebrowText = isVendor ? 'Application Received' : "You're In";
-  const pageTitle = isVendor ? 'Application received' : "You're signed up";
+  const eyebrowText = isVendor ? 'Application Received' : isParticipant ? 'Signup Received' : "You're In";
+  const pageTitle = isVendor ? 'Application received' : isParticipant ? 'Signup received' : "You're signed up";
   return `
     <!DOCTYPE html>
     <html lang="en">
@@ -2755,7 +2773,7 @@ function generateEventConfirmationPage(location, event, signup) {
         <div class="ec-message">${messageHtml}</div>
 
         <div class="ec-details">
-          ${isVendor ? 'Application from' : 'Signed up as'} <strong>${escHTML(signup.name)}</strong>${signup.email ? `<br/>${isVendor ? "We'll contact you at" : 'Confirmation details may be sent to'} <strong>${escHTML(signup.email)}</strong>` : ''}
+          ${isVendor ? 'Application from' : isParticipant ? 'Signup from' : 'Signed up as'} <strong>${escHTML(signup.name)}</strong>${signup.email ? `<br/>${isVendor || isParticipant ? "We'll contact you at" : 'Confirmation details may be sent to'} <strong>${escHTML(signup.email)}</strong>` : ''}
         </div>
 
         <div class="ec-actions">

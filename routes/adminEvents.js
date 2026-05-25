@@ -8,6 +8,7 @@ const {
 } = require('../views/adminEventsViews');
 const { sanitizeImageSrc } = require('../views/imageUploadWidget');
 const { writeAudit } = require('../auditLog');
+const { SIGNUP_TYPES, effectiveSignupType, needsApproval } = require('../eventSignupTypes');
 
 function normalizeText(value) {
   return String(value || '').trim();
@@ -386,6 +387,10 @@ async function handleAdminEvents(req, res, pathname, prisma) {
             notifyEmail: normalizeText(body.notifyEmail) || null,
             isActive: body.isActive === 'on',
             isCancelled: false,
+            signupType: SIGNUP_TYPES.includes(String(body.signupType)) ? String(body.signupType) : 'guest',
+            // Keep isVendorEvent in sync so existing read paths still work
+            // until they're all migrated to read signupType directly.
+            isVendorEvent: String(body.signupType) === 'vendor',
           },
         });
         // Find slug for audit context
@@ -811,6 +816,8 @@ async function handleAdminEvents(req, res, pathname, prisma) {
             notifyEmail: normalizeText(body.notifyEmail) || null,
             isActive: body.isActive === 'on',
             isCancelled: body.isCancelled === 'on',
+            signupType: SIGNUP_TYPES.includes(String(body.signupType)) ? String(body.signupType) : (event.signupType || 'guest'),
+            isVendorEvent: String(body.signupType) === 'vendor',
           },
         });
         writeAudit(prisma, req, user, {

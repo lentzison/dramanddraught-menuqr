@@ -340,7 +340,8 @@ function eventsList(events, user, flashMsg, filter = 'upcoming') {
     const startMonth = startDate ? startDate.toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short' }) : '';
     const startDay = startDate ? startDate.toLocaleString('en-US', { timeZone: 'America/New_York', day: 'numeric' }) : '';
     const startTime = startDate ? startDate.toLocaleString('en-US', { timeZone: 'America/New_York', hour: 'numeric', minute: '2-digit' }) : '';
-    const typeLabel = ev.isVendorEvent ? 'Vendor event' : 'Guest RSVPs';
+    const { effectiveSignupType: pickType, SIGNUP_TYPE_LABELS } = require('../eventSignupTypes');
+    const typeLabel = SIGNUP_TYPE_LABELS[pickType(ev)] || 'Guest RSVP';
 
     return `
       <div class="ev-card ${bucketOf(ev)}">
@@ -1122,6 +1123,18 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
       .ev-share-btn.ev-share-btn-active { background:rgba(96,165,250,0.18); border-color:#60a5fa; color:#93c5fd; }
       .ev-share-status { color:#4ade80; font-size:0.8rem; margin-top:8px; min-height:1.2em; }
 
+      .ev-signup-type-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+      .ev-signup-type {
+        display: block; padding: 12px 14px; cursor: pointer;
+        background: rgba(255,255,255,0.025); border: 1px solid var(--line); border-radius: 10px;
+        transition: all 0.15s;
+      }
+      .ev-signup-type:hover { border-color: rgba(240,199,102,0.4); }
+      .ev-signup-type.is-active { border-color: var(--gold-strong); background: rgba(240,199,102,0.08); }
+      .ev-signup-type input { margin-right: 6px; accent-color: var(--gold-strong); }
+      .ev-signup-type strong { display: block; color: var(--text); font-size: 0.94rem; margin-bottom: 4px; }
+      .ev-signup-type span { display: block; color: var(--text-muted); font-size: 0.78rem; line-height: 1.4; }
+
       .ev-qr-row {
         display: grid; grid-template-columns: 200px 1fr; gap: 18px;
         margin-top: 18px; padding: 16px;
@@ -1372,6 +1385,28 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
           <input type="checkbox" name="signupsEnabled" ${!event || event.signupsEnabled !== false ? 'checked' : ''} />
           <strong>Show signup form on the public page</strong>
         </label>
+
+        ${(() => {
+          // Signup mode picker — Guest RSVP / Vendor / Participant. Drives
+          // form copy, the "approve before confirmed" gate, and where the
+          // signup ends up in the admin signups tabs.
+          const { SIGNUP_TYPE_LABELS, SIGNUP_TYPE_DESCRIPTIONS, effectiveSignupType: pickType } = require('../eventSignupTypes');
+          const current = event ? pickType(event) : 'guest';
+          const opt = (key) => `
+            <label class="ev-signup-type ${current === key ? 'is-active' : ''}">
+              <input type="radio" name="signupType" value="${key}" ${current === key ? 'checked' : ''} />
+              <strong>${escHTML(SIGNUP_TYPE_LABELS[key])}</strong>
+              <span>${escHTML(SIGNUP_TYPE_DESCRIPTIONS[key])}</span>
+            </label>`;
+          return `
+            <label style="margin-top: 10px; margin-bottom: 6px;">Signup mode</label>
+            <div class="ev-signup-type-grid">
+              ${opt('guest')}
+              ${opt('vendor')}
+              ${opt('participant')}
+            </div>
+          `;
+        })()}
 
         <div class="ev-field-grid">
           <div>

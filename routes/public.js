@@ -293,6 +293,100 @@ async function handlePublicReviews(req, res, prisma) {
   }
 }
 
+// /api/public/events?location=:slug — JSON feed of publishable events for
+// the public app to mirror. Bearer auth: requires Authorization: Bearer X
+// matching MENUQR_API_KEY env var. Returns events that are active +
+// non-cancelled + started no more than 30 days ago (so the public mirror
+// shows recent-past events for archive purposes, but doesn't drown in old
+// data).
+async function handlePublicEventsFeed(req, res, prisma) {
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return true; }
+  if (req.method !== 'GET') {
+    sendJSON(res, 405, { ok: false, error: 'Method Not Allowed' });
+    return true;
+  }
+  if (!prisma) { sendJSON(res, 503, { ok: false, error: 'DB not available' }); return true; }
+
+  const expectedKey = (process.env.MENUQR_API_KEY || '').trim();
+  if (!expectedKey) {
+    // Refuse to serve without intentional auth — we'd rather break the
+    // public sync than expose this feed accidentally.
+    sendJSON(res, 503, { ok: false, error: 'MENUQR_API_KEY not configured on this server' });
+    return true;
+  }
+  const auth = String(req.headers['authorization'] || '').trim();
+  const provided = auth.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : '';
+  if (provided !== expectedKey) {
+    sendJSON(res, 401, { ok: false, error: 'Unauthorized' });
+    return true;
+  }
+
+  const parsed = url.parse(req.url, true);
+  const locationFilter = String(parsed.query.location || '').trim().toLowerCase() || null;
+
+  try {
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const where = {
+      isActive: true,
+      isCancelled: false,
+      OR: [
+        { startDate: { gte: thirtyDaysAgo } },
+        { startDate: null },
+      ],
+    };
+    if (locationFilter) {
+      where.location = { slug: locationFilter };
+    }
+    const events = await prisma.event.findMany({
+      where,
+      orderBy: [{ startDate: 'asc' }],
+      include: {
+        location: { select: { slug: true, name: true, city: true, state: true } },
+        _count: { select: { signups: true } },
+      },
+      take: 500,
+    });
+
+    const { effectiveSignupType } = require('../eventSignupTypes');
+    const baseUrl = process.env.MENUQR_BASE_URL || 'https://menuqr.apps.dramanddraught.com';
+    const items = events.map((ev) => ({
+      // Stable identity from the menuqr side. external_id on the public side.
+      id: ev.id,
+      slug: ev.slug,
+      title: ev.title,
+      description: ev.description || null,
+      summary: (ev.description ? String(ev.description).replace(/<[^>]+>/g, '').trim().slice(0, 240) : null),
+      startAt: ev.startDate,
+      endAt: ev.endDate,
+      capacity: ev.capacity,
+      signupType: effectiveSignupType(ev),
+      themeKey: ev.themeKey || null,
+      heroImage: ev.image && /^https?:/i.test(ev.image) ? ev.image : null,
+      // Public URL the candidate event can deep-link to on the menuqr side
+      // (for QR scans, signup forms, etc.).
+      publicUrl: ev.location?.slug && ev.slug
+        ? `${baseUrl}/${ev.location.slug}/events/${ev.slug}`
+        : null,
+      location: ev.location
+        ? { slug: ev.location.slug, name: ev.location.name, city: ev.location.city, state: ev.location.state }
+        : null,
+      signupCount: ev._count?.signups || 0,
+      isCancelled: ev.isCancelled,
+      isActive: ev.isActive,
+      updatedAt: ev.updatedAt,
+      // Eventbrite ticket URL would live here once Phase D ships.
+      ticketUrl: null,
+      ticketingMode: 'internal',
+    }));
+
+    sendJSON(res, 200, { ok: true, count: items.length, items, fetchedAt: new Date().toISOString() });
+  } catch (err) {
+    console.warn('[public/events feed] failed:', err.message);
+    sendJSON(res, 500, { ok: false, error: err.message });
+  }
+  return true;
+}
+
 async function handlePublicFlights(req, res, slug) {
   applyReviewCors(res);
 
@@ -1889,6 +1983,15 @@ async function handlePublic(req, res, pathname, prisma) {
   const publicFlightsMatch = pathname.match(/^\/api\/public\/flights\/([a-z0-9-]+)$/);
   if (publicFlightsMatch) {
     return handlePublicFlights(req, res, publicFlightsMatch[1]);
+  }
+
+  // /api/public/events?location=slug
+  // JSON feed of currently-publishable events for the /web/public app to
+  // mirror. Bearer-auth via MENUQR_API_KEY; if MENUQR_API_KEY isn't set on
+  // this server, requests are rejected with 503 (refuse to serve without
+  // intentional auth).
+  if (pathname === '/api/public/events') {
+    return handlePublicEventsFeed(req, res, prisma);
   }
 
   if (pathname === '/api/lubrication-cup-signup') {

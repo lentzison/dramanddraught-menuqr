@@ -326,13 +326,11 @@ async function handlePublicEventsFeed(req, res, prisma) {
 
   try {
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    // startDate is a required field on Event, so no null-branch needed.
     const where = {
       isActive: true,
       isCancelled: false,
-      OR: [
-        { startDate: { gte: thirtyDaysAgo } },
-        { startDate: null },
-      ],
+      startDate: { gte: thirtyDaysAgo },
     };
     if (locationFilter) {
       where.location = { slug: locationFilter };

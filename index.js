@@ -64,7 +64,7 @@ const handler = async (req, res) => {
       if (await handleAdminLtos(req, res, pathname, prisma)) return;
     }
 
-    // Admin routes: /admin/login, /admin/logout, /admin, /admin/seed, /admin/location/*
+    // Admin routes: /admin/login, /admin/logout, /admin, /admin/seed, /admin/locations/*
     if (pathname.startsWith('/admin')) {
       if (await handleAdmin(req, res, pathname, prisma)) return;
     }

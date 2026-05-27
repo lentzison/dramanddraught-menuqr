@@ -283,13 +283,6 @@ async function handleAdmin(req, res, pathname, prisma) {
     return true;
   }
 
-  // ─── Redirect old /admin/location/:slug -> /admin/locations/:slug ───
-  if (pathname.startsWith('/admin/location/')) {
-    const slug = pathname.split('/').pop();
-    redirect(res, `/admin/locations/${slug}`);
-    return true;
-  }
-
   // ─── Location Editor ───
   const locMatch = pathname.match(/^\/admin\/locations\/([a-z0-9-]+)$/);
   if (locMatch) {
@@ -319,6 +312,9 @@ async function handleAdmin(req, res, pathname, prisma) {
           phone: body.phone || null,
           specialText: body.specialText || null,
           menuUrl: body.menuUrl || null,
+          facebook: (body.facebook || '').trim() || null,
+          instagram: (body.instagram || '').trim() || null,
+          twitter: (body.twitter || '').trim() || null,
           features: (body.features || '').split(',').map(s => s.trim()).filter(Boolean),
           hours,
           links,

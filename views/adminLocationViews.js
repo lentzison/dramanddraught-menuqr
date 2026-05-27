@@ -102,7 +102,9 @@ function locationEditor(location, user, flashMsg) {
       </div>
       <div class="page-actions">
         <a href="/admin/locations" class="btn btn-secondary">All Locations</a>
-        <a href="/${escHTML(loc.slug)}" target="_blank" class="btn btn-secondary">View Public Page</a>
+        ${loc.isActive
+          ? `<a href="/${escHTML(loc.slug)}" target="_blank" class="btn btn-secondary">View Public Page</a>`
+          : `<span class="btn btn-secondary" style="opacity:0.55;cursor:not-allowed" title="This location is inactive and not visible publicly. Toggle 'Active' on to publish.">View Public Page (inactive)</span>`}
       </div>
     </div>
 
@@ -121,9 +123,9 @@ function locationEditor(location, user, flashMsg) {
               <input type="text" name="name" value="${escHTML(loc.name)}" required />
             </div>
             <div>
-              <label>Slug</label>
-              <input type="text" name="slug" value="${escHTML(loc.slug)}" disabled />
-              <div class="field-help">The slug controls the public URL and is locked here.</div>
+              <label>Public URL</label>
+              <div class="field-readonly" style="padding:10px 12px;border:1px dashed var(--border,#444);border-radius:6px;background:rgba(255,255,255,0.03);font-family:monospace;font-size:0.9rem;color:var(--text)">/${escHTML(loc.slug)}</div>
+              <div class="field-help">URL slug is permanent. Contact engineering if it needs to change.</div>
             </div>
           </div>
           <label>Address</label>
@@ -162,6 +164,31 @@ function locationEditor(location, user, flashMsg) {
       <section class="form-section">
         <div class="form-section-head">
           <div>
+            <h2>Social Media</h2>
+            <p>Full URLs to this location's social profiles. Each one becomes a button on the public location page.</p>
+          </div>
+        </div>
+        <div class="form-section-body">
+          <div class="form-row">
+            <div>
+              <label>Facebook URL</label>
+              <input type="url" name="facebook" value="${escHTML(loc.facebook || '')}" placeholder="https://facebook.com/..." />
+            </div>
+            <div>
+              <label>Instagram URL</label>
+              <input type="url" name="instagram" value="${escHTML(loc.instagram || '')}" placeholder="https://instagram.com/..." />
+            </div>
+            <div>
+              <label>Twitter / X URL</label>
+              <input type="url" name="twitter" value="${escHTML(loc.twitter || '')}" placeholder="https://x.com/..." />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="form-section">
+        <div class="form-section-head">
+          <div>
             <h2>Hours</h2>
             <p>Set open and close times for each day, or mark the day closed.</p>
           </div>
@@ -173,12 +200,12 @@ function locationEditor(location, user, flashMsg) {
         <div class="form-section-head">
           <div>
             <h2>Link Buttons</h2>
-            <p>Buttons shown on the public location page for menus, reservations, ordering, or promos.</p>
+            <p>Extra buttons for things like reservations, ordering, or promos. Menu, Spirit List, Call, and social buttons render automatically from the fields above — don't re-add them here.</p>
           </div>
         </div>
         <div class="form-section-body">
           <div id="linksContainer">
-            ${linkRows || '<div class="empty-state"><strong>No custom links</strong>Add a link when this location needs an extra public button.</div>'}
+            ${linkRows || '<div class="empty-state"><strong>No custom links yet.</strong> Add one when this location needs an extra public button (e.g. reservations, online ordering).</div>'}
           </div>
           <button type="button" class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="addLinkRow()">Add Link</button>
         </div>

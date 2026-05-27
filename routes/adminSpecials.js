@@ -1,8 +1,8 @@
 const { sendHTML, parseBody, redirect, generateCocktailImage, getFlashMsg } = require('../helpers');
 const { requireAuth, isCompanyWide, getUserLocationSlugs, canAccessLocation } = require('../auth');
-const { specialsDashboard, dayThemeEditor, flightsList, flightEditor, bottlesList, bottleEditor, DAYS } = require('../views/adminSpecialsViews');
+const { specialsDashboard, dayThemeEditor, bottlesList, bottleEditor, DAYS } = require('../views/adminSpecialsViews');
 const { adminLayout } = require('../views/adminLayout');
-const { getSpiritCategories, getSpiritCatalog, getHalfPriceSpirits, getUpcomingSpiritFlightsAdmin, buildSpiritFlightBuilderUrl } = require('../bartenderDb');
+const { getSpiritCategories, getSpiritCatalog, getHalfPriceSpirits } = require('../bartenderDb');
 const { sendJSON } = require('../helpers');
 const { sanitizeImageSrc } = require('../views/imageUploadWidget');
 const { writeAudit } = require('../auditLog');
@@ -37,86 +37,6 @@ function normalizeOrderValue(value, fallback = 0) {
 }
 
 const { escHTML } = require('../views/escapeHtml');
-
-function formatFlightDateLabel(value) {
-  if (!value) return '';
-  const parsed = new Date(`${value}T12:00:00`);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  });
-}
-
-function renderFlightBridgePage(overview, user, flashMsg) {
-  const rows = (overview.items || []).map((item) => `
-    <tr>
-      <td>${escHTML(formatFlightDateLabel(item.flightDate))}</td>
-      <td>${escHTML(item.locationName)}</td>
-      <td>
-        <div style="font-weight:700">${escHTML(item.theme)}</div>
-        ${item.description ? `<div style="color:#888; font-size:0.9rem; margin-top:4px">${escHTML(item.description)}</div>` : ''}
-      </td>
-      <td>${escHTML(item.fridayPriceLabel || '-')}</td>
-      <td>${escHTML(item.regularPriceLabel || '-')}</td>
-      <td>${item.pourCount || 0}</td>
-      <td><a href="${escHTML(item.builderUrl)}" class="btn btn-secondary btn-sm" target="_blank" rel="noreferrer">Manage</a></td>
-    </tr>
-  `).join('');
-
-  const locationButtons = (overview.locations || []).map((location) => `
-    <a href="${escHTML(location.builderUrl)}" class="btn btn-secondary btn-sm" target="_blank" rel="noreferrer">${escHTML(location.name)}</a>
-  `).join('');
-
-  return adminLayout('Flights', `
-    <h1>Friday Flights</h1>
-    <p style="color:#888; margin-bottom:16px">
-      Flights are now built in the bartender dashboard so they can pull live spirit-list pricing and feed the public specials page directly.
-    </p>
-
-    <div class="card" style="margin-bottom:20px">
-      <div style="display:flex; gap:12px; align-items:flex-start; justify-content:space-between; flex-wrap:wrap">
-        <div style="max-width:720px">
-          <h2 style="margin-bottom:8px">Open The Builder</h2>
-          <p style="color:#888; margin-bottom:12px">
-            Regular price is the sum of each 1 oz pour. Friday Flight Night automatically discounts that total by $5.
-            Start from a location below or open the full planner.
-          </p>
-          <div style="display:flex; gap:8px; flex-wrap:wrap">
-            <a href="${escHTML(buildSpiritFlightBuilderUrl())}" class="btn btn-primary" target="_blank" rel="noreferrer">Open Flight Builder</a>
-            ${locationButtons}
-          </div>
-        </div>
-      </div>
-    </div>
-
-    ${overview.error ? `
-      <div class="alert alert-error">
-        Could not load bartender-backed flights right now: ${escHTML(overview.error)}
-      </div>
-    ` : ''}
-
-    ${overview.items && overview.items.length > 0 ? `
-      <table>
-        <thead>
-          <tr>
-            <th>Friday</th>
-            <th>Location</th>
-            <th>Flight</th>
-            <th>Friday Price</th>
-            <th>Regular</th>
-            <th>Pours</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-    ` : `
-      <div class="empty-state">No upcoming Friday flights are scheduled yet.</div>
-    `}
-  `, user, { pathname: '/admin/flights', flashMsg });
-}
 
 function getAllCategories(specials = []) {
   return [...new Set((specials || [])
@@ -1129,30 +1049,6 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       halfPriceTheme,
       { showCompanyDefault: userIsCompanyWide }
     ));
-    return true;
-  }
-
-  // ─── Flights List ───
-  if (pathname === '/admin/flights') {
-    if (!userIsCompanyWide) { redirect(res, '/admin'); return true; }
-    const flashMsg = getFlashMsg(req.url);
-    const overview = await getUpcomingSpiritFlightsAdmin();
-    sendHTML(res, 200, renderFlightBridgePage(overview, user, flashMsg));
-    return true;
-  }
-
-  // ─── New Flight ───
-  if (pathname === '/admin/flights/new') {
-    if (!userIsCompanyWide) { redirect(res, '/admin'); return true; }
-    redirect(res, buildSpiritFlightBuilderUrl());
-    return true;
-  }
-
-  // ─── Edit/Delete Flight ───
-  const flightMatch = pathname.match(/^\/admin\/flights\/([a-f0-9-]+)$/);
-  if (flightMatch) {
-    if (!userIsCompanyWide) { redirect(res, '/admin'); return true; }
-    redirect(res, buildSpiritFlightBuilderUrl());
     return true;
   }
 

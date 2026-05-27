@@ -826,7 +826,6 @@ function adminLayout(title, content, user, options = {}) {
             <a href="/admin/menu"${navClass('/admin/menu')}>Menu</a>
             <a href="/admin/events"${navClass('/admin/events')}>Events</a>
             <a href="/admin/applicants"${navClass('/admin/applicants')}>Applicants</a>
-            ${isCompanyWide(user) ? `<a href="/admin/flights"${navClass('/admin/flights')}>Flights</a>` : ''}
             <a href="/admin/feedback"${navClass('/admin/feedback')}>Feedback</a>
             <a href="/admin/analytics"${navClass('/admin/analytics')}>Analytics</a>
             ${isCompanyWide(user) ? `<a href="/admin/activity"${navClass('/admin/activity')}>Activity</a>` : ''}

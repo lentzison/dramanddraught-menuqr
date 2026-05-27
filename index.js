@@ -39,8 +39,8 @@ const handler = async (req, res) => {
   console.log(`${req.method} ${pathname}`);
 
   try {
-    // Admin specials routes (session auth): /admin/specials/*, /admin/flights/*, /admin/bottles/*
-    if (pathname.startsWith('/admin/specials') || pathname.startsWith('/admin/flights') || pathname.startsWith('/admin/bottles') || pathname.startsWith('/admin/feedback') || pathname.startsWith('/admin/analytics')) {
+    // Admin specials routes (session auth): /admin/specials/*, /admin/bottles/*
+    if (pathname.startsWith('/admin/specials') || pathname.startsWith('/admin/bottles') || pathname.startsWith('/admin/feedback') || pathname.startsWith('/admin/analytics')) {
       if (prisma && await handleAdminSpecials(req, res, pathname, prisma)) return;
     }
 

@@ -1,6 +1,5 @@
 const { adminLayout } = require('./adminLayout');
 const { escHTML } = require('./escapeHtml');
-const { isCompanyWide } = require('../auth');
 
 const DAYS = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
 const DAY_LABELS = { SUNDAY: 'Sunday', MONDAY: 'Monday', TUESDAY: 'Tuesday', WEDNESDAY: 'Wednesday', THURSDAY: 'Thursday', FRIDAY: 'Friday', SATURDAY: 'Saturday' };
@@ -62,7 +61,6 @@ function adminDashboard(dashboardData, user, flashMsg) {
     { href: '/admin/specials', title: 'Update Specials', detail: 'Daily themes, specials, discounted spirits', action: 'Edit specials' },
     { href: '/admin/menu', title: 'Edit Food Menu', detail: 'Categories, items, prices, photos', action: 'Edit menu' },
     { href: '/admin/events', title: 'Manage Events', detail: 'Landing pages, RSVPs, vendor signups', action: 'Open events' },
-    isCompanyWide(user) ? { href: '/admin/flights', title: 'Build Flights', detail: 'Monthly spirit flights by location', action: 'Open flights' } : null,
     { href: '/admin/analytics', title: 'Check Analytics', detail: 'Traffic, QR scans, source breakdowns', action: 'View analytics' },
     { href: '/admin/feedback', title: 'Review Feedback', detail: 'Guest comments and newsletter opt-ins', action: 'Open feedback' },
   ].filter(Boolean);

@@ -368,8 +368,9 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
 
     // Side-effects for terminal decisions (rejected / keep_on_file):
     // auto-cancel any scheduled interviews so the candidate stops getting
-    // reminder emails. Only a firm "rejected" with sendEmail=true sends the
-    // polite rejection note — "keep on file" never emails the candidate.
+    // reminder emails, and optionally send a polite note. "Reject" sends a
+    // firm we-went-with-someone-else note; "keep on file" sends a softer
+    // we'll-reach-back-out note (the candidate-facing distinction matters).
     let cancelledCount = 0;
     const isTerminalDecision = next === 'rejected' || next === 'keep_on_file';
     if (isTerminalDecision) {
@@ -388,8 +389,9 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
         console.warn(`[applicants] failed to auto-cancel interviews on ${next}:`, err.message);
       }
 
-      if (next === 'rejected' && sendEmail) {
-        sendRejectionEmail(app, note).catch((err) => console.warn('[applicants] rejection email failed:', err.message));
+      if (sendEmail) {
+        const sendFn = next === 'rejected' ? sendRejectionEmail : sendKeepOnFileEmail;
+        sendFn(app, note).catch((err) => console.warn(`[applicants] ${next} email failed:`, err.message));
       }
     }
 
@@ -398,15 +400,16 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
       resourceType: 'jobApplication',
       resourceId: id,
       resourceLabel: `${app.name} — ${app.position}`,
-      details: { from: app.status, to: next, sendEmail: next === 'rejected' ? !!sendEmail : undefined, interviewsCancelled: cancelledCount || undefined },
+      details: { from: app.status, to: next, sendEmail: isTerminalDecision ? !!sendEmail : undefined, interviewsCancelled: cancelledCount || undefined },
     }).catch(() => {});
 
     let flashText = `Moved to ${STATUS_LABELS[next] || next}.`;
     if (isTerminalDecision) {
       const headline = next === 'rejected' ? 'Rejected' : 'Kept on file';
+      const emailLabel = next === 'rejected' ? 'rejection email sent' : 'keep-on-file email sent';
       const bits = [];
       if (cancelledCount > 0) bits.push(`${cancelledCount} interview${cancelledCount === 1 ? '' : 's'} cancelled`);
-      if (next === 'rejected' && sendEmail) bits.push('rejection email sent');
+      if (sendEmail) bits.push(emailLabel);
       flashText = bits.length ? `${headline} — ${bits.join(', ')}.` : `${headline}.`;
     }
     flashRedirect(res, `/admin/applicants/${id}`, 'success', flashText);
@@ -1069,6 +1072,35 @@ async function sendRejectionEmail(application, reason) {
     reason ? `\nA quick note on our decision: ${reason}` : null,
     '',
     "We appreciate your interest in joining the team, and we'll keep your application on file. If something opens up that looks like a strong fit, we'll be in touch.",
+    '',
+    'All the best,',
+    'Dram & Draught Hiring Team',
+  ].filter((v) => v != null);
+
+  await sendEmailViaGoogle({
+    to: application.email,
+    subject: `Update on your Dram & Draught application`,
+    body: lines.join('\n'),
+  });
+}
+
+// "Keep on file" is softer than a rejection — we don't have a spot for them
+// right now, but we'd genuinely like to reach back out when one opens up.
+async function sendKeepOnFileEmail(application, reason) {
+  if (!application?.email) return;
+  const firstName = (application.name || '').split(' ')[0] || 'there';
+  const positionLine = application.position
+    ? `the ${application.position} role`
+    : 'your application';
+  const lines = [
+    `Hi ${firstName},`,
+    '',
+    `Thank you for taking the time to apply for ${positionLine} at Dram & Draught. We don't have the right spot open for you right now, but we'd like to keep your application on file.`,
+    '',
+    "When a position opens up that looks like a good fit, we'll reach back out. No need to reapply in the meantime — we'll have your info ready to go.",
+    reason ? `\nA quick note from our team: ${reason}` : null,
+    '',
+    'Thanks again for your interest in joining us.',
     '',
     'All the best,',
     'Dram & Draught Hiring Team',

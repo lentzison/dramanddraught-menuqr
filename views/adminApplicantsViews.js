@@ -1294,12 +1294,12 @@ function rejectModalHtml() {
         <div class="al-modal-row" id="alRejectEmailRow">
           <input type="checkbox" id="alRejectSendEmail" />
           <label for="alRejectSendEmail" style="margin:0; text-transform:none; letter-spacing:0; font-size:0.88rem; color:var(--text); font-weight:600;">
-            Send a polite rejection email to the candidate <span style="color:var(--text-muted); font-weight:500;">(only applies to "Reject")</span>
+            Send a polite email to the candidate <span style="color:var(--text-muted); font-weight:500;">(copy matches the button you pick — "Reject" sends a final-no note; "Keep on file" sends a we'll-reach-back-out note)</span>
           </label>
         </div>
 
         <div class="al-modal-note">
-          <strong>Reject</strong> = final no. <strong>Keep on file</strong> = save for a future opening — no email sent. Both move them out of the active pipeline and cancel scheduled interviews. Reversible later via "Change status".
+          <strong>Reject</strong> = final no. <strong>Keep on file</strong> = no spot right now, but we'd reach out for a future opening. Both move them out of the active pipeline and cancel scheduled interviews. Reversible later via "Change status".
         </div>
 
         <div class="al-modal-actions">
@@ -1395,10 +1395,10 @@ function rejectModalScript() {
         keepBtn.disabled = true;
         btn.textContent = busyLabel;
         var note = reason.value.trim();
-        // Email only applies to a firm rejection. "Keep on file" never sends
-        // one — the candidate shouldn't get a "no thanks" note when we're
-        // actually saving them for later.
-        var doEmail = (targetStatus === 'rejected' && sendEmail.checked) ? '1' : '';
+        // Email checkbox applies to both decisions. Server picks the right
+        // copy: a firm rejection note for 'rejected', a softer
+        // we'll-reach-back-out note for 'keep_on_file'.
+        var doEmail = sendEmail.checked ? '1' : '';
         Promise.all(pending.ids.map(function (id) {
           var body = new URLSearchParams();
           body.set('status', targetStatus);

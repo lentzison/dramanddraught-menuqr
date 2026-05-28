@@ -31,6 +31,125 @@ function isSafeLinkHref(value) {
   return /^(https?:\/\/|mailto:|tel:)/i.test(String(value || '').trim());
 }
 
+const EVENT_BASE_URL = process.env.MENUQR_BASE_URL || 'https://menuqr.apps.dramanddraught.com';
+
+// Strip markdown/HTML to plain text for meta descriptions and calendar bodies.
+function plainText(value, maxLen = 0) {
+  let s = String(value || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // [label](url) -> label
+    .replace(/[*_`#>]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (maxLen && s.length > maxLen) s = s.slice(0, maxLen - 1).trimEnd() + '…';
+  return s;
+}
+
+// Format a Date as a UTC iCal/Google timestamp: 20260615T180000Z.
+function toCalDate(value) {
+  const d = value instanceof Date ? value : new Date(value);
+  if (isNaN(d.getTime())) return '';
+  return d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+}
+
+// Default a missing end time to start + 2h so calendars get a sensible block.
+function eventEndOrDefault(event) {
+  if (event.endDate) return new Date(event.endDate);
+  const start = new Date(event.startDate);
+  return new Date(start.getTime() + 2 * 60 * 60 * 1000);
+}
+
+// Escape per RFC 5545 (commas, semicolons, backslashes, newlines).
+function icsEscape(value) {
+  return String(value || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/;/g, '\\;')
+    .replace(/,/g, '\\,')
+    .replace(/\r?\n/g, '\\n');
+}
+
+// Build a downloadable .ics for an event. Stored dates are absolute instants,
+// so emitting them in UTC (Z) is correct regardless of venue timezone.
+function buildEventIcs(location, event) {
+  const url = `${EVENT_BASE_URL}/${location.slug}/events/${event.slug}`;
+  const desc = plainText(event.description, 600);
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Dram & Draught//Events//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'BEGIN:VEVENT',
+    `UID:event-${event.id}@dramanddraught.com`,
+    `DTSTAMP:${toCalDate(new Date())}`,
+    `DTSTART:${toCalDate(event.startDate)}`,
+    `DTEND:${toCalDate(eventEndOrDefault(event))}`,
+    `SUMMARY:${icsEscape(event.title)}`,
+    desc ? `DESCRIPTION:${icsEscape(desc + '\n\n' + url)}` : `DESCRIPTION:${icsEscape(url)}`,
+    `LOCATION:${icsEscape(location.name || '')}`,
+    `URL:${icsEscape(url)}`,
+    event.isCancelled ? 'STATUS:CANCELLED' : 'STATUS:CONFIRMED',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ];
+  return lines.join('\r\n') + '\r\n';
+}
+
+// Google Calendar "add event" template URL.
+function googleCalendarUrl(location, event) {
+  const url = `${EVENT_BASE_URL}/${location.slug}/events/${event.slug}`;
+  const params = new URLSearchParams({
+    action: 'TEMPLATE',
+    text: event.title || 'Event',
+    dates: `${toCalDate(event.startDate)}/${toCalDate(eventEndOrDefault(event))}`,
+    details: (plainText(event.description, 600) + '\n\n' + url).trim(),
+    location: location.name || '',
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
+// Social/SEO head tags: description, canonical, Open Graph, Twitter, JSON-LD.
+function eventMetaTags(location, event) {
+  const url = `${EVENT_BASE_URL}/${location.slug}/events/${event.slug}`;
+  const desc = plainText(event.description, 160)
+    || `${event.title} at Dram & Draught ${location.name}. ${formatEventDate(event.startDate)}.`;
+  const title = `${event.title} — Dram & Draught ${location.name}`;
+  // Only a hosted (http) image works as a social preview; base64/data URLs don't.
+  const img = event.image && /^https?:\/\//i.test(event.image) ? event.image : '';
+  const ld = {
+    '@context': 'https://schema.org',
+    '@type': 'Event',
+    name: event.title,
+    startDate: new Date(event.startDate).toISOString(),
+    endDate: eventEndOrDefault(event).toISOString(),
+    eventStatus: event.isCancelled
+      ? 'https://schema.org/EventCancelled'
+      : 'https://schema.org/EventScheduled',
+    eventAttendanceMode: 'https://schema.org/OfflineEventAttendanceMode',
+    location: { '@type': 'Place', name: `Dram & Draught ${location.name}`, address: location.address || location.name || '' },
+    description: desc,
+    url,
+    ...(img ? { image: [img] } : {}),
+    organizer: { '@type': 'Organization', name: 'Dram & Draught', url: EVENT_BASE_URL },
+  };
+  // JSON-LD is embedded in a <script>; escape '<' to prevent breaking out.
+  const ldJson = JSON.stringify(ld).replace(/</g, '\\u003c');
+  return `
+      <meta name="description" content="${escHTML(desc)}">
+      <link rel="canonical" href="${escHTML(url)}">
+      <meta property="og:type" content="website">
+      <meta property="og:site_name" content="Dram & Draught">
+      <meta property="og:title" content="${escHTML(title)}">
+      <meta property="og:description" content="${escHTML(desc)}">
+      <meta property="og:url" content="${escHTML(url)}">
+      ${img ? `<meta property="og:image" content="${escHTML(img)}">` : ''}
+      <meta name="twitter:card" content="${img ? 'summary_large_image' : 'summary'}">
+      <meta name="twitter:title" content="${escHTML(title)}">
+      <meta name="twitter:description" content="${escHTML(desc)}">
+      ${img ? `<meta name="twitter:image" content="${escHTML(img)}">` : ''}
+      <script type="application/ld+json">${ldJson}</script>`;
+}
+
 function renderInlineRichText(value) {
   const input = String(value || '');
   if (!input) return '';
@@ -445,6 +564,23 @@ function generateEventPage(location, event, signupCount, options = {}) {
   const publicPath = `/${location.slug}/events/${event.slug}`;
   const eventsPath = `/${location.slug}/events`;
   const spotsLeft = event.capacity ? Math.max(event.capacity - signupCount, 0) : null;
+  // "X spots left" urgency indicator. Mode is set per-event in the editor:
+  //   always → whenever capacity is set; near-full → only once ≥75% full;
+  //   hidden → never. Only meaningful while signups are open.
+  const fillRatio = event.capacity ? signupCount / event.capacity : 0;
+  const spotsMode = event.spotsLeftMode || 'always';
+  const showSpotsLeft = canSignup && spotsLeft !== null && spotsLeft > 0 && (
+    spotsMode === 'always' || (spotsMode === 'near-full' && fillRatio >= 0.75)
+  );
+  const spotsLeftHtml = showSpotsLeft
+    ? `<div class="ev-spots-left${spotsLeft <= 5 ? ' ev-spots-left-low' : ''}">${spotsLeft === 1 ? 'Only 1 spot left' : `Only ${spotsLeft} spots left`}</div>`
+    : '';
+  const calendarHtml = (event.startDate && !event.isCancelled) ? `
+    <div class="ev-cal-add">
+      <span class="ev-cal-add-label">Add to calendar</span>
+      <a class="ev-cal-btn" href="${escHTML(googleCalendarUrl(location, event))}" target="_blank" rel="noopener">Google</a>
+      <a class="ev-cal-btn" href="${escHTML(publicPath)}.ics">Apple / Outlook (.ics)</a>
+    </div>` : '';
   const { effectiveSignupType, isVendor: isVendorFn, isParticipant: isParticipantFn } = require('../eventSignupTypes');
   const signupType = effectiveSignupType(event);
   const isVendor = isVendorFn(event);
@@ -481,10 +617,9 @@ function generateEventPage(location, event, signupCount, options = {}) {
 
   const descriptionHtml = event.description ? renderRichText(event.description) : '';
 
-  const signupForm = canSignup ? `
-    <form method="POST" action="${escHTML(publicPath)}/signup" class="ev-form">
-      ${errorMessage ? `<div class="ev-error">${escHTML(errorMessage)}</div>` : ''}
-
+  // Shared form fields, reused by both the open-signup form and the
+  // when-full waitlist form (only one renders at a time, so IDs don't clash).
+  const signupFieldsHtml = `
       <label for="ev-name">${isVendor ? 'Contact Name' : isParticipant ? 'Your Name' : 'Name'} <span style="color:var(--amber)">*</span></label>
       <input type="text" id="ev-name" name="name" required value="${escHTML(prevValues.name || '')}" autocomplete="name" />
 
@@ -508,9 +643,25 @@ function generateEventPage(location, event, signupCount, options = {}) {
         <textarea id="ev-notes" name="notes" rows="3" placeholder="${isParticipant ? 'Cocktail concept, dish description, performance length, equipment you\'ll bring, etc.' : ''}">${escHTML(prevValues.notes || '')}</textarea>
       ` : ''}
 
-      ${renderCustomFields(event, prevValues)}
+      ${renderCustomFields(event, prevValues)}`;
 
+  const signupForm = canSignup ? `
+    <form method="POST" action="${escHTML(publicPath)}/signup" class="ev-form">
+      ${errorMessage ? `<div class="ev-error">${escHTML(errorMessage)}</div>` : ''}
+      ${signupFieldsHtml}
       <button type="submit" class="ev-submit-btn">${escHTML(submitLabel)}</button>
+    </form>
+  ` : '';
+
+  // When an event is full we still let people join a waitlist (unless it's a
+  // ticket-link event). Posts to the same endpoint with joinWaitlist=1.
+  const waitlistEligible = status.key === 'full' && event.signupsEnabled !== false && !!event.capacity;
+  const waitlistForm = waitlistEligible ? `
+    <form method="POST" action="${escHTML(publicPath)}/signup" class="ev-form">
+      <input type="hidden" name="joinWaitlist" value="1" />
+      ${errorMessage ? `<div class="ev-error">${escHTML(errorMessage)}</div>` : ''}
+      ${signupFieldsHtml}
+      <button type="submit" class="ev-submit-btn">Join the waitlist</button>
     </form>
   ` : '';
 
@@ -539,7 +690,18 @@ function generateEventPage(location, event, signupCount, options = {}) {
       <div class="ev-side-kicker">${escHTML(sideKicker)}</div>
       <h2 class="ev-side-title">${escHTML(sideTitle)}</h2>
       <p class="ev-side-copy">${escHTML(sideCopy)}</p>
+      ${spotsLeftHtml}
       ${signupForm}
+    </aside>
+  ` : waitlistEligible ? `
+    <aside class="ev-side-card" id="apply">
+      <div class="ev-side-kicker">Waitlist</div>
+      <h2 class="ev-side-title">This event is full</h2>
+      <p class="ev-side-copy">Add your name to the waitlist and we'll email you if a spot opens up.</p>
+      ${waitlistForm}
+      <div class="ev-side-actions">
+        <a href="${escHTML(eventsPath)}" class="ev-side-link ev-side-link-muted">Browse all events</a>
+      </div>
     </aside>
   ` : status.key === 'no-signups' ? '' : `
     <aside class="ev-side-card" id="apply">
@@ -559,6 +721,7 @@ function generateEventPage(location, event, signupCount, options = {}) {
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="theme-color" content="#0f1012">
       <title>${escHTML(event.title)} - Dram &amp; Draught ${escHTML(location.name)}</title>
+      ${eventMetaTags(location, event)}
       <style>
         ${vintageThemeCss()}
         ${eventThemesCss()}
@@ -1436,6 +1599,58 @@ function generateEventPage(location, event, signupCount, options = {}) {
           border-bottom: 1px solid var(--line);
           flex-wrap: wrap;
         }
+        /* "X spots left" urgency pill in the signup card */
+        .ev-spots-left {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          margin-bottom: 14px;
+          padding: 7px 14px;
+          border-radius: 999px;
+          background: rgba(210,170,103,0.14);
+          border: 1px solid rgba(210,170,103,0.4);
+          color: var(--accent-light);
+          font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+          font-size: 0.82rem;
+          font-weight: 800;
+          letter-spacing: 0.03em;
+        }
+        .ev-spots-left::before { content: '◷'; font-size: 0.9rem; }
+        .ev-spots-left-low {
+          background: rgba(229,115,84,0.16);
+          border-color: rgba(229,115,84,0.5);
+          color: #f0a58c;
+        }
+        /* Add-to-calendar buttons under the date/time */
+        .ev-cal-add {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+          margin-bottom: 16px;
+        }
+        .ev-cal-add-label {
+          font-size: 0.62rem;
+          font-weight: 800;
+          color: var(--smoke);
+          text-transform: uppercase;
+          letter-spacing: 0.1em;
+          margin-right: 2px;
+        }
+        .ev-cal-btn {
+          padding: 5px 12px;
+          border-radius: 999px;
+          border: 1px solid var(--line-strong);
+          background: rgba(255,255,255,0.03);
+          color: var(--steel);
+          text-decoration: none;
+          font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+          font-size: 0.74rem;
+          font-weight: 700;
+          letter-spacing: 0.02em;
+          transition: border-color 0.15s, color 0.15s;
+        }
+        .ev-cal-btn:hover { border-color: var(--gold); color: var(--text); }
         .ev-datetime-item { flex: 1; min-width: 140px; }
         .ev-datetime-label {
           font-size: 0.62rem;
@@ -2358,13 +2573,14 @@ function generateEventPage(location, event, signupCount, options = {}) {
               <div class="ev-datetime-row">
                 <div class="ev-datetime-item">
                   <div class="ev-datetime-label">Date</div>
-                  <div class="ev-datetime-value">${escHTML(formatEventDate(event.startDate))}</div>
+                  <div class="ev-datetime-value"><time datetime="${escHTML(new Date(event.startDate).toISOString())}">${escHTML(formatEventDate(event.startDate))}</time></div>
                 </div>
                 <div class="ev-datetime-item">
                   <div class="ev-datetime-label">Time</div>
                   <div class="ev-datetime-value">${escHTML(formatEventTime(event.startDate))}${event.endDate ? ' &ndash; ' + escHTML(formatEventTime(event.endDate)) : ''}</div>
                 </div>
               </div>
+              ${calendarHtml}
               ${descriptionHtml ? `<div class="ev-description">${descriptionHtml}</div>` : ''}
             </div>
 
@@ -2612,15 +2828,20 @@ function generateEventConfirmationPage(location, event, signup) {
   const isVendor = isVendorFn(event);
   const isParticipant = isParticipantFn(event);
   const { bodyClass } = resolveThemeRender(event, { isVendor });
-  const defaultMsg = isVendor
-    ? "Thanks for applying! Our team will review your application and reach out once a decision has been made."
-    : isParticipant
-      ? "Thanks for signing up to take part. The team reviews each signup and will email you when your slot is confirmed."
-      : "Thanks for signing up! We'll see you at the event.";
-  const message = (event.confirmationMessage && event.confirmationMessage.trim()) || defaultMsg;
+  const isWaitlisted = signup && signup.status === 'waitlisted';
+  const defaultMsg = isWaitlisted
+    ? "You're on the waitlist! This event is currently full, but we'll email you right away if a spot opens up."
+    : isVendor
+      ? "Thanks for applying! Our team will review your application and reach out once a decision has been made."
+      : isParticipant
+        ? "Thanks for signing up to take part. The team reviews each signup and will email you when your slot is confirmed."
+        : "Thanks for signing up! We'll see you at the event.";
+  // A custom confirmation message is for confirmed signups; waitlisted guests
+  // always get the waitlist explainer so they aren't told "see you there".
+  const message = (!isWaitlisted && event.confirmationMessage && event.confirmationMessage.trim()) || defaultMsg;
   const messageHtml = renderRichText(message);
-  const eyebrowText = isVendor ? 'Application Received' : isParticipant ? 'Signup Received' : "You're In";
-  const pageTitle = isVendor ? 'Application received' : isParticipant ? 'Signup received' : "You're signed up";
+  const eyebrowText = isWaitlisted ? 'On the Waitlist' : isVendor ? 'Application Received' : isParticipant ? 'Signup Received' : "You're In";
+  const pageTitle = isWaitlisted ? "You're on the waitlist" : isVendor ? 'Application received' : isParticipant ? 'Signup received' : "You're signed up";
   return `
     <!DOCTYPE html>
     <html lang="en">
@@ -3078,4 +3299,5 @@ module.exports = {
   eventStatus,
   formatEventDate,
   formatEventTime,
+  buildEventIcs,
 };

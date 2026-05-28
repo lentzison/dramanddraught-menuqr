@@ -1588,6 +1588,24 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
           </div>
         </div>
 
+        ${(() => {
+          const mode = event?.spotsLeftMode || 'always';
+          const o = (val, label) => `<option value="${val}"${mode === val ? ' selected' : ''}>${label}</option>`;
+          return `
+        <div class="ev-field-grid" style="margin-top:18px">
+          <div>
+            <label for="ev-spots-mode">&ldquo;Spots left&rdquo; countdown <span style="color:#888; font-weight:400; font-size:0.8rem">(needs a max)</span></label>
+            <select id="ev-spots-mode" name="spotsLeftMode">
+              ${o('always', 'Always show how many spots remain')}
+              ${o('near-full', 'Only show once 75% full (build urgency)')}
+              ${o('hidden', 'Never show a count')}
+            </select>
+            <p style="color:#888; font-size:0.78rem; margin:6px 0 0">Controls the &ldquo;Only 5 spots left&rdquo; badge on the public page. Ignored when there&rsquo;s no max.</p>
+          </div>
+          <div></div>
+        </div>`;
+        })()}
+
         <div class="ev-field-grid" style="margin-top:18px">
           <div>
             <label for="ev-ticket-url">Ticket URL <span style="color:#888; font-weight:400; font-size:0.8rem">(Eventbrite, optional)</span></label>
@@ -1922,6 +1940,7 @@ function eventSignupsView(event, signups, user, flashMsg) {
     const s = String(status || 'approved');
     if (s === 'pending') return '<span class="evs-badge evs-badge-pending">Pending</span>';
     if (s === 'rejected') return '<span class="evs-badge evs-badge-rejected">Rejected</span>';
+    if (s === 'waitlisted') return '<span class="evs-badge evs-badge-waitlist">Waitlist</span>';
     return '<span class="evs-badge evs-badge-approved">Approved</span>';
   };
 
@@ -1968,11 +1987,41 @@ function eventSignupsView(event, signups, user, flashMsg) {
       return `<div class="evs-field"><span>${escHTML(q.label)}</span><strong>${escHTML(String(raw))}</strong></div>`;
     }).join('');
 
+    const sStatus = String(s.status || 'approved');
+    const isWaitlisted = sStatus === 'waitlisted';
+    const checkedIn = !!s.checkedInAt;
+    // Day-of check-in: available for confirmed attendees (guest + approved
+    // vendor/participant). Not for pending, rejected, or waitlisted rows.
+    const checkinBtn = (!isWaitlisted && sStatus !== 'pending' && sStatus !== 'rejected') ? `
+      <form method="POST" action="/admin/events/${escHTML(event.id)}/signups" class="evs-checkin-form">
+        <input type="hidden" name="_action" value="checkin" />
+        <input type="hidden" name="signupId" value="${escHTML(s.id)}" />
+        <button type="submit" class="btn btn-sm ${checkedIn ? 'btn-secondary' : 'btn-success'}">${checkedIn ? '✓ Checked in — undo' : 'Check in'}</button>
+      </form>` : '';
+    const removeForm = `
+      <form method="POST" action="/admin/events/${escHTML(event.id)}/signups" onsubmit="return confirm('Remove this signup?')">
+        <input type="hidden" name="_action" value="deleteSignup" />
+        <input type="hidden" name="signupId" value="${escHTML(s.id)}" />
+        <button type="submit" class="btn btn-secondary btn-sm">Remove</button>
+      </form>`;
+
     // Vendor events get approve/reject controls instead of just a Remove button.
     // Pending rows show the decision buttons; already-decided rows show who + when + remove.
     let actionPanel;
-    if (isVendor) {
-      const status = String(s.status || 'pending');
+    if (isWaitlisted) {
+      actionPanel = `
+        <div class="evs-actions evs-actions-pending">
+          <div class="evs-actions-title">On the waitlist</div>
+          <form method="POST" action="/admin/events/${escHTML(event.id)}/signups">
+            <input type="hidden" name="_action" value="promoteWaitlist" />
+            <input type="hidden" name="signupId" value="${escHTML(s.id)}" />
+            <button type="submit" class="btn btn-success btn-sm">Promote to confirmed</button>
+          </form>
+          ${removeForm}
+        </div>
+      `;
+    } else if (isVendor) {
+      const status = sStatus === 'approved' || sStatus === 'rejected' ? sStatus : 'pending';
       if (status === 'pending') {
         actionPanel = `
           <div class="evs-actions evs-actions-pending">
@@ -1989,11 +2038,8 @@ function eventSignupsView(event, signups, user, flashMsg) {
           <div class="evs-actions">
             <div class="evs-actions-title">${status === 'approved' ? 'Approved' : 'Rejected'}</div>
             ${who}${when}${reason}
-            <form method="POST" action="/admin/events/${escHTML(event.id)}/signups" onsubmit="return confirm('Remove this signup?')">
-              <input type="hidden" name="_action" value="deleteSignup" />
-              <input type="hidden" name="signupId" value="${escHTML(s.id)}" />
-              <button type="submit" class="btn btn-secondary btn-sm">Remove</button>
-            </form>
+            ${status === 'approved' ? checkinBtn : ''}
+            ${removeForm}
           </div>
         `;
       }
@@ -2001,24 +2047,24 @@ function eventSignupsView(event, signups, user, flashMsg) {
       actionPanel = `
         <div class="evs-actions">
           <div class="evs-actions-title">Manage signup</div>
-          <form method="POST" action="/admin/events/${escHTML(event.id)}/signups" onsubmit="return confirm('Remove this signup?')">
-            <input type="hidden" name="_action" value="deleteSignup" />
-            <input type="hidden" name="signupId" value="${escHTML(s.id)}" />
-            <button type="submit" class="btn btn-danger btn-sm">Remove</button>
-          </form>
+          ${checkinBtn}
+          ${removeForm}
         </div>
       `;
     }
 
     return `
-      <article class="evs-card" data-search="${escHTML(searchText)}" data-status="${escHTML(s.status || 'approved')}">
+      <article class="evs-card" id="signup-${escHTML(s.id)}" data-search="${escHTML(searchText)}" data-status="${escHTML(sStatus)}">
         <div class="evs-card-main">
           <div class="evs-card-head">
             <div>
               <div class="evs-name">${escHTML(s.name || 'Unnamed signup')}</div>
               <div class="evs-sub">Signed up ${escHTML(formatFriendlyDate(s.createdAt))}</div>
             </div>
-            ${isVendor ? statusBadge(s.status) : ''}
+            <div class="evs-badges">
+              ${(isVendor || isWaitlisted) ? statusBadge(s.status) : ''}
+              ${checkedIn ? '<span class="evs-badge evs-badge-checkedin">✓ Checked in</span>' : ''}
+            </div>
           </div>
           <div class="evs-field-grid">
             <div class="evs-field"><span>Email</span><strong>${s.email ? `<a href="mailto:${escHTML(s.email)}">${escHTML(s.email)}</a>` : '<span class="evs-muted">—</span>'}</strong></div>
@@ -2037,9 +2083,13 @@ function eventSignupsView(event, signups, user, flashMsg) {
   const pendingCount = isVendor ? signups.filter(s => s.status === 'pending').length : 0;
   const approvedCount = isVendor ? signups.filter(s => s.status === 'approved').length : 0;
   const rejectedCount = isVendor ? signups.filter(s => s.status === 'rejected').length : 0;
+  const waitlistCount = signups.filter(s => s.status === 'waitlisted').length;
+  const checkedInCount = signups.filter(s => s.checkedInAt).length;
+  // Capacity is occupied by everything except waitlisted/rejected signups.
+  const confirmedCount = signups.filter(s => s.status !== 'waitlisted' && s.status !== 'rejected').length;
 
   const capacityText = event.capacity ? ` / ${event.capacity}` : '';
-  const remainingSpots = event.capacity ? Math.max(event.capacity - signups.length, 0) : null;
+  const remainingSpots = event.capacity ? Math.max(event.capacity - confirmedCount, 0) : null;
   const totalGuests = event.collectPartySize ? signups.reduce((sum, s) => sum + (s.partySize || 1), 0) : null;
 
   return adminLayout(`${event.title} Signups`, `
@@ -2126,6 +2176,10 @@ function eventSignupsView(event, signups, user, flashMsg) {
       .evs-badge { display:inline-block; padding:4px 10px; border-radius:999px; font-size:0.7rem; font-weight:700; letter-spacing:0.04em; text-transform:uppercase; white-space:nowrap; }
       .evs-badge-pending { background:rgba(251,191,36,0.12); color:#fcd34d; border:1px solid rgba(251,191,36,0.35); }
       .evs-badge-approved { background:rgba(138,168,122,0.14); color:#b9d1a8; border:1px solid rgba(138,168,122,0.4); }
+      .evs-badge-waitlist { background:rgba(167,139,250,0.16); color:#c4b5fd; border:1px solid rgba(167,139,250,0.45); }
+      .evs-badge-checkedin { background:rgba(52,211,153,0.16); color:#6ee7b7; border:1px solid rgba(52,211,153,0.45); }
+      .evs-badges { display:flex; gap:6px; flex-wrap:wrap; align-items:flex-start; }
+      .evs-checkin-form { margin:0; }
       .evs-badge-rejected { background:rgba(239,68,68,0.1); color:#fca5a5; border:1px solid rgba(239,68,68,0.3); }
       .evs-filter-tabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px; }
       .evs-filter-tab { background:#121417; border:1px solid var(--line); color:var(--text-muted); padding:8px 14px; border-radius:999px; font-size:0.8rem; font-weight:700; cursor:pointer; letter-spacing:0.04em; }
@@ -2230,14 +2284,27 @@ function eventSignupsView(event, signups, user, flashMsg) {
           <span>${remainingSpots === 0 ? 'Event Full' : 'Spots Remaining'}</span>
         </div>
       ` : ''}
+      ${waitlistCount > 0 ? `
+        <div class="admin-stat">
+          <strong style="color:#c4b5fd">${waitlistCount}</strong>
+          <span>On Waitlist</span>
+        </div>
+      ` : ''}
+      ${checkedInCount > 0 ? `
+        <div class="admin-stat">
+          <strong style="color:#6ee7b7">${checkedInCount}</strong>
+          <span>Checked In</span>
+        </div>
+      ` : ''}
     </div>
 
-    ${isVendor && signups.length > 0 ? `
+    ${(isVendor || waitlistCount > 0) && signups.length > 0 ? `
       <div class="evs-filter-tabs" id="evs-filter-tabs">
         <button type="button" class="evs-filter-tab active" data-filter="all">All (${signups.length})</button>
-        <button type="button" class="evs-filter-tab" data-filter="pending">Pending (${pendingCount})</button>
-        <button type="button" class="evs-filter-tab" data-filter="approved">Approved (${approvedCount})</button>
-        <button type="button" class="evs-filter-tab" data-filter="rejected">Rejected (${rejectedCount})</button>
+        ${isVendor ? `<button type="button" class="evs-filter-tab" data-filter="pending">Pending (${pendingCount})</button>` : ''}
+        ${isVendor ? `<button type="button" class="evs-filter-tab" data-filter="approved">Approved (${approvedCount})</button>` : ''}
+        ${waitlistCount > 0 ? `<button type="button" class="evs-filter-tab" data-filter="waitlisted">Waitlist (${waitlistCount})</button>` : ''}
+        ${isVendor ? `<button type="button" class="evs-filter-tab" data-filter="rejected">Rejected (${rejectedCount})</button>` : ''}
       </div>
     ` : ''}
 

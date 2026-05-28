@@ -40,8 +40,29 @@ const { generateDraftPage } = require('../views/draftPage');
 const { generateFlightsPage } = require('../views/flightsPage');
 const { generateMenuPage } = require('../views/menuPage');
 const { generateSpiritsPage } = require('../views/spiritsPage');
-const { generateEventPage, generateEventConfirmationPage, generateEventTermsPage, eventStatus } = require('../views/eventPage');
+const { generateEventPage, generateEventConfirmationPage, generateEventTermsPage, eventStatus, buildEventIcs } = require('../views/eventPage');
 const { generateEventsIndexPage } = require('../views/eventsIndexPage');
+
+// In-memory throttle for the public event-signup endpoint. This is a
+// single-process Node server, so a Map is enough to blunt bot/abuse hammering
+// that would otherwise flood capacity and notification emails. Not a WAF
+// replacement — just stops trivial flooding. Generous limit so a real person
+// fixing form errors is never blocked.
+const signupAttemptLog = new Map(); // ip -> [timestamps]
+function signupRateLimited(ip, limit = 12, windowMs = 10 * 60 * 1000) {
+  if (!ip) return false;
+  const now = Date.now();
+  const recent = (signupAttemptLog.get(ip) || []).filter((t) => now - t < windowMs);
+  recent.push(now);
+  signupAttemptLog.set(ip, recent);
+  // Bound memory: occasionally drop IPs with no recent activity.
+  if (signupAttemptLog.size > 5000) {
+    for (const [k, v] of signupAttemptLog) {
+      if (!v.some((t) => now - t < windowMs)) signupAttemptLog.delete(k);
+    }
+  }
+  return recent.length > limit;
+}
 const { generateApplyPage, generateApplyClosedPage, generateApplySuccessPage, POSITIONS, DAYS, SHIFTS } = require('../views/applyPage');
 const {
   generateQuestionnairePage,
@@ -2196,16 +2217,23 @@ async function handlePublic(req, res, pathname, prisma) {
       await send404(req, res, prisma);
       return true;
     }
-    const signupCount = await prisma.eventSignup.count({ where: { eventId: event.id } }).catch(() => 0);
+    // Capacity is occupied only by confirmed/pending signups — waitlisted and
+    // rejected signups don't count toward the cap.
+    const CAP_WHERE = { eventId: event.id, status: { notIn: ['waitlisted', 'rejected'] } };
+    const signupCount = await prisma.eventSignup.count({ where: CAP_WHERE }).catch(() => 0);
     const status = eventStatus(event, signupCount);
-    if (status.key !== 'open') {
-      // Re-render the page with the status banner
+
+    const body = await parseBody(req);
+    // A full event can still collect waitlist signups when the form opts in.
+    const waitlistAllowed = status.key === 'full' && event.signupsEnabled !== false && !!event.capacity;
+    const isWaitlisting = waitlistAllowed && body.joinWaitlist === '1';
+    if (status.key !== 'open' && !isWaitlisting) {
+      // Re-render the page with the status banner (which shows the waitlist
+      // form when the event is full).
       const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/events/${event.slug}`, getQueryString(req));
       sendHTML(res, 200, injectTracking(generateEventPage(location, event, signupCount), sid));
       return true;
     }
-
-    const body = await parseBody(req);
     const name = String(body.name || '').trim().slice(0, 120);
     const email = String(body.email || '').trim().slice(0, 200) || null;
     const phone = String(body.phone || '').trim().slice(0, 50) || null;
@@ -2290,6 +2318,35 @@ async function handlePublic(req, res, pathname, prisma) {
     const fwd = req.headers['x-forwarded-for'];
     const ip = fwd ? String(fwd).split(',')[0].trim() : (req.socket?.remoteAddress || null);
 
+    // Abuse throttle: too many submissions from one IP in a short window.
+    if (signupRateLimited(ip)) {
+      const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/events/${event.slug}/signup`, getQueryString(req));
+      sendHTML(res, 429, injectTracking(generateEventPage(location, event, signupCount, {
+        prevValues: { name, email, phone, partySize, notes, ...customAnswers },
+        errorMessage: "You've submitted a few times in a row. Please wait a few minutes and try again.",
+      }), sid));
+      return true;
+    }
+
+    // Duplicate guard: if this email already has a (non-rejected) signup for
+    // this event, don't create a second one — just show them the confirmation
+    // again. Prevents accidental double-submits and inflated counts. Events
+    // that don't collect email can't be deduped this way.
+    if (email) {
+      const existing = await prisma.eventSignup.findFirst({
+        where: {
+          eventId: event.id,
+          email: { equals: email, mode: 'insensitive' },
+          status: { not: 'rejected' },
+        },
+      }).catch(() => null);
+      if (existing) {
+        const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/events/${event.slug}/signup`, getQueryString(req));
+        sendHTML(res, 200, injectTracking(generateEventConfirmationPage(location, event, existing), sid));
+        return true;
+      }
+    }
+
     const { effectiveSignupType, needsApproval } = require('../eventSignupTypes');
     const signupType = effectiveSignupType(event);
     const requiresApproval = needsApproval(event);
@@ -2302,8 +2359,8 @@ async function handlePublic(req, res, pathname, prisma) {
     // Defense-in-depth: re-count right before create so a flurry of
     // concurrent submissions can't slip a few signups past the capacity gate
     // that eventStatus checked earlier in the handler.
-    if (event.capacity) {
-      const liveCount = await prisma.eventSignup.count({ where: { eventId: event.id } }).catch(() => 0);
+    if (event.capacity && !isWaitlisting) {
+      const liveCount = await prisma.eventSignup.count({ where: CAP_WHERE }).catch(() => 0);
       if (liveCount >= event.capacity) {
         const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/events/${event.slug}/signup`, getQueryString(req));
         sendHTML(res, 200, injectTracking(generateEventPage(location, event, liveCount, {
@@ -2329,7 +2386,7 @@ async function handlePublic(req, res, pathname, prisma) {
           visitorId: visitorId || null,
           sessionId: currentSession?.id || null,
           source: currentSession?.source || null,
-          status: requiresApproval ? 'pending' : 'approved',
+          status: isWaitlisting ? 'waitlisted' : (requiresApproval ? 'pending' : 'approved'),
         },
       });
     } catch (err) {
@@ -2459,6 +2516,27 @@ async function handlePublic(req, res, pathname, prisma) {
     return true;
   }
 
+  // Calendar download: /{slug}/events/{eventSlug}.ics
+  const eventIcsMatch = pathname.match(/^\/([a-z0-9-]+)\/events\/([a-z0-9-]+)\.ics$/);
+  if (eventIcsMatch) {
+    const [, locSlug, eventSlug] = eventIcsMatch;
+    const locs = await getLocations(prisma);
+    const location = locs.find((l) => l.slug === locSlug);
+    if (!location || !prisma) { await send404(req, res, prisma); return true; }
+    const event = await prisma.event.findFirst({
+      where: { locationId: location.id, slug: eventSlug },
+    }).catch(() => null);
+    if (!event || !event.startDate) { await send404(req, res, prisma); return true; }
+    const ics = buildEventIcs(location, event);
+    res.writeHead(200, {
+      'Content-Type': 'text/calendar; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${event.slug}.ics"`,
+      'Cache-Control': 'public, max-age=300',
+    });
+    res.end(ics);
+    return true;
+  }
+
   // Event page: /{slug}/events/{eventSlug}
   const eventPageMatch = pathname.match(/^\/([a-z0-9-]+)\/events\/([a-z0-9-]+)$/);
   if (eventPageMatch) {
@@ -2476,7 +2554,9 @@ async function handlePublic(req, res, pathname, prisma) {
       await send404(req, res, prisma);
       return true;
     }
-    const signupCount = await prisma.eventSignup.count({ where: { eventId: event.id } }).catch(() => 0);
+    const signupCount = await prisma.eventSignup.count({
+      where: { eventId: event.id, status: { notIn: ['waitlisted', 'rejected'] } },
+    }).catch(() => 0);
     const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/events/${event.slug}`, getQueryString(req));
     sendHTML(res, 200, injectTracking(generateEventPage(location, event, signupCount), sid));
     return true;

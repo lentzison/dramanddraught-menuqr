@@ -81,6 +81,11 @@ function generateEventsIndexPage(location, upcomingEvents = [], recentEvents = [
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta name="theme-color" content="#0f1012">
       <title>${escHTML(location.name)} Events - Dram &amp; Draught</title>
+      <meta name="description" content="${escHTML(`Upcoming events at Dram & Draught ${location.name}. Tastings, competitions, live music, vendor markets and more.`)}">
+      <meta property="og:type" content="website">
+      <meta property="og:site_name" content="Dram & Draught">
+      <meta property="og:title" content="${escHTML(`${location.name} Events — Dram & Draught`)}">
+      <meta property="og:description" content="${escHTML(`Upcoming events at Dram & Draught ${location.name}.`)}">
       <style>
         ${vintageThemeCss()}
         ${brandMarkCss()}

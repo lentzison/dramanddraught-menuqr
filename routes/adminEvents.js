@@ -15,6 +15,12 @@ function normalizeText(value) {
   return String(value || '').trim();
 }
 
+// Validate the public "spots left" indicator mode.
+function normalizeSpotsLeftMode(value) {
+  const v = String(value || '').trim();
+  return ['always', 'near-full', 'hidden'].includes(v) ? v : 'always';
+}
+
 function slugify(value) {
   return String(value || '')
     .toLowerCase()
@@ -412,6 +418,7 @@ async function handleAdminEvents(req, res, pathname, prisma) {
             ticketProvider: detectTicketProvider(body.ticketUrl),
             remindersEnabled: body.remindersEnabled === 'on',
             themeKey: normalizeThemeKey(body.themeKey),
+            spotsLeftMode: normalizeSpotsLeftMode(body.spotsLeftMode),
           },
         });
         // Find slug for audit context
@@ -519,7 +526,7 @@ async function handleAdminEvents(req, res, pathname, prisma) {
         orderBy: { createdAt: 'asc' },
       });
       const customDefs = Array.isArray(event.customQuestions) ? event.customQuestions : [];
-      const headers = ['Date', 'Name', 'Email', 'Phone', 'Party Size', 'Notes', ...customDefs.map(q => q.label)];
+      const headers = ['Date', 'Name', 'Email', 'Phone', 'Party Size', 'Notes', 'Status', 'Checked In', 'Approved By', 'Approved At', 'Rejection Reason', ...customDefs.map(q => q.label)];
       const csvEscape = v => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
       const rows = signups.map(s => {
         const answers = s.customAnswers || {};
@@ -530,6 +537,11 @@ async function handleAdminEvents(req, res, pathname, prisma) {
           s.phone || '',
           s.partySize || '',
           s.notes || '',
+          s.status || 'approved',
+          s.checkedInAt ? s.checkedInAt.toISOString() : '',
+          s.approvedBy || '',
+          s.approvedAt ? s.approvedAt.toISOString() : '',
+          s.rejectionReason || '',
           ...customDefs.map(q => {
             const v = answers[q.id];
             if (v == null) return '';
@@ -578,6 +590,56 @@ async function handleAdminEvents(req, res, pathname, prisma) {
         if (action === 'deleteSignup' && signupId) {
           await prisma.eventSignup.delete({ where: { id: signupId } }).catch(() => null);
           redirect(res, `/admin/events/${eventId}/signups?msg=deleted`);
+          return true;
+        }
+
+        // Toggle day-of check-in for a signup.
+        if (action === 'checkin' && signupId) {
+          const target = await prisma.eventSignup.findFirst({ where: { id: signupId, eventId } }).catch(() => null);
+          if (!target) {
+            redirect(res, `/admin/events/${eventId}/signups?msg=` + encodeURIComponent('error|Signup not found.'));
+            return true;
+          }
+          await prisma.eventSignup.update({
+            where: { id: signupId },
+            data: { checkedInAt: target.checkedInAt ? null : new Date() },
+          }).catch((err) => console.warn('Check-in toggle failed:', err.message));
+          redirect(res, `/admin/events/${eventId}/signups?msg=` + (target.checkedInAt ? 'checkin-undone' : 'checked-in') + `#signup-${signupId}`);
+          return true;
+        }
+
+        // Promote a waitlisted signup to confirmed (approved) and notify them.
+        if (action === 'promoteWaitlist' && signupId) {
+          const target = await prisma.eventSignup.findFirst({ where: { id: signupId, eventId } }).catch(() => null);
+          if (!target) {
+            redirect(res, `/admin/events/${eventId}/signups?msg=` + encodeURIComponent('error|Signup not found.'));
+            return true;
+          }
+          await prisma.eventSignup.update({
+            where: { id: signupId },
+            data: { status: 'approved', approvedBy: user.email, approvedAt: new Date() },
+          }).catch((err) => console.warn('Promote waitlist failed:', err.message));
+          writeAudit(prisma, req, user, {
+            action: 'promote', resourceType: 'eventSignup', resourceId: signupId,
+            resourceLabel: `${target.name || ''} — ${event.title}`,
+            locationSlug: event.location?.slug || null,
+          });
+          if (target.email) {
+            const dateStr = formatEventDateForEmail(event);
+            sendEmailViaGoogle({
+              to: target.email,
+              subject: `A spot opened up: ${event.title}`,
+              body: [
+                `Hi ${target.name || 'there'},`,
+                '',
+                `Good news — a spot just opened up for "${event.title}" and you're confirmed off the waitlist.`,
+                dateStr ? `Event: ${dateStr}` : null,
+                '',
+                `— Dram & Draught ${event.location?.name || ''}`,
+              ].filter(Boolean).join('\n'),
+            }).catch((err) => console.warn('Waitlist promote email failed:', err.message));
+          }
+          redirect(res, `/admin/events/${eventId}/signups?msg=promoted`);
           return true;
         }
 
@@ -843,6 +905,7 @@ async function handleAdminEvents(req, res, pathname, prisma) {
             ticketProvider: detectTicketProvider(body.ticketUrl),
             remindersEnabled: body.remindersEnabled === 'on',
             themeKey: normalizeThemeKey(body.themeKey),
+            spotsLeftMode: normalizeSpotsLeftMode(body.spotsLeftMode),
           },
         });
         writeAudit(prisma, req, user, {

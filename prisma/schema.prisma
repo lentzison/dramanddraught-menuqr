@@ -256,6 +256,12 @@ model Event {
   // Capacity
   capacity         Int?      // null = unlimited
 
+  // Controls the public "X spots left" urgency indicator.
+  //   "always"    → show whenever capacity is set
+  //   "near-full" → only show once the event is ≥75% full
+  //   "hidden"    → never show
+  spotsLeftMode    String    @default("always")
+
   // Whether the signup form is shown at all on the public page.
   // Some events (e.g. info-only announcements) don't collect signups.
   signupsEnabled   Boolean   @default(true)
@@ -338,10 +344,17 @@ model EventSignup {
   createdAt     DateTime @default(now())
 
   // Approval workflow (used by vendor events). Regular events leave status="approved".
-  status           String    @default("approved") // "approved" | "pending" | "rejected"
+  // "waitlisted" is used when an event is at capacity but still collecting
+  // interest; waitlisted signups don't count toward capacity and can be
+  // promoted to "approved" by an admin when a spot frees up.
+  status           String    @default("approved") // "approved" | "pending" | "rejected" | "waitlisted"
   approvedBy       String?   // Email of GM who approved/rejected
   approvedAt       DateTime?
   rejectionReason  String?
+
+  // Day-of check-in. Set when an admin marks the guest as arrived; null = not
+  // yet checked in. Enables attendance / no-show reporting after the event.
+  checkedInAt      DateTime?
 
   // Reminder email tracking. Flag-then-send pattern (see eventReminders.js):
   // we set the flag BEFORE attempting send so a crash mid-send can't fire a

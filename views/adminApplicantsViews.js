@@ -9,13 +9,14 @@ const STATUS_LABELS = {
   offer_extended: 'Offer Extended',
   hired: 'Hired',
   rejected: 'Rejected',
+  keep_on_file: 'Keep on file',
   withdrawn: 'Withdrawn',
 };
 
 const PIPELINE_ORDER = [
   'new', 'reviewing', 'interview_scheduled', 'interviewed', 'offer_extended', 'hired',
 ];
-const TERMINAL_STATUSES = new Set(['hired', 'rejected', 'withdrawn']);
+const TERMINAL_STATUSES = new Set(['hired', 'rejected', 'keep_on_file', 'withdrawn']);
 
 const POSITIONS = ['Bartender', 'Barback', 'Server', 'Host', 'Floor Manager', 'Other'];
 
@@ -82,6 +83,7 @@ function applicantStyles() {
       .app-badge-offer_extended   { background:rgba(240,199,102,0.20); color:var(--gold-strong); }
       .app-badge-hired            { background:rgba(98,210,143,0.22); color:#a4f4c2; }
       .app-badge-rejected         { background:rgba(255,123,123,0.18); color:#ffb3b3; }
+      .app-badge-keep_on_file     { background:rgba(99,205,218,0.18); color:#9fdde8; }
       .app-badge-withdrawn        { background:rgba(185,174,160,0.15); color:var(--text-muted); }
 
       .ai-rec-badge { display:inline-block; padding:4px 10px; border-radius:999px; font-size:0.7rem; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; margin-left:6px; }
@@ -698,6 +700,7 @@ function applicantStyles() {
       .al-card[data-ribbon="error"]                 { --ribbon: var(--red); }
       .al-card[data-ribbon="hired"]                 { --ribbon: #62d28f; }
       .al-card[data-ribbon="rejected"]              { --ribbon: var(--red); }
+      .al-card[data-ribbon="keep_on_file"]          { --ribbon: #63cdda; }
       .al-card[data-ribbon="withdrawn"]             { --ribbon: var(--text-soft); }
       .al-card.is-focused { box-shadow: 0 0 0 2px var(--gold-strong) inset; border-color: var(--gold-strong); }
       .al-card.is-selected { border-color: var(--gold-strong); background: linear-gradient(180deg, rgba(240,199,102,0.05), rgba(240,199,102,0.02)), var(--surface); }
@@ -1160,6 +1163,7 @@ function initialsOf(name) {
 function ribbonKey(a) {
   if (a.status === 'hired') return 'hired';
   if (a.status === 'rejected') return 'rejected';
+  if (a.status === 'keep_on_file') return 'keep_on_file';
   if (a.status === 'withdrawn') return 'withdrawn';
   const ev = a.aiEvaluation;
   if (!ev) return 'pending';
@@ -1261,24 +1265,25 @@ function renderApplicantCard(a) {
             <button type="submit" class="icon-btn is-success" title="${escAttr(next.label)}" aria-label="${escAttr(next.label)}">→</button>
           </form>` : ''}
         ${!TERMINAL_STATUSES.has(a.status) ? `
-          <button type="button" class="icon-btn is-danger" data-open-reject="${escAttr(a.id)}" data-name="${escAttr(a.name)}" data-interviews="${a._count && a._count.interviews ? a._count.interviews : 0}" title="Reject" aria-label="Reject">✕</button>
+          <button type="button" class="icon-btn is-danger" data-open-reject="${escAttr(a.id)}" data-name="${escAttr(a.name)}" data-interviews="${a._count && a._count.interviews ? a._count.interviews : 0}" title="Reject or keep on file" aria-label="Reject or keep on file">✕</button>
         ` : ''}
         <a class="icon-btn" href="/admin/applicants/${escAttr(a.id)}" title="Open" aria-label="Open">↗</a>
       </div>
     </div>`;
 }
 
-// Shared modal for rejection — used by list page and detail page. Stays hidden
-// until JS sets data-mode + populates fields. Always submits to a single
-// endpoint; the JS handler fans the request out for bulk operations.
+// Shared decision modal — used by list page, detail page, and bulk actions.
+// Offers two terminal outcomes: a firm "Reject" (with optional email) or
+// "Keep on file" (saved for a future opening, no email). Both move the
+// applicant out of the active pipeline and auto-cancel scheduled interviews.
 function rejectModalHtml() {
   return `
     <div class="al-modal-overlay" id="alRejectOverlay" aria-hidden="true">
       <div class="al-modal" role="dialog" aria-modal="true" aria-labelledby="alRejectTitle">
-        <h3 id="alRejectTitle">Reject applicant</h3>
-        <p class="al-modal-sub" id="alRejectSub">This will move them to Rejected.</p>
+        <h3 id="alRejectTitle">Decide on this applicant</h3>
+        <p class="al-modal-sub" id="alRejectSub">Choose a final decision.</p>
 
-        <label for="alRejectReason">Reason (optional, saved to internal notes)</label>
+        <label for="alRejectReason">Reason / note (optional, saved to internal notes)</label>
         <textarea id="alRejectReason" placeholder="e.g. Availability didn't match the role, or experience gap on bartending"></textarea>
 
         <div class="al-modal-row" id="alRejectInterviewsRow" style="display:none;">
@@ -1286,19 +1291,20 @@ function rejectModalHtml() {
           <span><strong id="alRejectInterviewCount">0</strong> scheduled interview<span id="alRejectInterviewPlural">s</span> will be auto-cancelled.</span>
         </div>
 
-        <div class="al-modal-row">
+        <div class="al-modal-row" id="alRejectEmailRow">
           <input type="checkbox" id="alRejectSendEmail" />
           <label for="alRejectSendEmail" style="margin:0; text-transform:none; letter-spacing:0; font-size:0.88rem; color:var(--text); font-weight:600;">
-            Send a polite rejection email to the candidate
+            Send a polite rejection email to the candidate <span style="color:var(--text-muted); font-weight:500;">(only applies to "Reject")</span>
           </label>
         </div>
 
         <div class="al-modal-note">
-          Rejection is reversible — open the applicant later and use "Change status" to put them back in the pipeline. Cancelled interviews don't come back automatically though.
+          <strong>Reject</strong> = final no. <strong>Keep on file</strong> = save for a future opening — no email sent. Both move them out of the active pipeline and cancel scheduled interviews. Reversible later via "Change status".
         </div>
 
         <div class="al-modal-actions">
           <button type="button" class="btn btn-secondary" id="alRejectCancel">Cancel</button>
+          <button type="button" class="btn btn-secondary" id="alRejectKeep">Keep on file</button>
           <button type="button" class="btn btn-danger" id="alRejectConfirm">Reject</button>
         </div>
       </div>
@@ -1319,6 +1325,7 @@ function rejectModalScript() {
       var ivCount = document.getElementById('alRejectInterviewCount');
       var ivPlural = document.getElementById('alRejectInterviewPlural');
       var confirmBtn = document.getElementById('alRejectConfirm');
+      var keepBtn = document.getElementById('alRejectKeep');
       var cancelBtn = document.getElementById('alRejectCancel');
       var pending = { ids: [], names: [], interviews: 0 };
 
@@ -1326,7 +1333,7 @@ function rejectModalScript() {
         pending = opts || { ids: [], names: [], interviews: 0 };
         var n = pending.ids.length;
         if (n === 1) {
-          sub.textContent = 'Move ' + (pending.names[0] || 'this applicant') + ' to Rejected.';
+          sub.textContent = 'Choose a final decision for ' + (pending.names[0] || 'this applicant') + '.';
         } else {
           // Show the first few names so the user can spot-check they really
           // selected what they meant to. Falls back to a count if names
@@ -1335,8 +1342,8 @@ function rejectModalScript() {
           var more = Math.max(0, n - visibleNames.length);
           var nameList = visibleNames.length ? visibleNames.join(', ') + (more > 0 ? ', +' + more + ' more' : '') : '';
           sub.textContent = nameList
-            ? 'Move ' + n + ' applicants to Rejected — ' + nameList + '.'
-            : 'Move ' + n + ' applicants to Rejected.';
+            ? 'Choose a final decision for ' + n + ' applicants — ' + nameList + '.'
+            : 'Choose a final decision for ' + n + ' applicants.';
         }
         reason.value = '';
         sendEmail.checked = false;
@@ -1351,7 +1358,9 @@ function rejectModalScript() {
         overlay.setAttribute('aria-hidden', 'false');
         setTimeout(function () { reason.focus(); }, 50);
         confirmBtn.disabled = false;
+        keepBtn.disabled = false;
         confirmBtn.textContent = n > 1 ? ('Reject ' + n) : 'Reject';
+        keepBtn.textContent = n > 1 ? ('Keep ' + n + ' on file') : 'Keep on file';
       }
       function close() {
         overlay.classList.remove('is-open');
@@ -1380,15 +1389,19 @@ function rejectModalScript() {
         if (e.key === 'Escape' && overlay.classList.contains('is-open')) close();
       });
 
-      confirmBtn.addEventListener('click', function () {
+      function submitDecision(targetStatus, btn, busyLabel) {
         if (!pending.ids.length) return close();
         confirmBtn.disabled = true;
-        confirmBtn.textContent = 'Rejecting…';
+        keepBtn.disabled = true;
+        btn.textContent = busyLabel;
         var note = reason.value.trim();
-        var doEmail = sendEmail.checked ? '1' : '';
+        // Email only applies to a firm rejection. "Keep on file" never sends
+        // one — the candidate shouldn't get a "no thanks" note when we're
+        // actually saving them for later.
+        var doEmail = (targetStatus === 'rejected' && sendEmail.checked) ? '1' : '';
         Promise.all(pending.ids.map(function (id) {
           var body = new URLSearchParams();
-          body.set('status', 'rejected');
+          body.set('status', targetStatus);
           if (note) body.set('note', note);
           if (doEmail) body.set('sendEmail', '1');
           return fetch('/admin/applicants/' + encodeURIComponent(id) + '/status', {
@@ -1401,6 +1414,13 @@ function rejectModalScript() {
         })).then(function () {
           window.location.reload();
         });
+      }
+
+      confirmBtn.addEventListener('click', function () {
+        submitDecision('rejected', confirmBtn, 'Rejecting…');
+      });
+      keepBtn.addEventListener('click', function () {
+        submitDecision('keep_on_file', keepBtn, 'Saving…');
       });
     })();
   `;
@@ -1441,16 +1461,17 @@ function applicantsList({ applications, locations, filters, counts, user, flashM
   // "All" by default means active pipeline (excludes rejected + withdrawn).
   // Click the Rejected / Withdrawn chips at the end to surface archived rows.
   const totalApplicants = Object.values(counts).reduce((a, b) => a + b, 0);
-  const activeApplicants = totalApplicants - (counts.rejected || 0) - (counts.withdrawn || 0);
+  const activeApplicants = totalApplicants - (counts.rejected || 0) - (counts.keep_on_file || 0) - (counts.withdrawn || 0);
   const STATUS_CHIPS = [
-    { key: '',                    label: 'Active',      count: activeApplicants },
-    { key: 'new',                 label: 'New',         count: counts.new },
-    { key: 'reviewing',           label: 'Reviewing',   count: counts.reviewing },
-    { key: 'interview_scheduled', label: 'Interview',   count: counts.interview_scheduled },
-    { key: 'offer_extended',      label: 'Offer',       count: counts.offer_extended || 0 },
-    { key: 'hired',               label: 'Hired',       count: counts.hired },
-    { key: 'rejected',            label: 'Rejected',    count: counts.rejected || 0, muted: true },
-    { key: 'withdrawn',           label: 'Withdrawn',   count: counts.withdrawn || 0, muted: true },
+    { key: '',                    label: 'Active',       count: activeApplicants },
+    { key: 'new',                 label: 'New',          count: counts.new },
+    { key: 'reviewing',           label: 'Reviewing',    count: counts.reviewing },
+    { key: 'interview_scheduled', label: 'Interview',    count: counts.interview_scheduled },
+    { key: 'offer_extended',      label: 'Offer',        count: counts.offer_extended || 0 },
+    { key: 'hired',               label: 'Hired',        count: counts.hired },
+    { key: 'keep_on_file',        label: 'Keep on file', count: counts.keep_on_file || 0, muted: true },
+    { key: 'rejected',            label: 'Rejected',     count: counts.rejected || 0, muted: true },
+    { key: 'withdrawn',           label: 'Withdrawn',    count: counts.withdrawn || 0, muted: true },
   ];
   const statusChips = STATUS_CHIPS.map(c => {
     const active = f.status === c.key;
@@ -1660,7 +1681,7 @@ function applicantsList({ applications, locations, filters, counts, user, flashM
         <option value="advance:interviewed">Mark interviewed</option>
         <option value="advance:offer_extended">Extend offer</option>
         <option value="advance:hired">Mark hired</option>
-        <option value="reject">Reject (with optional email)</option>
+        <option value="reject">Reject or keep on file…</option>
       </select>
       <button type="button" class="btn btn-primary btn-sm" id="alBulkApply">Apply to N</button>
       <button type="button" class="btn btn-secondary btn-sm" id="alBulkClear">Clear</button>
@@ -1872,6 +1893,7 @@ function renderStepper(application) {
   let terminalNote = '';
   if (current === 'hired') terminalNote = '<span class="terminal-note is-positive">Hired ★</span>';
   else if (current === 'rejected') terminalNote = '<span class="terminal-note is-negative">Rejected</span>';
+  else if (current === 'keep_on_file') terminalNote = '<span class="terminal-note">Keep on file</span>';
   else if (current === 'withdrawn') terminalNote = '<span class="terminal-note">Withdrawn</span>';
 
   const decisionLine = application.decisionBy
@@ -1919,14 +1941,15 @@ function renderHeroActions(application, interviews) {
     if (isCurrent) {
       return `<button type="button" class="is-current" disabled>${escHTML(label)} (current)</button>`;
     }
-    // "Rejected" routes through the shared reject modal so the user can pick a
-    // reason + toggle the rejection email; everything else POSTs directly.
+    // "Rejected" routes through the shared decision modal, which also offers
+    // "Keep on file" as a softer second outcome — so the dropdown item covers
+    // both. Everything else POSTs directly.
     if (opt === 'rejected') {
       return `
         <button type="button" class="is-danger"
                 data-open-reject="${escHTML(application.id)}"
                 data-name="${escHTML(application.name)}"
-                data-interviews="${scheduledInterviewCount}">${escHTML(label)}…</button>`;
+                data-interviews="${scheduledInterviewCount}">Reject or keep on file…</button>`;
     }
     return `
       <form method="POST" action="/admin/applicants/${escHTML(application.id)}/status">
@@ -2517,6 +2540,8 @@ function applicantDetail({ application, interviews, user, flashMsg, dashboardInv
       </aside>
     </div>
 
+    ${rejectModalHtml()}
+
     <script>
       (function () {
         var ROOT = document;
@@ -2640,8 +2665,6 @@ function applicantDetail({ application, interviews, user, flashMsg, dashboardInv
 
       ${rejectModalScript()}
     </script>
-
-    ${rejectModalHtml()}
   `, user);
 }
 

@@ -366,26 +366,29 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
       },
     });
 
-    // Rejection side-effects: auto-cancel any scheduled interviews so the
-    // candidate stops getting reminder emails, and optionally send a polite
-    // rejection note.
+    // Side-effects for terminal decisions (rejected / keep_on_file):
+    // auto-cancel any scheduled interviews so the candidate stops getting
+    // reminder emails. Only a firm "rejected" with sendEmail=true sends the
+    // polite rejection note — "keep on file" never emails the candidate.
     let cancelledCount = 0;
-    if (next === 'rejected') {
+    const isTerminalDecision = next === 'rejected' || next === 'keep_on_file';
+    if (isTerminalDecision) {
+      const reasonLabel = next === 'rejected' ? 'Application rejected' : 'Application kept on file';
       try {
         const cancelRes = await prisma.interview.updateMany({
           where: { applicationId: id, status: 'scheduled' },
           data: {
             status: 'cancelled',
             cancelledAt: new Date(),
-            cancellationReason: 'Application rejected' + (note ? ` — ${note}` : ''),
+            cancellationReason: reasonLabel + (note ? ` — ${note}` : ''),
           },
         });
         cancelledCount = cancelRes.count || 0;
       } catch (err) {
-        console.warn('[applicants] failed to auto-cancel interviews on rejection:', err.message);
+        console.warn(`[applicants] failed to auto-cancel interviews on ${next}:`, err.message);
       }
 
-      if (sendEmail) {
+      if (next === 'rejected' && sendEmail) {
         sendRejectionEmail(app, note).catch((err) => console.warn('[applicants] rejection email failed:', err.message));
       }
     }
@@ -399,11 +402,12 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
     }).catch(() => {});
 
     let flashText = `Moved to ${STATUS_LABELS[next] || next}.`;
-    if (next === 'rejected') {
+    if (isTerminalDecision) {
+      const headline = next === 'rejected' ? 'Rejected' : 'Kept on file';
       const bits = [];
       if (cancelledCount > 0) bits.push(`${cancelledCount} interview${cancelledCount === 1 ? '' : 's'} cancelled`);
-      if (sendEmail) bits.push('rejection email sent');
-      if (bits.length) flashText = `Rejected — ${bits.join(', ')}.`;
+      if (next === 'rejected' && sendEmail) bits.push('rejection email sent');
+      flashText = bits.length ? `${headline} — ${bits.join(', ')}.` : `${headline}.`;
     }
     flashRedirect(res, `/admin/applicants/${id}`, 'success', flashText);
     return true;
@@ -871,10 +875,10 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
     if (filters.status && VALID_STATUSES.has(filters.status)) {
       where.status = filters.status;
     } else {
-      // Default view excludes archived (rejected / withdrawn) so the main
-      // screen stays focused on the active pipeline. Admins can still see
-      // them by clicking the Rejected / Withdrawn chip or using ?status=.
-      where.status = { notIn: ['rejected', 'withdrawn'] };
+      // Default view excludes archived (rejected / keep_on_file / withdrawn)
+      // so the main screen stays focused on the active pipeline. Admins can
+      // still see them by clicking those chips or using ?status=.
+      where.status = { notIn: ['rejected', 'keep_on_file', 'withdrawn'] };
     }
     if (filters.position) where.position = filters.position;
     if (filters.location) {
@@ -998,7 +1002,7 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
       by: ['status'],
       _count: { _all: true },
     }).catch(() => []);
-    const counts = { new: 0, reviewing: 0, interview_scheduled: 0, interviewed: 0, offer_extended: 0, hired: 0, rejected: 0, withdrawn: 0 };
+    const counts = { new: 0, reviewing: 0, interview_scheduled: 0, interviewed: 0, offer_extended: 0, hired: 0, rejected: 0, keep_on_file: 0, withdrawn: 0 };
     for (const row of aggregate) {
       if (counts[row.status] != null) counts[row.status] = row._count._all;
     }

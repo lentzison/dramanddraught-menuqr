@@ -298,7 +298,7 @@ const RAW_THEMES = [
   {
     key: 'tropical-luau',
     label: 'Tropical Luau',
-    description: 'Turquoise, coral and sand. Perfect for summer bashes, tiki nights and pool parties.',
+    description: 'Bright turquoise, coral and sand. Perfect for summer bashes, pool parties and beach days.',
     group: 'Seasonal',
     bodyClass: 'ev-t-tropical',
     swatch: { bg: '#e8fbf6', bg2: '#ffe6d2', accent: '#0fb5a6', accent2: '#ff7a59' },
@@ -309,6 +309,26 @@ const RAW_THEMES = [
       text: '#123634', steel: '#2c5450', muted: '#5e7a76', smoke: '#8aa6a1',
       panel: '#ffffff', panelStrong: '#f3fbf8',
       font: "'Trebuchet MS', 'Avenir Next', 'Segoe UI', sans-serif",
+    },
+  },
+  {
+    key: 'tiki',
+    label: 'Tiki Lounge',
+    description: 'Dusky tiki bar — warm rum mahogany, glowing torch-orange and lagoon teal, framed by palm fronds.',
+    group: 'Nightlife',
+    bodyClass: 'ev-t-tiki',
+    swatch: { bg: '#4a2415', bg2: '#150b07', accent: '#ff8a3d', accent2: '#16b8a6' },
+    palette: {
+      scheme: 'dark',
+      accent: '#ff8a3d', accent2: '#16b8a6',
+      bgA: '#4a2415', bgMid: '#2e1810', bgB: '#140b07',
+      text: '#fdeede', steel: '#e6cfb9', muted: '#bd9e85', smoke: '#8c7059',
+      panel: '#2c1810', panelStrong: '#1f1009',
+      font: "'Trebuchet MS', 'Avenir Next', 'Segoe UI', sans-serif",
+      // Palm fronds growing up from the bottom corners — pure CSS, no assets.
+      bodyBgExtra:
+        "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'><g transform='translate(100,188)' fill='%232fae74' opacity='0.26'><ellipse rx='15' ry='102' cy='-86'/><ellipse rx='14' ry='96' cy='-82' transform='rotate(23)'/><ellipse rx='14' ry='96' cy='-82' transform='rotate(-23)'/><ellipse rx='12' ry='84' cy='-72' transform='rotate(47)'/><ellipse rx='12' ry='84' cy='-72' transform='rotate(-47)'/><ellipse rx='10' ry='66' cy='-58' transform='rotate(70)'/><ellipse rx='10' ry='66' cy='-58' transform='rotate(-70)'/></g></svg>\") left -78px bottom -64px / 360px 360px no-repeat, "
+        + "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'><g transform='translate(100,188)' fill='%232fae74' opacity='0.22'><ellipse rx='14' ry='96' cy='-82'/><ellipse rx='13' ry='90' cy='-78' transform='rotate(24)'/><ellipse rx='13' ry='90' cy='-78' transform='rotate(-24)'/><ellipse rx='11' ry='78' cy='-68' transform='rotate(49)'/><ellipse rx='11' ry='78' cy='-68' transform='rotate(-49)'/></g></svg>\") right -72px bottom -58px / 300px 300px no-repeat",
     },
   },
   {

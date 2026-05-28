@@ -427,6 +427,197 @@ const RAW_THEMES = [
       font: "'Iowan Old Style', 'Palatino Linotype', Georgia, serif",
     },
   },
+
+  // ── On-brand core (spirits / beer / cocktails) ──
+  {
+    key: 'whiskey-library',
+    label: 'Whiskey Library',
+    description: 'Aged bourbon amber, oak and burnt copper on dark leather. For whiskey tastings, barrel picks and spirit dinners.',
+    group: 'Tastings',
+    bodyClass: 'ev-t-whiskey',
+    swatch: { bg: '#2a1d12', bg2: '#120c07', accent: '#d99343', accent2: '#b5573a' },
+    palette: {
+      scheme: 'dark',
+      accent: '#d99343', accent2: '#b5573a',
+      bgA: '#2a1d12', bgMid: '#1e150d', bgB: '#120c07',
+      text: '#f3e6d2', steel: '#ddc9ad', muted: '#b39a78', smoke: '#897056',
+      panel: '#261a10', panelStrong: '#1b1209',
+      font: "'Iowan Old Style', 'Palatino Linotype', Georgia, serif",
+    },
+  },
+  {
+    key: 'taproom',
+    label: 'Taproom',
+    description: 'Chalkboard slate, ale gold and hop green. For beer releases, tap takeovers and brewery nights.',
+    group: 'Tastings',
+    bodyClass: 'ev-t-taproom',
+    swatch: { bg: '#23282a', bg2: '#121516', accent: '#d4a82e', accent2: '#86b54a' },
+    palette: {
+      scheme: 'dark',
+      accent: '#d4a82e', accent2: '#86b54a',
+      bgA: '#23282a', bgMid: '#1b1f20', bgB: '#121516',
+      text: '#eef0ea', steel: '#cfd4cb', muted: '#9aa39a', smoke: '#6f786f',
+      panel: '#20262a', panelStrong: '#181c1f',
+      font: "'Trebuchet MS', 'Avenir Next', 'Segoe UI', sans-serif",
+    },
+  },
+  {
+    key: 'wine-cellar',
+    label: 'Wine Cellar',
+    description: 'Deep wine red, plum and gold. For wine dinners, rosé nights and port & cheese pairings.',
+    group: 'Tastings',
+    bodyClass: 'ev-t-wine',
+    swatch: { bg: '#2e1620', bg2: '#150a10', accent: '#a83246', accent2: '#c2a14e' },
+    palette: {
+      scheme: 'dark',
+      accent: '#a83246', accent2: '#c2a14e',
+      bgA: '#2e1620', bgMid: '#22101a', bgB: '#150a10',
+      text: '#f3e4e0', steel: '#dcc4c2', muted: '#b0908f', smoke: '#876b6c',
+      panel: '#281320', panelStrong: '#1c0d16',
+      font: "'Iowan Old Style', 'Palatino Linotype', Georgia, serif",
+    },
+  },
+  {
+    key: 'craft-cocktail',
+    label: 'Craft Cocktail',
+    description: 'Smoked charcoal-teal with copper and fresh herb. For mixology classes and cocktail competitions.',
+    group: 'Tastings',
+    bodyClass: 'ev-t-cocktail',
+    swatch: { bg: '#16221f', bg2: '#0a110f', accent: '#cf8b3a', accent2: '#6bbf8f' },
+    palette: {
+      scheme: 'dark',
+      accent: '#cf8b3a', accent2: '#6bbf8f',
+      bgA: '#16221f', bgMid: '#101a18', bgB: '#0a110f',
+      text: '#eef3ee', steel: '#cdd9d2', muted: '#90a39a', smoke: '#67786f',
+      panel: '#14211e', panelStrong: '#0e1715',
+      font: "'Trebuchet MS', 'Avenir Next', 'Segoe UI', sans-serif",
+    },
+  },
+
+  // ── Live entertainment ──
+  {
+    key: 'jazz-blues',
+    label: 'Jazz & Blues',
+    description: 'Smoky midnight indigo, brass spotlight gold and velvet violet. For live music and open-mic nights.',
+    group: 'Nightlife',
+    bodyClass: 'ev-t-jazz',
+    swatch: { bg: '#16203a', bg2: '#0a0f1c', accent: '#d6a23e', accent2: '#6d6bd6' },
+    palette: {
+      scheme: 'dark',
+      accent: '#d6a23e', accent2: '#6d6bd6',
+      bgA: '#16203a', bgMid: '#101729', bgB: '#0a0f1c',
+      text: '#eef0f8', steel: '#cdd2e2', muted: '#9099b3', smoke: '#686f8a',
+      panel: '#141d33', panelStrong: '#0e1526',
+      font: "'Iowan Old Style', 'Palatino Linotype', Georgia, serif",
+    },
+  },
+
+  // ── Holidays bars actually celebrate ──
+  {
+    key: 'st-patricks',
+    label: "St. Patrick's Day",
+    description: 'Deep emerald, lucky gold and shamrocks. For the biggest pub holiday of the year.',
+    group: 'Seasonal',
+    bodyClass: 'ev-t-stpat',
+    swatch: { bg: '#0f3320', bg2: '#05140d', accent: '#2fae57', accent2: '#e6c12e' },
+    palette: {
+      scheme: 'dark',
+      accent: '#2fae57', accent2: '#e6c12e',
+      bgA: '#0f3320', bgMid: '#0a2417', bgB: '#05140d',
+      text: '#eef5ec', steel: '#cfe2cf', muted: '#93b39a', smoke: '#6c8a73',
+      panel: '#0e2c1c', panelStrong: '#082016',
+      font: "'Iowan Old Style', 'Palatino Linotype', Georgia, serif",
+      // Shamrock silhouettes in opposite corners.
+      bodyBgExtra:
+        "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'><g transform='translate(100,86)' fill='%232fae57' opacity='0.16'><circle cx='0' cy='-30' r='34'/><circle cx='-30' cy='18' r='34'/><circle cx='30' cy='18' r='34'/><rect x='-5' y='28' width='10' height='80' rx='5'/></g></svg>\") right -40px top -30px / 260px 260px no-repeat, "
+        + "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200'><g transform='translate(100,86)' fill='%23e6c12e' opacity='0.12'><circle cx='0' cy='-30' r='34'/><circle cx='-30' cy='18' r='34'/><circle cx='30' cy='18' r='34'/><rect x='-5' y='28' width='10' height='80' rx='5'/></g></svg>\") left -50px bottom -40px / 230px 230px no-repeat",
+    },
+  },
+  {
+    key: 'fiesta',
+    label: 'Fiesta',
+    description: 'Bright papel-picado magenta, turquoise and marigold on warm cream. For Cinco de Mayo, margarita and tequila nights.',
+    group: 'Seasonal',
+    bodyClass: 'ev-t-fiesta',
+    swatch: { bg: '#fff4e0', bg2: '#ffdcc0', accent: '#e0357f', accent2: '#18a89a' },
+    palette: {
+      scheme: 'light',
+      accent: '#e0357f', accent2: '#18a89a',
+      bgA: '#fff4e0', bgMid: '#ffe9cf', bgB: '#ffdcc0',
+      text: '#3a2230', steel: '#5a3b48', muted: '#8a6776', smoke: '#ab8a96',
+      panel: '#fffaf0', panelStrong: '#fff1de',
+      font: "'Trebuchet MS', 'Avenir Next', 'Segoe UI', sans-serif",
+    },
+  },
+  {
+    key: 'mardi-gras',
+    label: 'Mardi Gras',
+    description: 'Royal purple, gold and green — the full Carnival palette. For Fat Tuesday and jazz parties.',
+    group: 'Seasonal',
+    bodyClass: 'ev-t-mardi',
+    swatch: { bg: '#241040', bg2: '#0d0720', accent: '#e6c12e', accent2: '#35a85a' },
+    palette: {
+      scheme: 'dark',
+      accent: '#e6c12e', accent2: '#35a85a',
+      bgA: '#241040', bgMid: '#1a0c30', bgB: '#0d0720',
+      text: '#f1ebf8', steel: '#d6cae6', muted: '#a594bf', smoke: '#7a6a96',
+      panel: '#20103a', panelStrong: '#160a28',
+      font: "'Trebuchet MS', 'Avenir Next', 'Segoe UI', sans-serif",
+    },
+  },
+  {
+    key: 'nye-champagne',
+    label: 'NYE Champagne',
+    description: 'Midnight navy and champagne gold sparkle. For New Year’s Eve galas and late-night toasts.',
+    group: 'Occasion',
+    bodyClass: 'ev-t-nye',
+    swatch: { bg: '#14182e', bg2: '#080a18', accent: '#e6c45f', accent2: '#8aa0d6' },
+    palette: {
+      scheme: 'dark',
+      accent: '#e6c45f', accent2: '#8aa0d6',
+      bgA: '#14182e', bgMid: '#0e1124', bgB: '#080a18',
+      text: '#f4f0e2', steel: '#ddd6c2', muted: '#a7a290', smoke: '#79766a',
+      panel: '#141830', panelStrong: '#0d1022',
+      font: "'Iowan Old Style', 'Palatino Linotype', Georgia, serif",
+    },
+  },
+  {
+    key: 'pride',
+    label: 'Pride',
+    description: 'Vibrant and celebratory on clean dark, with a soft rainbow wash. For Pride month events.',
+    group: 'Occasion',
+    bodyClass: 'ev-t-pride',
+    swatch: { bg: '#1c1b22', bg2: '#0d0c10', accent: '#ff4d8d', accent2: '#5b8def' },
+    palette: {
+      scheme: 'dark',
+      accent: '#ff4d8d', accent2: '#5b8def',
+      bgA: '#1c1b22', bgMid: '#151419', bgB: '#0d0c10',
+      text: '#f3f0f5', steel: '#d6d2dc', muted: '#9f9aa8', smoke: '#726d7c',
+      panel: '#1a1920', panelStrong: '#131218',
+      font: "'Trebuchet MS', 'Avenir Next', 'Segoe UI', sans-serif",
+      // Soft translucent rainbow wash in the top-right corner.
+      bodyBgExtra:
+        "linear-gradient(135deg, rgba(228,3,3,0.10), rgba(255,140,0,0.10), rgba(255,237,0,0.10), rgba(0,128,38,0.10), rgba(0,77,255,0.10), rgba(117,7,135,0.10)) right -10% top -12% / 75% 75% no-repeat",
+    },
+  },
+
+  // ── Daypart ──
+  {
+    key: 'brunch',
+    label: 'Boozy Brunch',
+    description: 'Sunny mimosa peach and fresh green on cream. For weekend brunch service and daytime events.',
+    group: 'Daypart',
+    bodyClass: 'ev-t-brunch',
+    swatch: { bg: '#fff6ea', bg2: '#ffe3cf', accent: '#ee9a3c', accent2: '#5fb88a' },
+    palette: {
+      scheme: 'light',
+      accent: '#ee9a3c', accent2: '#5fb88a',
+      bgA: '#fff6ea', bgMid: '#fdeede', bgB: '#ffe3cf',
+      text: '#4a3422', steel: '#6a4f36', muted: '#9a7d5e', smoke: '#b89a78',
+      panel: '#fffaf2', panelStrong: '#fff1e2',
+      font: "'Trebuchet MS', 'Avenir Next', 'Segoe UI', sans-serif",
+    },
+  },
 ];
 
 const EVENT_THEMES = RAW_THEMES;

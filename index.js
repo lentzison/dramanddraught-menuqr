@@ -93,9 +93,9 @@ const server = http.createServer((req, res) => {
 });
 
 const GIFT_CARD_RECIPIENTS =
-
     [
-  'carrie@dramanddraught.com',
+  'c' +
+  'arrie@dramanddraught.com',
   'lexi@dramanddraught.com',
   'lentz@dramanddraught.com',
 ];

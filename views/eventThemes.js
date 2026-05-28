@@ -208,6 +208,39 @@ function paletteThemeCss(cls, p) {
           background: linear-gradient(90deg, transparent, ${rgba(p.accent, 0.6)}, ${rgba(p.accent2, 0.6)}, transparent);
           height: 2px;
         }
+
+        /* Buttons whose accent background adapts via vars but had hardcoded
+           text — re-pick a readable text color for this palette. */
+        body.${cls} .ev-ticket-cta,
+        body.${cls} .ev-topbanner-btn,
+        body.${cls} .ev-modal-done { color: ${btnText}; }
+        body.${cls} .ev-topbanner {
+          background: linear-gradient(135deg, ${rgba(p.accent, 0.18)}, ${rgba(p.accent2, 0.12)});
+          border-color: ${rgba(p.accent, 0.4)};
+        }
+        /* Cocktail-menu card is a hardcoded dark panel by default — flip it to
+           the theme surface so it doesn't read as dark on light themes. */
+        body.${cls} .ev-sec-cocktails {
+          background: linear-gradient(180deg, ${p.panel}, ${p.panelStrong});
+          border-color: ${line};
+        }
+        /* Terms / acknowledgment page (shown for ack-required events). The
+           default submit button is a fixed art-deco style; re-skin to accent. */
+        body.${cls} .et-eyebrow { color: ${p.accent2}; font-family: inherit; }
+        body.${cls} .et-check { border-color: ${lineStrong}; color: ${p.text}; }
+        body.${cls} .et-submit {
+          background: linear-gradient(135deg, ${p.accent} 0%, ${p.accent2} 100%);
+          color: ${btnText};
+          border-color: transparent;
+          box-shadow: 0 14px 32px ${rgba(p.accent, 0.35)};
+          font-family: inherit;
+          text-transform: uppercase;
+        }
+        body.${cls} .et-submit:hover {
+          filter: brightness(1.06) saturate(1.08);
+          transform: none;
+          box-shadow: 0 18px 40px ${rgba(p.accent2, 0.4)};
+        }
   `;
 }
 

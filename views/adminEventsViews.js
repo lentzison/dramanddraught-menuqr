@@ -1349,6 +1349,9 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
       @keyframes evTabFade { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
 
       /* ─── Theme picker ─── */
+      .ev-appearance-head { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; flex-wrap:wrap; }
+      .ev-appearance-head h2 { margin:0; }
+      .ev-appearance-preview { flex:0 0 auto; white-space:nowrap; }
       .ev-theme-grid {
         display:grid;
         gap:14px;
@@ -1527,8 +1530,16 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
 
       <div class="ev-tab-panel" data-tab-panel="appearance">
         <div class="ev-section" id="event-appearance">
-          <h2>Appearance</h2>
-          <p class="ev-section-hint">Choose a look for the public event page. A theme restyles the colors, fonts, and background — your text, images, and sections stay exactly as you set them. Save your changes, then use Preview to see it live.</p>
+          <div class="ev-appearance-head">
+            <div>
+              <h2>Appearance</h2>
+              <p class="ev-section-hint">Choose a look for the public event page. A theme restyles the colors, fonts, and background — your text, images, and sections stay exactly as you set them.</p>
+            </div>
+            ${!isNew && event.location?.slug && event.slug
+              ? `<a class="btn btn-secondary btn-sm ev-appearance-preview" href="/${escHTML(event.location.slug)}/events/${escHTML(event.slug)}" target="_blank" rel="noopener">Preview page ↗</a>`
+              : ''}
+          </div>
+          <p class="ev-section-hint" style="margin-top:-6px">Save your changes first, then preview to see the theme live.</p>
           ${themePickerFragment(event?.themeKey)}
         </div>
       </div>

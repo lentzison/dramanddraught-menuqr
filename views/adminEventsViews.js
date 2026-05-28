@@ -1,5 +1,36 @@
 const { adminLayout } = require('./adminLayout');
 const { escHTML } = require('./escapeHtml');
+const { EVENT_THEMES, THEME_BY_KEY, themeLabel } = require('./eventThemes');
+
+// Visual theme picker for the event editor's Appearance tab. Renders every
+// registered theme as a selectable card with a mini color preview. The radio
+// group submits as `themeKey` (the "default" option normalizes to null server
+// side). Active state is set server-side and kept in sync by editor JS.
+function themePickerFragment(currentKey) {
+  const cur = currentKey || 'default';
+  const card = (t) => {
+    const isCur = t.key === cur;
+    const s = t.swatch;
+    return `
+      <label class="ev-theme-card${isCur ? ' is-active' : ''}">
+        <input type="radio" name="themeKey" value="${escHTML(t.key)}"${isCur ? ' checked' : ''} />
+        <span class="ev-theme-preview" style="background:linear-gradient(140deg, ${escHTML(s.bg)}, ${escHTML(s.bg2)});">
+          <span class="ev-theme-accentbar" style="background:${escHTML(s.accent)};"></span>
+          <span class="ev-theme-sample" style="color:${escHTML(s.accent)};">${escHTML(t.label)}</span>
+          <span class="ev-theme-dots">
+            <span style="background:${escHTML(s.accent)};"></span>
+            <span style="background:${escHTML(s.accent2)};"></span>
+          </span>
+          <span class="ev-theme-check" aria-hidden="true">✓</span>
+        </span>
+        <span class="ev-theme-meta">
+          <span class="ev-theme-name">${escHTML(t.label)}</span>
+          <span class="ev-theme-desc">${escHTML(t.description)}</span>
+        </span>
+      </label>`;
+  };
+  return `<div class="ev-theme-grid">${EVENT_THEMES.map(card).join('')}</div>`;
+}
 
 // Format a date as local datetime-local input value ("YYYY-MM-DDTHH:MM")
 function toDateTimeLocal(value) {
@@ -360,7 +391,11 @@ function eventsList(events, user, flashMsg, filter = 'upcoming') {
             <span>${escHTML(locName) || 'No location'}</span>
             <span class="dot">•</span>
             <span>${escHTML(typeLabel)}</span>
-            ${ev.themeKey ? `<span class="dot">•</span><span class="ev-card-theme">${escHTML(ev.themeKey)}</span>` : ''}
+            ${ev.themeKey ? `<span class="dot">•</span><span class="ev-card-theme">${(() => {
+              const t = THEME_BY_KEY[ev.themeKey];
+              const dot = t ? `<span class="ev-card-theme-dot" style="background:${escHTML(t.swatch.accent)};"></span>` : '';
+              return `${dot}${escHTML(themeLabel(ev.themeKey))}`;
+            })()}</span>` : ''}
           </div>
           <div class="ev-card-signups">
             <div class="ev-card-signups-line">
@@ -459,7 +494,8 @@ function eventsList(events, user, flashMsg, filter = 'upcoming') {
       .ev-card-title:hover { color: var(--gold-strong); text-decoration: none; }
       .ev-card-meta { color: var(--text-muted); font-size: 0.84rem; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
       .ev-card-meta .dot { color: var(--text-soft); }
-      .ev-card-theme { font-family: 'SF Mono', Menlo, monospace; font-size: 0.72rem; color: var(--text-soft); }
+      .ev-card-theme { display:inline-flex; align-items:center; gap:5px; font-size: 0.74rem; color: var(--text-muted); }
+      .ev-card-theme-dot { width:9px; height:9px; border-radius:50%; box-shadow:0 0 0 1px rgba(255,255,255,0.18); flex:0 0 auto; }
       .ev-card-signups { margin-top: 6px; }
       .ev-card-signups-line { display: flex; gap: 8px; align-items: center; color: var(--text-muted); font-size: 0.82rem; }
       .ev-card-signups-line strong { color: var(--text); font-weight: 800; }
@@ -974,12 +1010,12 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
     `;
   }
 
-  const editorJumpNav = `
-    <nav class="ev-jump-nav" aria-label="Event editor sections">
-      <a href="#event-details">Details</a>
-      <a href="#event-when">When</a>
-      <a href="#event-signups">Signups</a>
-      ${!isNew ? '<a href="#sections">Page Builder</a>' : ''}
+  const editorTabs = `
+    <nav class="ev-tabbar" role="tablist" aria-label="Event editor sections">
+      <button type="button" class="ev-tab is-active" data-tab="basics">Basics</button>
+      <button type="button" class="ev-tab" data-tab="appearance">Appearance</button>
+      <button type="button" class="ev-tab" data-tab="signups">Signups</button>
+      ${!isNew ? '<button type="button" class="ev-tab" data-tab="page">Page Builder</button>' : ''}
     </nav>
   `;
   const statusBadgeHtml = isNew
@@ -1271,6 +1307,113 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
       .sec-img-preview-wrap { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
       .sec-img-preview { max-width:240px; max-height:160px; border-radius:6px; border:1px solid #333; }
 
+      /* ─── Tabbed editor ─── */
+      .ev-tabbar {
+        display:flex;
+        gap:6px;
+        flex-wrap:wrap;
+        margin-bottom:18px;
+        padding:6px;
+        position:sticky;
+        top:0;
+        z-index:20;
+        background:rgba(16,17,19,0.95);
+        border:1px solid var(--line-soft);
+        border-radius:12px;
+        backdrop-filter:blur(6px);
+      }
+      .ev-tab {
+        flex:1 1 auto;
+        min-width:84px;
+        padding:10px 14px;
+        border:1px solid transparent;
+        border-radius:8px;
+        background:transparent;
+        color:var(--text-muted);
+        font-size:0.85rem;
+        font-weight:700;
+        letter-spacing:0.02em;
+        cursor:pointer;
+        font-family:inherit;
+        transition:all 0.15s;
+      }
+      .ev-tab:hover { color:var(--text); background:rgba(255,255,255,0.04); }
+      .ev-tab.is-active {
+        color:#15110c;
+        background:linear-gradient(135deg, var(--gold-strong), #e7c879);
+        border-color:transparent;
+        box-shadow:0 4px 14px rgba(214,173,75,0.3);
+      }
+      .ev-tab-panel { display:none; }
+      .ev-tab-panel.is-active { display:block; animation:evTabFade 0.2s ease-out; }
+      @keyframes evTabFade { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+
+      /* ─── Theme picker ─── */
+      .ev-theme-grid {
+        display:grid;
+        gap:14px;
+        margin-top:12px;
+        grid-template-columns:repeat(auto-fill, minmax(220px, 1fr));
+      }
+      .ev-theme-card {
+        position:relative;
+        display:flex;
+        flex-direction:column;
+        margin:0;
+        border:1.5px solid var(--line);
+        border-radius:12px;
+        background:#121417;
+        overflow:hidden;
+        cursor:pointer;
+        transition:border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+      }
+      .ev-theme-card:hover { transform:translateY(-2px); border-color:rgba(214,173,75,0.5); }
+      .ev-theme-card input { position:absolute; opacity:0; pointer-events:none; }
+      .ev-theme-card.is-active {
+        border-color:var(--gold-strong);
+        box-shadow:0 0 0 3px rgba(214,173,75,0.25);
+      }
+      .ev-theme-preview {
+        position:relative;
+        height:96px;
+        padding:16px 14px 12px;
+        display:flex;
+        flex-direction:column;
+        justify-content:space-between;
+      }
+      .ev-theme-accentbar { position:absolute; top:0; left:0; right:0; height:4px; }
+      .ev-theme-sample {
+        font-weight:800;
+        font-size:1.05rem;
+        letter-spacing:0.02em;
+        text-shadow:0 1px 2px rgba(0,0,0,0.25);
+      }
+      .ev-theme-dots { display:flex; gap:6px; }
+      .ev-theme-dots span {
+        width:14px; height:14px; border-radius:50%;
+        box-shadow:0 0 0 1px rgba(0,0,0,0.25), inset 0 0 0 1px rgba(255,255,255,0.25);
+      }
+      .ev-theme-check {
+        position:absolute;
+        top:10px;
+        right:10px;
+        width:22px;
+        height:22px;
+        border-radius:50%;
+        background:var(--gold-strong);
+        color:#15110c;
+        display:none;
+        align-items:center;
+        justify-content:center;
+        font-size:0.8rem;
+        font-weight:900;
+        box-shadow:0 2px 6px rgba(0,0,0,0.35);
+      }
+      .ev-theme-card.is-active .ev-theme-check { display:flex; }
+      .ev-theme-meta { padding:11px 13px 13px; display:flex; flex-direction:column; gap:4px; }
+      .ev-theme-name { font-weight:700; font-size:0.9rem; color:var(--text); }
+      .ev-theme-desc { font-size:0.76rem; color:var(--text-muted); line-height:1.45; }
+
       @media (max-width:768px) {
         .ev-field-grid { grid-template-columns:1fr; }
         .ev-standard-fields { grid-template-columns:1fr; }
@@ -1280,6 +1423,10 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
         .ev-header-actions { width:100%; justify-content:space-between; }
         .rich-toolbar { align-items:flex-start; }
         .rt-help { flex-basis:100%; }
+        .ev-theme-grid { grid-template-columns:1fr 1fr; }
+      }
+      @media (max-width:480px) {
+        .ev-theme-grid { grid-template-columns:1fr; }
       }
     </style>
 
@@ -1302,9 +1449,10 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
     </div>
 
     ${publicUrlBlock}
-    ${editorJumpNav}
+    ${editorTabs}
 
     <form method="POST" action="${actionUrl}" id="ev-form" data-autosave="event-${escHTML(event?.id || 'new')}">
+      <div class="ev-tab-panel is-active" data-tab-panel="basics">
       <!-- ─── Basics ─── -->
       <div class="ev-section" id="event-details">
         <h2>Event Details</h2>
@@ -1375,7 +1523,17 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
           </div>
         </div>
       </div>
+      </div><!-- /basics panel -->
 
+      <div class="ev-tab-panel" data-tab-panel="appearance">
+        <div class="ev-section" id="event-appearance">
+          <h2>Appearance</h2>
+          <p class="ev-section-hint">Choose a look for the public event page. A theme restyles the colors, fonts, and background — your text, images, and sections stay exactly as you set them. Save your changes, then use Preview to see it live.</p>
+          ${themePickerFragment(event?.themeKey)}
+        </div>
+      </div>
+
+      <div class="ev-tab-panel" data-tab-panel="signups">
       <!-- ─── Signups (form + settings combined) ─── -->
       <div class="ev-section" id="event-signups">
         <h2>Signups</h2>
@@ -1450,6 +1608,7 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
         ${richTextToolbar('ev-confirm')}
         <textarea id="ev-confirm" class="rich-textarea" name="confirmationMessage" rows="4" placeholder="Thanks for signing up! Use bullets, pasted links, or [link text](https://example.com).">${escHTML(event?.confirmationMessage || '')}</textarea>
       </div>
+      </div><!-- /signups panel -->
 
       <div class="form-actions">
         <button type="submit" class="btn btn-primary">${isNew ? 'Create Event' : 'Save Changes'}</button>
@@ -1457,16 +1616,17 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
       </div>
     </form>
 
-    ${!isNew ? renderSectionsCard(event, actionUrl) : ''}
-
     ${!isNew ? `
-      <div class="ev-delete-section">
-        <h3>Delete this event</h3>
-        <p>This permanently removes the event and all its signups. This cannot be undone.</p>
-        <form method="POST" action="${actionUrl}" onsubmit="return confirm('Really delete this event and all ${signupCount} signup${signupCount === 1 ? '' : 's'}? This cannot be undone.')">
-          <input type="hidden" name="_action" value="delete" />
-          <button type="submit" class="btn btn-danger">Delete Event</button>
-        </form>
+      <div class="ev-tab-panel" data-tab-panel="page">
+        ${renderSectionsCard(event, actionUrl)}
+        <div class="ev-delete-section">
+          <h3>Delete this event</h3>
+          <p>This permanently removes the event and all its signups. This cannot be undone.</p>
+          <form method="POST" action="${actionUrl}" onsubmit="return confirm('Really delete this event and all ${signupCount} signup${signupCount === 1 ? '' : 's'}? This cannot be undone.')">
+            <input type="hidden" name="_action" value="delete" />
+            <button type="submit" class="btn btn-danger">Delete Event</button>
+          </form>
+        </div>
       </div>
     ` : ''}
 
@@ -1704,6 +1864,38 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
           if (preview) { preview.src = ''; preview.style.display = 'none'; }
           if (urlInput) urlInput.value = '';
           if (fileInput) fileInput.value = '';
+        });
+
+        // ─── Tabbed editor ───
+        var tabs = Array.prototype.slice.call(document.querySelectorAll('.ev-tab'));
+        var panels = Array.prototype.slice.call(document.querySelectorAll('[data-tab-panel]'));
+        function activateTab(name) {
+          var matched = false;
+          tabs.forEach(function(t) {
+            var on = t.getAttribute('data-tab') === name;
+            t.classList.toggle('is-active', on);
+            if (on) matched = true;
+          });
+          if (!matched) return;
+          panels.forEach(function(p) {
+            p.classList.toggle('is-active', p.getAttribute('data-tab-panel') === name);
+          });
+          try { history.replaceState(null, '', '#' + name); } catch (e) {}
+        }
+        tabs.forEach(function(t) {
+          t.addEventListener('click', function() { activateTab(t.getAttribute('data-tab')); });
+        });
+        // Deep-link / restore via #hash (e.g. #appearance)
+        var initialTab = (window.location.hash || '').replace('#', '');
+        if (initialTab) activateTab(initialTab);
+
+        // ─── Theme picker active-state ───
+        document.addEventListener('change', function(e) {
+          if (!e.target || e.target.name !== 'themeKey') return;
+          document.querySelectorAll('.ev-theme-card').forEach(function(card) {
+            var input = card.querySelector('input[name="themeKey"]');
+            card.classList.toggle('is-active', !!(input && input.checked));
+          });
         });
       })();
     </script>

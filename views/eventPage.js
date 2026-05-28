@@ -1,4 +1,5 @@
 const { vintageThemeCss } = require('./publicTheme');
+const { resolveThemeRender, eventThemesCss } = require('./eventThemes');
 const { brandMarkCss, renderBrandMark } = require('./brandMark');
 const { escHTML } = require('./escapeHtml');
 
@@ -448,21 +449,10 @@ function generateEventPage(location, event, signupCount, options = {}) {
   const signupType = effectiveSignupType(event);
   const isVendor = isVendorFn(event);
   const isParticipant = isParticipantFn(event);
-  // themeKey drives the visual look. Historical spring-market events set no
-  // themeKey but rely on the spring palette — preserve that fallback so old
-  // data keeps rendering the same way. Known themes: "spring-market",
-  // "art-gallery". Any other value falls back to the default dark vintage.
-  const themeKey = event.themeKey || (isVendor ? 'spring-market' : null);
-  const bodyClass = themeKey === 'art-gallery'
-    ? 'ev-art'
-    : themeKey === 'spring-market'
-      ? 'ev-vendor'
-      : '';
-
-  // Form copy adapts to the signup mode. Art pop-ups (vendor + art-gallery
-  // theme) still get the existing "artist application" wording; participant
-  // events get their own "Sign up to take part" framing.
-  const isArt = themeKey === 'art-gallery';
+  // themeKey drives the visual look. Resolution (including the historical
+  // fallback where vendor events with no themeKey use the spring palette) and
+  // the full theme catalog live in views/eventThemes.js.
+  const { themeKey, bodyClass, isArt } = resolveThemeRender(event, { isVendor });
   const heroEyebrow = isArt
     ? 'Artists Wanted'
     : isVendor ? 'Vendor Applications'
@@ -571,6 +561,7 @@ function generateEventPage(location, event, signupCount, options = {}) {
       <title>${escHTML(event.title)} - Dram &amp; Draught ${escHTML(location.name)}</title>
       <style>
         ${vintageThemeCss()}
+        ${eventThemesCss()}
         ${brandMarkCss()}
         body {
           background:
@@ -2620,12 +2611,7 @@ function generateEventConfirmationPage(location, event, signup) {
   const signupType = effectiveSignupType(event);
   const isVendor = isVendorFn(event);
   const isParticipant = isParticipantFn(event);
-  const themeKey = event.themeKey || (isVendor ? 'spring-market' : null);
-  const bodyClass = themeKey === 'art-gallery'
-    ? 'ev-art'
-    : themeKey === 'spring-market'
-      ? 'ev-vendor'
-      : '';
+  const { bodyClass } = resolveThemeRender(event, { isVendor });
   const defaultMsg = isVendor
     ? "Thanks for applying! Our team will review your application and reach out once a decision has been made."
     : isParticipant
@@ -2645,6 +2631,7 @@ function generateEventConfirmationPage(location, event, signup) {
       <title>${escHTML(pageTitle)} - ${escHTML(event.title)}</title>
       <style>
         ${vintageThemeCss()}
+        ${eventThemesCss()}
         ${brandMarkCss()}
         body {
           background: linear-gradient(180deg, var(--bg-a), var(--bg-b));
@@ -2834,12 +2821,7 @@ function generateEventConfirmationPage(location, event, signup) {
 // EventSignup. Without acknowledgment, the submission is never persisted.
 function generateEventTermsPage(location, event, prevValues = {}) {
   const isVendor = event.isVendorEvent === true;
-  const themeKey = event.themeKey || (isVendor ? 'spring-market' : null);
-  const bodyClass = themeKey === 'art-gallery'
-    ? 'ev-art'
-    : themeKey === 'spring-market'
-      ? 'ev-vendor'
-      : '';
+  const { bodyClass } = resolveThemeRender(event, { isVendor });
   const publicPath = `/${location.slug}/events/${event.slug}`;
   const ackMarkup = renderSections(event.sections, { ackOnly: true });
 
@@ -2872,6 +2854,7 @@ function generateEventTermsPage(location, event, prevValues = {}) {
       <title>Please review — ${escHTML(event.title)}</title>
       <style>
         ${vintageThemeCss()}
+        ${eventThemesCss()}
         ${brandMarkCss()}
         body {
           background:

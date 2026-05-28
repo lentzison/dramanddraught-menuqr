@@ -9,6 +9,7 @@ const {
 const { sanitizeImageSrc } = require('../views/imageUploadWidget');
 const { writeAudit } = require('../auditLog');
 const { SIGNUP_TYPES, effectiveSignupType, needsApproval } = require('../eventSignupTypes');
+const { normalizeThemeKey } = require('../views/eventThemes');
 
 function normalizeText(value) {
   return String(value || '').trim();
@@ -410,6 +411,7 @@ async function handleAdminEvents(req, res, pathname, prisma) {
             ticketUrl: normalizeTicketUrl(body.ticketUrl),
             ticketProvider: detectTicketProvider(body.ticketUrl),
             remindersEnabled: body.remindersEnabled === 'on',
+            themeKey: normalizeThemeKey(body.themeKey),
           },
         });
         // Find slug for audit context
@@ -840,6 +842,7 @@ async function handleAdminEvents(req, res, pathname, prisma) {
             ticketUrl: normalizeTicketUrl(body.ticketUrl),
             ticketProvider: detectTicketProvider(body.ticketUrl),
             remindersEnabled: body.remindersEnabled === 'on',
+            themeKey: normalizeThemeKey(body.themeKey),
           },
         });
         writeAudit(prisma, req, user, {

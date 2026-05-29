@@ -4,8 +4,10 @@ const { brandMarkCss, renderBrandMark } = require('./brandMark');
 const { escHTML } = require('./escapeHtml');
 const { mediaRenditionUrl } = require('../helpers');
 
-// Crop specs for images served by the media system (no-op for other URLs).
-const HERO_RENDITION = 'w_1600,h_600,c_fill,g_auto,f_webp,q_90';
+// Renditions for media-served images (no-op for data/other URLs).
+// Hero shows the WHOLE banner (width-capped, no crop) so nothing is cut off;
+// the social card needs a fixed aspect, so it uses a focal-point crop.
+const HERO_RENDITION = 'w_1600,f_webp,q_88';
 const SOCIAL_RENDITION = 'w_1200,h_630,c_fill,g_auto,f_jpg,q_85';
 
 function formatEventDate(value) {
@@ -1496,23 +1498,19 @@ function generateEventPage(location, event, signupCount, options = {}) {
           font-style: italic;
           letter-spacing: 0.04em;
         }
-        /* Image hero: the banner photo fills the header on its own — no logo,
-           no text, no scrim. !important overrides per-theme ev-hero background
-           rules (which otherwise reset background-size and leave the photo
-           un-cropped). The inline style supplies the actual image URL. */
+        /* Image hero: shows the WHOLE banner image (no logo, no text, no crop).
+           The themed .ev-hero border/shadow frames it; the image sets the
+           height at its natural aspect so nothing is ever cut off. */
         .ev-hero.ev-hero-image {
-          background-size: cover !important;
-          /* Anchor the top edge so banner titles/headers up top are never
-             cropped; any overflow is trimmed from the bottom instead. */
-          background-position: center top !important;
-          background-repeat: no-repeat !important;
-          min-height: 380px;
           padding: 0;
+          min-height: 0;
           overflow: hidden;
         }
         .ev-hero.ev-hero-image::before { display: none; }
-        @media (max-width: 640px) {
-          .ev-hero.ev-hero-image { min-height: 240px; }
+        .ev-hero-banner {
+          display: block;
+          width: 100%;
+          height: auto;
         }
         .ev-banner-img {
           width: 100%;
@@ -2565,7 +2563,7 @@ function generateEventPage(location, event, signupCount, options = {}) {
         ${renderTopBanners(event.sections)}
 
         ${imageHero ? `
-        <div class="ev-hero ev-hero-image" role="img" aria-label="${escHTML(event.title)}" style="background-image: url('${escHTML(mediaRenditionUrl(event.image, HERO_RENDITION))}');"></div>
+        <div class="ev-hero ev-hero-image"><img class="ev-hero-banner" src="${escHTML(mediaRenditionUrl(event.image, HERO_RENDITION))}" alt="${escHTML(event.title)}" /></div>
         ` : `
         <div class="ev-hero">
           ${isArt ? '<div class="ev-hero-statue" aria-hidden="true"></div>' : ''}

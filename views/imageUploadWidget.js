@@ -118,7 +118,9 @@ function sanitizeImageSrc(src) {
   const str = String(src).trim();
   if (!str) return null;
   if (/^data:image\/(jpeg|jpg|png|gif|webp);base64,/i.test(str)) {
-    if (str.length > 750 * 1024) return null;
+    // Inline images are browser-compressed before upload (~620 KB target);
+    // allow generous headroom so a valid compressed image is never dropped.
+    if (str.length > 1024 * 1024) return null;
     return str;
   }
   if (/^https?:\/\//i.test(str)) {

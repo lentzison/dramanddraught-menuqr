@@ -1844,7 +1844,51 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
         }
 
         // ─── Image upload widget (used by banner AND section images) ───
-        // File picker → base64 data URL
+        // Photos are stored inline as base64 data URLs, so we resize +
+        // recompress in the browser before saving. This makes normal phone
+        // photos (2–5 MB) "just work" instead of being rejected or silently
+        // dropped server-side for being too large.
+        function compressImageFile(file, cb) {
+          var TARGET_BYTES = 620 * 1024; // keep data URL comfortably under the server cap
+          var MAX_DIM = 1600;            // longest edge
+          var reader = new FileReader();
+          reader.onload = function() {
+            var img = new Image();
+            img.onload = function() {
+              try {
+                var w = img.naturalWidth || img.width;
+                var h = img.naturalHeight || img.height;
+                if (!w || !h) { cb(reader.result); return; }
+                var scale = Math.min(1, MAX_DIM / Math.max(w, h));
+                function render(s, q) {
+                  var canvas = document.createElement('canvas');
+                  canvas.width = Math.max(1, Math.round(w * s));
+                  canvas.height = Math.max(1, Math.round(h * s));
+                  var ctx = canvas.getContext('2d');
+                  // White matte so PNG/transparent areas don't go black in JPEG.
+                  ctx.fillStyle = '#ffffff';
+                  ctx.fillRect(0, 0, canvas.width, canvas.height);
+                  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                  return canvas.toDataURL('image/jpeg', q);
+                }
+                var q = 0.82;
+                var out = render(scale, q);
+                var guard = 0;
+                while (out.length > TARGET_BYTES && q > 0.4 && guard < 6) { q -= 0.1; out = render(scale, q); guard++; }
+                // Still too big? step the dimensions down too.
+                guard = 0;
+                while (out.length > TARGET_BYTES && scale > 0.3 && guard < 4) { scale *= 0.8; out = render(scale, 0.7); guard++; }
+                cb(out);
+              } catch (err) {
+                cb(reader.result); // fall back to the original data URL
+              }
+            };
+            img.onerror = function() { cb(reader.result); };
+            img.src = reader.result;
+          };
+          reader.onerror = function() { cb(null); };
+          reader.readAsDataURL(file);
+        }
         document.addEventListener('change', function(e) {
           if (!e.target.classList || !e.target.classList.contains('sec-img-file')) return;
           var input = e.target;
@@ -1854,18 +1898,22 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
           var urlInput = document.getElementById(prefix + '-url-input');
           var file = input.files && input.files[0];
           if (!file) return;
-          if (file.size > 750 * 1024) {
-            alert('Image is too large. Max ~500 KB. Try compressing the image, or paste a hosted URL instead.');
+          if (!/^image\//.test(file.type)) {
+            alert('That file is not an image. Please choose a JPG, PNG, or WebP.');
             input.value = '';
             return;
           }
-          var reader = new FileReader();
-          reader.onload = function() {
-            if (srcInput) srcInput.value = reader.result;
-            if (preview) { preview.src = reader.result; preview.style.display = ''; }
+          compressImageFile(file, function(dataUrl) {
+            if (!dataUrl) { alert('Sorry, that image could not be processed. Try a different file.'); input.value = ''; return; }
+            if (dataUrl.length > 760 * 1024) {
+              alert('Even after compressing, this image is too large. Try a smaller photo or paste a hosted image URL.');
+              input.value = '';
+              return;
+            }
+            if (srcInput) srcInput.value = dataUrl;
+            if (preview) { preview.src = dataUrl; preview.style.display = ''; }
             if (urlInput) urlInput.value = '';
-          };
-          reader.readAsDataURL(file);
+          });
         });
         // URL input → set the hidden src field + preview
         document.addEventListener('input', function(e) {

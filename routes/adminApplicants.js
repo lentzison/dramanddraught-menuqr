@@ -878,10 +878,11 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
     if (filters.status && VALID_STATUSES.has(filters.status)) {
       where.status = filters.status;
     } else {
-      // Default view excludes archived (rejected / keep_on_file / withdrawn)
-      // so the main screen stays focused on the active pipeline. Admins can
-      // still see them by clicking those chips or using ?status=.
-      where.status = { notIn: ['rejected', 'keep_on_file', 'withdrawn'] };
+      // Default view shows only the active pipeline. Terminal statuses —
+      // hired (filed under the Hired chip) and archived (rejected /
+      // keep_on_file / withdrawn) — drop off the main screen. Admins reach
+      // them via the matching chip or ?status=.
+      where.status = { notIn: ['hired', 'rejected', 'keep_on_file', 'withdrawn'] };
     }
     if (filters.position) where.position = filters.position;
     if (filters.location) {

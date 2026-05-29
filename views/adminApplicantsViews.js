@@ -1457,11 +1457,12 @@ function applicantsList({ applications, locations, filters, counts, user, flashM
       }).join('')
     : '';
 
-  // Status chip rail. The "All" chip clears status; others toggle into the URL.
-  // "All" by default means active pipeline (excludes rejected + withdrawn).
-  // Click the Rejected / Withdrawn chips at the end to surface archived rows.
+  // Status chip rail. The "Active" chip clears status; others toggle into the URL.
+  // "Active" means the live pipeline — it excludes the terminal statuses
+  // (hired, rejected, keep_on_file, withdrawn). Click the Hired chip to see
+  // hired applicants filed on their own; archived chips surface the rest.
   const totalApplicants = Object.values(counts).reduce((a, b) => a + b, 0);
-  const activeApplicants = totalApplicants - (counts.rejected || 0) - (counts.keep_on_file || 0) - (counts.withdrawn || 0);
+  const activeApplicants = totalApplicants - (counts.hired || 0) - (counts.rejected || 0) - (counts.keep_on_file || 0) - (counts.withdrawn || 0);
   const STATUS_CHIPS = [
     { key: '',                    label: 'Active',       count: activeApplicants },
     { key: 'new',                 label: 'New',          count: counts.new },

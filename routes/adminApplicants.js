@@ -158,24 +158,22 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
       flashRedirect(res, `/admin/applicants/${id}`, 'error', 'No questionnaire on file to score.');
       return true;
     }
-    try {
-      const result = await rerunAndPersistScreening(prisma, app, app.questionnaire);
-      writeAudit(prisma, req, user, {
-        action: 'retry',
-        resourceType: 'screening',
-        resourceId: id,
-        resourceLabel: app.name,
-        details: { ok: !result.errorDetail, error: result.errorDetail || null },
-      });
-      if (result.errorDetail) {
-        flashRedirect(res, `/admin/applicants/${id}`, 'error', `Screening still failed: ${result.errorDetail.slice(0, 200)}`);
-      } else {
-        flashRedirect(res, `/admin/applicants/${id}`, 'success', 'Screening complete.');
-      }
-    } catch (err) {
-      console.warn('[retry-screening] error:', err.message);
-      flashRedirect(res, `/admin/applicants/${id}`, 'error', `Screening pipeline error: ${err.message}`);
-    }
+    // Run in the background and respond immediately — a full re-screen with the
+    // newer reasoning model can take longer than the gateway timeout, so we
+    // never block the response on it (the screening-retry poller is the safety
+    // net for failures). The updated result appears on refresh.
+    rerunAndPersistScreening(prisma, app, app.questionnaire)
+      .then((result) => {
+        writeAudit(prisma, req, user, {
+          action: 'retry',
+          resourceType: 'screening',
+          resourceId: id,
+          resourceLabel: app.name,
+          details: { ok: !result.errorDetail, error: result.errorDetail || null },
+        });
+      })
+      .catch((err) => console.warn('[retry-screening] error:', err.message));
+    flashRedirect(res, `/admin/applicants/${id}`, 'success', 'Re-screening started — this can take 10–30 seconds. Refresh the page shortly to see the updated result.');
     return true;
   }
 
@@ -193,31 +191,34 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
       include: { questionnaire: true, location: true },
       orderBy: { createdAt: 'asc' },
     }).catch(() => []);
-    let ok = 0;
-    let stillFailing = 0;
-    for (const app of eligible) {
-      if (!app.questionnaire) continue;
-      try {
-        const result = await rerunAndPersistScreening(prisma, app, app.questionnaire);
-        if (result.errorDetail) stillFailing++;
-        else ok++;
-      } catch (err) {
-        stillFailing++;
-        console.warn('[retry-failed-screenings] error for', app.id, err.message);
+    const queued = eligible.filter((app) => app.questionnaire);
+    // Process the batch in the background (sequentially, to avoid a concurrency
+    // spike) and respond immediately so the request can't hit the gateway
+    // timeout. Results appear as each finishes.
+    (async () => {
+      let ok = 0;
+      let stillFailing = 0;
+      for (const app of queued) {
+        try {
+          const result = await rerunAndPersistScreening(prisma, app, app.questionnaire);
+          if (result.errorDetail) stillFailing++; else ok++;
+        } catch (err) {
+          stillFailing++;
+          console.warn('[retry-failed-screenings] error for', app.id, err.message);
+        }
       }
-    }
+      console.log(`[retry-failed-screenings] background run complete: ${ok} ok / ${stillFailing} still failing`);
+    })().catch((err) => console.warn('[retry-failed-screenings] background batch error:', err.message));
     writeAudit(prisma, req, user, {
       action: 'retry',
       resourceType: 'screening_batch',
-      resourceLabel: `${ok} ok / ${stillFailing} still failing`,
-      details: { ok, stillFailing, eligible: eligible.length },
+      resourceLabel: `${queued.length} queued`,
+      details: { queued: queued.length, eligible: eligible.length },
     });
-    const note = stillFailing > 0
-      ? `Re-scored ${ok}; ${stillFailing} still failing. Check error details on each.`
-      : ok === 0
-        ? 'No screenings needed a retry.'
-        : `Re-scored ${ok} applicant${ok === 1 ? '' : 's'}.`;
-    flashRedirect(res, '/admin/applicants', stillFailing > 0 ? 'error' : 'success', note);
+    const note = queued.length === 0
+      ? 'No screenings needed a retry.'
+      : `Re-screening ${queued.length} applicant${queued.length === 1 ? '' : 's'} in the background — refresh in a minute to see results.`;
+    flashRedirect(res, '/admin/applicants', 'success', note);
     return true;
   }
 

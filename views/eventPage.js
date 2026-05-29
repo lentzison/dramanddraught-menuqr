@@ -563,6 +563,10 @@ function generateEventPage(location, event, signupCount, options = {}) {
   const canSignup = status.key === 'open';
   const publicPath = `/${location.slug}/events/${event.slug}`;
   const eventsPath = `/${location.slug}/events`;
+  // Banner placement: "hero" (default) makes the image a full-bleed header
+  // background with the themed title overlaid; "featured" keeps the text hero
+  // and shows the image below. Only applies when an image is actually set.
+  const imageHero = !!event.image && event.bannerStyle !== 'featured';
   const spotsLeft = event.capacity ? Math.max(event.capacity - signupCount, 0) : null;
   // "X spots left" urgency indicator. Mode is set per-event in the editor:
   //   always → whenever capacity is set; near-full → only once ≥75% full;
@@ -1483,6 +1487,27 @@ function generateEventPage(location, event, signupCount, options = {}) {
           font-size: 0.92rem;
           font-style: italic;
           letter-spacing: 0.04em;
+        }
+        /* Image hero: banner fills the header (inline background-image carries
+           a dark scrim + the photo). Force light text so the themed title
+           stays readable over any photo, on light and dark themes alike. */
+        .ev-hero.ev-hero-image {
+          background-size: cover;
+          background-position: center;
+          background-repeat: no-repeat;
+          min-height: 360px;
+          display: flex;
+          flex-direction: column;
+          justify-content: flex-end;
+          border-color: rgba(0,0,0,0.35);
+        }
+        .ev-hero.ev-hero-image::before { display: none; }
+        .ev-hero.ev-hero-image .ev-hero-eyebrow { color: #fff; opacity: 0.92; text-shadow: 0 2px 10px rgba(0,0,0,0.7); }
+        .ev-hero.ev-hero-image .ev-hero-title { color: #fff; text-shadow: 0 3px 18px rgba(0,0,0,0.78); }
+        .ev-hero.ev-hero-image .ev-hero-location { color: rgba(255,255,255,0.9); font-style: normal; text-shadow: 0 2px 8px rgba(0,0,0,0.7); }
+        .ev-hero.ev-hero-image .ev-hero-divider { background: rgba(255,255,255,0.85); opacity: 0.9; }
+        @media (max-width: 640px) {
+          .ev-hero.ev-hero-image { min-height: 260px; }
         }
         .ev-banner-img {
           width: 100%;
@@ -2534,8 +2559,8 @@ function generateEventPage(location, event, signupCount, options = {}) {
         </div>
         ${renderTopBanners(event.sections)}
 
-        <div class="ev-hero">
-          ${isArt ? '<div class="ev-hero-statue" aria-hidden="true"></div>' : ''}
+        <div class="ev-hero${imageHero ? ' ev-hero-image' : ''}"${imageHero ? ` style="background-image: linear-gradient(180deg, rgba(0,0,0,0.32) 0%, rgba(0,0,0,0.55) 58%, rgba(0,0,0,0.82) 100%), url('${escHTML(event.image)}');"` : ''}>
+          ${isArt && !imageHero ? '<div class="ev-hero-statue" aria-hidden="true"></div>' : ''}
           ${renderBrandMark()}
           <div class="ev-hero-eyebrow">${escHTML(heroEyebrow)}</div>
           <h1 class="ev-hero-title">${escHTML(event.title)}</h1>
@@ -2567,7 +2592,7 @@ function generateEventPage(location, event, signupCount, options = {}) {
         </div>` : ''}
         <div class="ev-main-grid${sideCard ? '' : ' ev-main-grid-full'}">
           <div class="ev-main-col">
-            ${event.image ? `<img src="${escHTML(event.image)}" alt="${escHTML(event.title)}" class="ev-banner-img" />` : ''}
+            ${event.image && !imageHero ? `<img src="${escHTML(event.image)}" alt="${escHTML(event.title)}" class="ev-banner-img" />` : ''}
 
             <div class="ev-details">
               <div class="ev-datetime-row">

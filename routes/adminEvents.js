@@ -21,6 +21,12 @@ function normalizeSpotsLeftMode(value) {
   return ['always', 'near-full', 'hidden'].includes(v) ? v : 'always';
 }
 
+// How the banner image is presented on the public page.
+function normalizeBannerStyle(value) {
+  const v = String(value || '').trim();
+  return v === 'featured' ? 'featured' : 'hero';
+}
+
 function slugify(value) {
   return String(value || '')
     .toLowerCase()
@@ -444,6 +450,7 @@ async function handleAdminEvents(req, res, pathname, prisma) {
             remindersEnabled: body.remindersEnabled === 'on',
             themeKey: normalizeThemeKey(body.themeKey),
             spotsLeftMode: normalizeSpotsLeftMode(body.spotsLeftMode),
+            bannerStyle: normalizeBannerStyle(body.bannerStyle),
           },
         });
         // Find slug for audit context
@@ -931,6 +938,7 @@ async function handleAdminEvents(req, res, pathname, prisma) {
             remindersEnabled: body.remindersEnabled === 'on',
             themeKey: normalizeThemeKey(body.themeKey),
             spotsLeftMode: normalizeSpotsLeftMode(body.spotsLeftMode),
+            bannerStyle: normalizeBannerStyle(body.bannerStyle),
           },
         });
         writeAudit(prisma, req, user, {

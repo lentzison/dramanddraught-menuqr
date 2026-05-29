@@ -1562,19 +1562,37 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
         ${richTextToolbar('ev-description')}
         <textarea id="ev-description" class="rich-textarea" name="description" rows="6" placeholder="Tell people what the event is about. Use bullets, pasted links, or [link text](https://example.com).">${escHTML(event?.description || '')}</textarea>
 
-        <label>Banner Image <span style="color:#888; font-weight:400; font-size:0.8rem">(optional &mdash; shown above the event details)</span></label>
+        <label>Banner Image <span style="color:#888; font-weight:400; font-size:0.8rem">(optional)</span></label>
         ${(() => {
           const hasSrc = !!event?.image;
           return `
         <div class="sec-img-upload" data-prefix="ev-banner">
           <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" id="ev-banner-file" class="sec-img-file" />
-          <div class="sec-img-hint">Click to choose a file (max ~500&#8239;KB), or paste a hosted image URL below.</div>
+          <div class="sec-img-hint">Click to choose a file (auto-compressed), or paste a hosted image URL below.</div>
           <input type="text" id="ev-banner-url-input" placeholder="https://... (optional alternative)" class="sec-img-url-input" value="${hasSrc && /^https?:\/\//i.test(event.image) ? escHTML(event.image) : ''}" />
           <input type="hidden" id="ev-banner-src" name="image" value="${hasSrc ? escHTML(event.image) : ''}" />
           <div class="sec-img-preview-wrap">
             <img id="ev-banner-preview" class="sec-img-preview" src="${hasSrc ? escHTML(event.image) : ''}" alt="" style="${hasSrc ? '' : 'display:none'}" />
             ${hasSrc ? `<button type="button" class="btn btn-secondary btn-sm sec-img-clear" data-prefix="ev-banner">Remove image</button>` : ''}
           </div>
+        </div>`;
+        })()}
+
+        ${(() => {
+          const style = event?.bannerStyle === 'featured' ? 'featured' : 'hero';
+          return `
+        <label style="margin-top:14px; margin-bottom:6px">Banner style <span style="color:#888; font-weight:400; font-size:0.8rem">(when an image is set)</span></label>
+        <div class="ev-signup-type-grid">
+          <label class="ev-signup-type ${style === 'hero' ? 'is-active' : ''}">
+            <input type="radio" name="bannerStyle" value="hero" ${style === 'hero' ? 'checked' : ''} />
+            <strong>Image hero</strong>
+            <span>Photo fills the header with the title overlaid on top.</span>
+          </label>
+          <label class="ev-signup-type ${style === 'featured' ? 'is-active' : ''}">
+            <input type="radio" name="bannerStyle" value="featured" ${style === 'featured' ? 'checked' : ''} />
+            <strong>Featured below</strong>
+            <span>Keep the styled text header; show the image beneath it.</span>
+          </label>
         </div>`;
         })()}
       </div>

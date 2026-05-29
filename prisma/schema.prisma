@@ -249,6 +249,12 @@ model Event {
   endDate          DateTime?
   image            String?   // Banner image URL
 
+  // How the banner image is used on the public page when one is set:
+  //   "hero"     → image fills the header as a full-bleed background with the
+  //                themed title overlaid on a dark scrim (default)
+  //   "featured" → keep the themed text hero, show the image below it
+  bannerStyle      String    @default("hero")
+
   // Promotion window — when the event is visible / accepting signups
   promoteFrom      DateTime? // Defaults to createdAt if null
   promoteUntil     DateTime? // Defaults to startDate if null

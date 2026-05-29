@@ -17,6 +17,13 @@ function eventCardMeta(event) {
   // apply via the form on the event page. The card should invite both to
   // learn more, not suggest attendees sign up.
   const isVendor = event.isVendorEvent === true;
+  // Ticketed events sell through an external link, not the in-app form —
+  // show "Get Tickets" rather than a signup state (unless already ended).
+  const ended = event.endDate ? new Date(event.endDate) < new Date()
+    : (event.startDate ? new Date(event.startDate) < new Date() : false);
+  if (event.ticketUrl && !ended) {
+    return { label: 'Get Tickets', tone: 'open', cta: 'Get Tickets' };
+  }
   if (status.key === 'open') {
     return isVendor
       ? { label: 'Apply or Attend', tone: 'open', cta: 'View Event' }

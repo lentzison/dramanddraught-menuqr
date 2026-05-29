@@ -7,6 +7,14 @@ const { eventStatus, formatEventDate, formatEventTime } = require('./eventPage')
 function locationEventMeta(event) {
   const status = eventStatus(event, event.signupCount || 0);
   const isVendor = event.isVendorEvent === true;
+  // Ticketed events sell through an external link, not the in-app signup form,
+  // so never show a "Signups Open" pill for them — point to tickets instead
+  // (unless the event has already ended).
+  const ended = event.endDate ? new Date(event.endDate) < new Date()
+    : (event.startDate ? new Date(event.startDate) < new Date() : false);
+  if (event.ticketUrl && !ended) {
+    return { label: 'Get Tickets', tone: 'open', cta: 'Get Tickets' };
+  }
   if (status.key === 'open') {
     return isVendor
       ? { label: 'Apply or Attend', tone: 'open', cta: 'View Event' }

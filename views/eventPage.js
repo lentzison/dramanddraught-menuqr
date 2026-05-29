@@ -595,6 +595,23 @@ function generateEventPage(location, event, signupCount, options = {}) {
       <a class="ev-cal-btn" href="${escHTML(googleCalendarUrl(location, event))}" target="_blank" rel="noopener">Google</a>
       <a class="ev-cal-btn" href="${escHTML(publicPath)}.ics">Apple / Outlook (.ics)</a>
     </div>` : '';
+
+  // Easy sharing. Native share sheet on mobile (shown via JS when available),
+  // plus copy-link and per-network links everywhere.
+  const shareUrl = `${EVENT_BASE_URL}${publicPath}`;
+  const shareText = `${event.title} at Dram & Draught ${location.name}`;
+  const enc = encodeURIComponent;
+  const shareHtml = `
+    <div class="ev-share">
+      <span class="ev-cal-add-label">Share with friends</span>
+      <button type="button" class="ev-cal-btn ev-share-native" data-title="${escHTML(event.title)}" data-text="${escHTML(shareText)}" data-url="${escHTML(shareUrl)}" hidden>Share…</button>
+      <button type="button" class="ev-cal-btn ev-share-copy" data-url="${escHTML(shareUrl)}">Copy link</button>
+      <a class="ev-cal-btn" href="${escHTML('https://www.facebook.com/sharer/sharer.php?u=' + enc(shareUrl))}" target="_blank" rel="noopener" aria-label="Share on Facebook">Facebook</a>
+      <a class="ev-cal-btn" href="${escHTML('https://twitter.com/intent/tweet?url=' + enc(shareUrl) + '&text=' + enc(shareText))}" target="_blank" rel="noopener" aria-label="Share on X">X</a>
+      <a class="ev-cal-btn" href="${escHTML('https://wa.me/?text=' + enc(shareText + ' ' + shareUrl))}" target="_blank" rel="noopener" aria-label="Share on WhatsApp">WhatsApp</a>
+      <a class="ev-cal-btn" href="${escHTML('sms:?&body=' + enc(shareText + ' ' + shareUrl))}" aria-label="Share via text message">Text</a>
+      <a class="ev-cal-btn" href="${escHTML('mailto:?subject=' + enc(event.title) + '&body=' + enc(shareText + '\n\n' + shareUrl))}" aria-label="Share via email">Email</a>
+    </div>`;
   const { effectiveSignupType, isVendor: isVendorFn, isParticipant: isParticipantFn } = require('../eventSignupTypes');
   const signupType = effectiveSignupType(event);
   const isVendor = isVendorFn(event);
@@ -1679,6 +1696,13 @@ function generateEventPage(location, event, signupCount, options = {}) {
           transition: border-color 0.15s, color 0.15s;
         }
         .ev-cal-btn:hover { border-color: var(--gold); color: var(--text); }
+        .ev-share {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          flex-wrap: wrap;
+          margin-bottom: 16px;
+        }
         .ev-datetime-item { flex: 1; min-width: 140px; }
         .ev-datetime-label {
           font-size: 0.62rem;
@@ -2613,6 +2637,7 @@ function generateEventPage(location, event, signupCount, options = {}) {
                 </div>
               </div>
               ${calendarHtml}
+              ${shareHtml}
               ${descriptionHtml ? `<div class="ev-description">${descriptionHtml}</div>` : ''}
             </div>
 
@@ -2624,6 +2649,35 @@ function generateEventPage(location, event, signupCount, options = {}) {
         </div>
       </div>
       <script>
+        // ─── Share controls ───
+        (function() {
+          var nativeBtns = document.querySelectorAll('.ev-share-native');
+          if (navigator.share) {
+            nativeBtns.forEach(function(b) {
+              b.hidden = false;
+              b.addEventListener('click', function() {
+                navigator.share({
+                  title: b.getAttribute('data-title') || document.title,
+                  text: b.getAttribute('data-text') || '',
+                  url: b.getAttribute('data-url') || window.location.href,
+                }).catch(function() {});
+              });
+            });
+          }
+          document.querySelectorAll('.ev-share-copy').forEach(function(b) {
+            b.addEventListener('click', function() {
+              var url = b.getAttribute('data-url') || window.location.href;
+              var label = b.textContent;
+              var done = function() { b.textContent = 'Copied!'; setTimeout(function() { b.textContent = label; }, 1800); };
+              if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(url).then(done).catch(done);
+              } else {
+                try { var ta = document.createElement('textarea'); ta.value = url; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); done(); } catch (e) {}
+              }
+            });
+          });
+        })();
+
         // Track which image inputs are still loading so submit can wait.
         var pendingImageReads = 0;
 

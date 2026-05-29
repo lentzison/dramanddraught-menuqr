@@ -138,6 +138,9 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
   const halfPriceSpirits = options.halfPriceSpirits || [];
   const fridayFlights = options.fridayFlights || (flight ? [flight] : []);
   const ltos = Array.isArray(options.ltos) ? options.ltos : [];
+  const eventCocktails = options.eventCocktails && Array.isArray(options.eventCocktails.drinks) && options.eventCocktails.drinks.length > 0
+    ? options.eventCocktails
+    : null;
   const halfPriceConfig = (theme && theme.halfPriceConfig) || null;
   const hasHalfPrice = halfPriceConfig && halfPriceSpirits.length > 0;
   const halfPriceDiscount = (halfPriceConfig && typeof halfPriceConfig.discount === 'number' && halfPriceConfig.discount > 0 && halfPriceConfig.discount < 100)
@@ -442,6 +445,33 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
       </div>
     `;
   }).join('');
+
+  // Event cocktail menu — drinks from an event happening right now, surfaced
+  // at the very top of the specials so guests scanning during the event see
+  // what's pouring. Reuses the LTO card styling with a live "Tonight" badge.
+  const eventCocktailSection = !eventCocktails ? '' : `
+      <div class="lto-card ev-cocktail-card">
+        <div class="lto-badge ev-cocktail-badge">🍸 Pouring Now</div>
+        <div class="lto-body">
+          <h2 class="lto-title">${escHTML(eventCocktails.title)}</h2>
+          ${eventCocktails.subtitle ? `<p class="lto-desc">${escHTML(eventCocktails.subtitle)}</p>` : ''}
+          <div class="lto-drinks">
+            ${eventCocktails.drinks.map((d) => `
+              <div class="lto-drink">
+                <div class="lto-drink-row">
+                  <span class="lto-drink-name">${escHTML(d.name || '')}</span>
+                  ${d.abv ? `<span class="lto-drink-price">${escHTML(d.abv)}</span>` : ''}
+                </div>
+                ${d.ingredients ? `<div class="lto-drink-desc">${escHTML(d.ingredients)}</div>` : ''}
+                ${d.vibe ? `<div class="lto-drink-desc">${escHTML(d.vibe)}</div>` : ''}
+                ${d.creator ? `<div class="lto-drink-by">By ${escHTML(d.creator)}</div>` : ''}
+              </div>
+            `).join('')}
+          </div>
+          <p style="margin:14px 0 0;"><a href="/${escHTML(location.slug)}/events/${escHTML(eventCocktails.slug)}" class="spirit-link">See the full event →</a></p>
+        </div>
+      </div>
+  `;
 
   const noSpecialsMessage = !theme ? `
     <div class="section">
@@ -992,6 +1022,9 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         .lto-drink-name { color: var(--cream); font-weight: 600; font-size: 0.98rem; }
         .lto-drink-price { color: var(--gold); font-weight: 700; font-size: 0.95rem; white-space: nowrap; }
         .lto-drink-desc { color: #a8acb3; font-size: 0.82rem; margin-top: 4px; line-height: 1.4; }
+        .lto-drink-by { color: var(--gold); font-size: 0.74rem; margin-top: 4px; letter-spacing: 0.04em; text-transform: uppercase; }
+        .ev-cocktail-card { border-color: rgba(210,170,103,0.55); }
+        .ev-cocktail-badge { background: linear-gradient(135deg, var(--gold), var(--amber)); color: #1a1208; }
         .teaser-label {
           font-size: 0.72rem;
           text-transform: uppercase;
@@ -1209,6 +1242,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
       ` : ''}
 
       <div class="container">
+        ${eventCocktailSection}
         ${ltoSection}
         ${searchSectionUI}
         ${specialsHTML}

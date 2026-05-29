@@ -248,6 +248,31 @@ function buildSectionFromForm(body, existingId = null) {
     }
     return { id, type, bgStyle, title: normalizeText(body.title) || null, items };
   }
+  if (type === 'cocktailmenu') {
+    const names = pickArray(body, 'cm_name');
+    const ingredients = pickArray(body, 'cm_ingredients');
+    const abvs = pickArray(body, 'cm_abv');
+    const creators = pickArray(body, 'cm_creator');
+    const vibes = pickArray(body, 'cm_vibe');
+    const items = [];
+    for (let i = 0; i < names.length; i++) {
+      const name = normalizeText(names[i]);
+      if (!name) continue; // a drink needs a name to render
+      items.push({
+        name: name.slice(0, 120),
+        ingredients: normalizeText(ingredients[i]).slice(0, 300) || null,
+        abv: normalizeText(abvs[i]).slice(0, 40) || null,
+        creator: normalizeText(creators[i]).slice(0, 80) || null,
+        vibe: normalizeText(vibes[i]).slice(0, 200) || null,
+      });
+    }
+    return {
+      id, type, bgStyle,
+      title: normalizeText(body.title) || null,
+      subtitle: normalizeText(body.subtitle) || null,
+      items,
+    };
+  }
   return null;
 }
 

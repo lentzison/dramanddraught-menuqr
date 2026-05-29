@@ -817,6 +817,45 @@ async function loadFlightForLocation(prisma, location, month, year, includePours
   });
 }
 
+// If an event is happening right now at this location and has a cocktail-menu
+// section, return its drinks so the specials page can surface them as "what's
+// pouring tonight". Window = [startDate, endDate || startDate + 6h]. Dates are
+// absolute instants, so comparing to `now` needs no timezone math.
+async function loadActiveEventCocktails(prisma, locationId) {
+  if (!prisma?.event) return null;
+  const now = new Date();
+  const since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  let candidates = [];
+  try {
+    candidates = await prisma.event.findMany({
+      where: { locationId, isActive: true, isCancelled: false, startDate: { lte: now, gte: since } },
+      orderBy: { startDate: 'desc' },
+      take: 8,
+    });
+  } catch (err) {
+    console.warn('Active event cocktails lookup failed:', err.message);
+    return null;
+  }
+  const DEFAULT_WINDOW_MS = 6 * 60 * 60 * 1000;
+  for (const ev of candidates) {
+    const start = new Date(ev.startDate);
+    const end = ev.endDate ? new Date(ev.endDate) : new Date(start.getTime() + DEFAULT_WINDOW_MS);
+    if (now < start || now > end) continue;
+    const sections = Array.isArray(ev.sections) ? ev.sections : [];
+    const cm = sections.find(
+      (s) => s && s.type === 'cocktailmenu' && Array.isArray(s.items) && s.items.some((it) => it && it.name),
+    );
+    if (!cm) continue;
+    return {
+      title: ev.title,
+      slug: ev.slug,
+      subtitle: cm.subtitle || cm.title || null,
+      drinks: cm.items.filter((it) => it && it.name),
+    };
+  }
+  return null;
+}
+
 async function handleSpecials(req, res, prisma, parsedUrl, location) {
   const loc = location;
 
@@ -941,6 +980,12 @@ async function handleSpecials(req, res, prisma, parsedUrl, location) {
     }
   }
 
+  // Drinks from an event happening right now (only on the live "today" view).
+  let eventCocktails = null;
+  if (prisma && viewingDay === todayDay) {
+    eventCocktails = await loadActiveEventCocktails(prisma, loc.id);
+  }
+
   const qs = parsedUrl.search || '';
   const sid = await trackPageView(req, res, prisma, loc.slug, loc.id, `/${loc.slug}/specials`, qs);
   sendHTML(
@@ -952,6 +997,7 @@ async function handleSpecials(req, res, prisma, parsedUrl, location) {
       halfPriceSpirits,
       fridayFlights,
       ltos,
+      eventCocktails,
     }), sid),
   );
   return true;

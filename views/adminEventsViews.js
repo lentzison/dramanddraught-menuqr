@@ -236,7 +236,36 @@ function renderSectionEditFields(section, idPrefix) {
     `;
   }
 
+  if (type === 'cocktailmenu') {
+    const items = Array.isArray(section?.items) && section.items.length > 0 ? section.items : [{ name: '', ingredients: '', abv: '', creator: '', vibe: '' }];
+    const rows = items.map(it => cocktailRowHtml(it)).join('');
+    return `
+      <label for="${idPrefix}-title">Title <span style="color:#888; font-weight:400; font-size:0.78rem">(optional)</span></label>
+      <input type="text" id="${idPrefix}-title" name="title" value="${escHTML(section?.title || '')}" placeholder="e.g. Event Cocktail Menu" />
+      <label for="${idPrefix}-subtitle">Subtitle <span style="color:#888; font-weight:400; font-size:0.78rem">(optional)</span></label>
+      <input type="text" id="${idPrefix}-subtitle" name="subtitle" value="${escHTML(section?.subtitle || '')}" placeholder="e.g. Pouring all night during the event" />
+      <label>Drinks</label>
+      <div class="sec-cm-list" id="${idPrefix}-cm">${rows}</div>
+      <button type="button" class="btn btn-secondary btn-sm sec-cm-add" data-target="${idPrefix}-cm">+ Add Drink</button>
+      ${bgStylePicker(section, idPrefix)}
+    `;
+  }
+
   return `<p style="color:#888;">Unknown section type</p>`;
+}
+
+// One editable drink row for the cocktail-menu section builder. Kept in sync
+// with the JS that appends new rows (see sec-cm-add handler).
+function cocktailRowHtml(it = {}) {
+  return `
+      <div class="sec-cm-row">
+        <input type="text" name="cm_name" value="${escHTML(it.name || '')}" placeholder="Drink name" />
+        <input type="text" name="cm_abv" value="${escHTML(it.abv || '')}" placeholder="ABV / price" />
+        <button type="button" class="btn btn-secondary btn-sm sec-cm-remove">×</button>
+        <input type="text" name="cm_ingredients" value="${escHTML(it.ingredients || '')}" placeholder="Ingredients — gin, lime, mint…" />
+        <input type="text" name="cm_vibe" value="${escHTML(it.vibe || '')}" placeholder="Tasting note / vibe (optional)" />
+        <input type="text" name="cm_creator" value="${escHTML(it.creator || '')}" placeholder="By (bartender, optional)" />
+      </div>`;
 }
 
 function sectionPreviewSummary(section) {
@@ -278,6 +307,10 @@ function sectionPreviewSummary(section) {
     const count = Array.isArray(section.items) ? section.items.length : 0;
     return `${section.title ? escHTML(section.title) + ' · ' : ''}${count} question${count === 1 ? '' : 's'}`;
   }
+  if (type === 'cocktailmenu') {
+    const count = Array.isArray(section.items) ? section.items.length : 0;
+    return `${section.title ? escHTML(section.title) + ' · ' : ''}${count} drink${count === 1 ? '' : 's'}`;
+  }
   return '';
 }
 
@@ -293,6 +326,7 @@ function sectionTypeIcon(type) {
     twocol: '⊞',
     schedule: '⏱',
     faq: '?',
+    cocktailmenu: '🍸',
   })[type] || '?';
 }
 
@@ -665,12 +699,15 @@ function renderSectionsCard(event, actionUrl) {
   }).join('');
 
   // Build "add new section" panel — type buttons that reveal a typed form
-  const ALL_TYPES = ['hero', 'text', 'twocol', 'image', 'details', 'schedule', 'faq', 'button', 'video', 'divider'];
+  const ALL_TYPES = ['hero', 'text', 'twocol', 'image', 'details', 'schedule', 'faq', 'cocktailmenu', 'button', 'video', 'divider'];
+  const TYPE_LABELS = { twocol: 'Two-Column', faq: 'FAQ', cocktailmenu: 'Cocktail Menu' };
+  const typeLabel = (t) => TYPE_LABELS[t] || (t.charAt(0).toUpperCase() + t.slice(1));
   const addPanels = ALL_TYPES.map(t => {
     const stub = { type: t };
     if (t === 'details') stub.items = [{ label: '', value: '' }];
     if (t === 'schedule') stub.items = [{ time: '', title: '', description: '' }];
     if (t === 'faq') stub.items = [{ question: '', answer: '' }];
+    if (t === 'cocktailmenu') stub.items = [{ name: '', ingredients: '', abv: '', creator: '', vibe: '' }];
     return `
       <div class="sec-add-panel" id="sec-add-${t}" style="display:none">
         <form method="POST" action="${actionUrl}">
@@ -678,7 +715,7 @@ function renderSectionsCard(event, actionUrl) {
           <input type="hidden" name="type" value="${t}" />
           ${renderSectionEditFields(stub, `sec-new-${t}`)}
           <div class="form-actions">
-            <button type="submit" class="btn btn-primary btn-sm">Add ${t.charAt(0).toUpperCase() + t.slice(1)} Section</button>
+            <button type="submit" class="btn btn-primary btn-sm">Add ${typeLabel(t)} Section</button>
             <button type="button" class="btn btn-secondary btn-sm" onclick="hideAddPanel('${t}')">Cancel</button>
           </div>
         </form>
@@ -706,6 +743,7 @@ function renderSectionsCard(event, actionUrl) {
         <button type="button" class="btn btn-secondary btn-sm" onclick="showAddPanel('details')">Details</button>
         <button type="button" class="btn btn-secondary btn-sm" onclick="showAddPanel('schedule')">Schedule</button>
         <button type="button" class="btn btn-secondary btn-sm" onclick="showAddPanel('faq')">FAQ</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="showAddPanel('cocktailmenu')">🍸 Cocktail Menu</button>
         <button type="button" class="btn btn-secondary btn-sm" onclick="showAddPanel('button')">Button / Link</button>
         <button type="button" class="btn btn-secondary btn-sm" onclick="showAddPanel('video')">Video</button>
         <button type="button" class="btn btn-secondary btn-sm" onclick="showAddPanel('divider')">Divider</button>
@@ -819,8 +857,27 @@ function renderSectionsCard(event, actionUrl) {
       .ev-sections-card .sec-faq-row input[name="faq_question"] { grid-area:q; margin:0 !important; }
       .ev-sections-card .sec-faq-row textarea { grid-area:a; margin:0 !important; }
       .ev-sections-card .sec-faq-row .sec-faq-remove { grid-area:x; align-self:start; }
+      .ev-sections-card .sec-cm-row {
+        display:grid;
+        grid-template-columns:1fr 120px auto;
+        grid-template-areas: "name abv x" "ing ing ing" "vibe vibe creator";
+        gap:6px 8px;
+        margin-bottom:10px;
+        padding:10px;
+        background:#0a0a0a;
+        border-radius:6px;
+        border:1px solid #1a1a1a;
+      }
+      .ev-sections-card .sec-cm-row input { margin:0 !important; }
+      .ev-sections-card .sec-cm-row input[name="cm_name"] { grid-area:name; }
+      .ev-sections-card .sec-cm-row input[name="cm_abv"] { grid-area:abv; }
+      .ev-sections-card .sec-cm-row .sec-cm-remove { grid-area:x; align-self:start; }
+      .ev-sections-card .sec-cm-row input[name="cm_ingredients"] { grid-area:ing; }
+      .ev-sections-card .sec-cm-row input[name="cm_vibe"] { grid-area:vibe; }
+      .ev-sections-card .sec-cm-row input[name="cm_creator"] { grid-area:creator; }
       @media (max-width:768px) {
         .ev-sections-card .sec-sched-row { grid-template-columns:1fr; }
+        .ev-sections-card .sec-cm-row { grid-template-columns:1fr; grid-template-areas:"name" "abv" "ing" "vibe" "creator" "x"; }
       }
     </style>
 
@@ -902,6 +959,29 @@ function renderSectionsCard(event, actionUrl) {
         }
         if (e.target.classList && e.target.classList.contains('sec-faq-remove')) {
           var row = e.target.closest('.sec-faq-row');
+          if (row) row.remove();
+        }
+      });
+
+      // Cocktail menu rows: add and remove (keep markup in sync with cocktailRowHtml)
+      document.addEventListener('click', function(e) {
+        if (e.target.classList && e.target.classList.contains('sec-cm-add')) {
+          var targetId = e.target.getAttribute('data-target');
+          var list = document.getElementById(targetId);
+          if (!list) return;
+          var row = document.createElement('div');
+          row.className = 'sec-cm-row';
+          row.innerHTML =
+            '<input type="text" name="cm_name" placeholder="Drink name" />' +
+            '<input type="text" name="cm_abv" placeholder="ABV / price" />' +
+            '<button type="button" class="btn btn-secondary btn-sm sec-cm-remove">×</button>' +
+            '<input type="text" name="cm_ingredients" placeholder="Ingredients — gin, lime, mint…" />' +
+            '<input type="text" name="cm_vibe" placeholder="Tasting note / vibe (optional)" />' +
+            '<input type="text" name="cm_creator" placeholder="By (bartender, optional)" />';
+          list.appendChild(row);
+        }
+        if (e.target.classList && e.target.classList.contains('sec-cm-remove')) {
+          var row = e.target.closest('.sec-cm-row');
           if (row) row.remove();
         }
       });

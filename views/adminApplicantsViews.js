@@ -2720,6 +2720,21 @@ function hiringConfigPage({ user }) {
     </div>
 
     <div class="app-section">
+      <h2>AI model</h2>
+      ${(() => {
+        let info;
+        try { info = require('../hiring/aiEvaluation').reviewModelInfo(); }
+        catch (e) { info = null; }
+        if (!info) return '<p class="app-meta" style="margin:0;">Model info unavailable.</p>';
+        const providerLabel = info.provider === 'openai' ? 'OpenAI' : 'Anthropic (Claude)';
+        return `<p style="margin:0; color:var(--text); line-height:1.7;">
+          Reviews run on <strong>${escHTML(providerLabel)} ${escHTML(info.model)}</strong>${info.reasoningEffort ? ` &middot; reasoning effort <strong>${escHTML(info.reasoningEffort)}</strong>` : ''}, with strict structured output and automatic prompt caching of the knowledge base below.
+          <br><span class="app-meta">The model is advisory — the final weighted score and verdict are always recomputed in code. Switch via the <code>AI_REVIEW_PROVIDER</code> / <code>OPENAI_REVIEW_MODEL</code> / <code>OPENAI_REVIEW_EFFORT</code> env vars.</span>
+        </p>`;
+      })()}
+    </div>
+
+    <div class="app-section">
       <h2>Versions</h2>
       <table style="width:100%; border-collapse:collapse;">${versionRows}</table>
     </div>
@@ -2793,7 +2808,7 @@ function hiringConfigPage({ user }) {
 
     <div class="app-section">
       <h2>Knowledge base text</h2>
-      <p class="app-meta" style="margin-bottom:10px;">This is the full text passed to Claude in every evaluation's system prompt (prompt-cached for cost).</p>
+      <p class="app-meta" style="margin-bottom:10px;">This is the full text passed to the AI screener in every evaluation's system prompt (prompt-cached for cost — see the AI model above).</p>
       <pre style="white-space:pre-wrap; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:8px; padding:14px 16px; font-size:0.85rem; line-height:1.55; color:var(--text); max-height:520px; overflow-y:auto;">${escHTML(kb.KNOWLEDGE_BASE)}</pre>
     </div>
   `, user);

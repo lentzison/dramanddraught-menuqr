@@ -712,6 +712,16 @@ async function runAiEvaluation({ application, questionnaire }) {
   };
 }
 
+// Active review provider/model, for display on the hiring-config page.
+function reviewModelInfo() {
+  const provider = AI_REVIEW_PROVIDER === 'anthropic' ? 'anthropic' : 'openai';
+  return {
+    provider,
+    model: provider === 'openai' ? OPENAI_REVIEW_MODEL : MODEL,
+    reasoningEffort: provider === 'openai' ? OPENAI_REVIEW_EFFORT : null,
+  };
+}
+
 module.exports = {
   runAiEvaluation,
   normalizeRoleKey,
@@ -720,5 +730,6 @@ module.exports = {
   recomputeWeightedScore,
   determineRecommendation,
   capCategoriesForShortAnswers,
+  reviewModelInfo,
   MODEL,
 };

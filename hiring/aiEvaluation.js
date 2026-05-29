@@ -24,13 +24,15 @@ const {
 
 const MODEL = 'claude-opus-4-7';
 
-// Applicant review provider/model. Defaults to OpenAI's gpt-5.4-mini — fast,
-// cheap (input $0.75 / cached $0.075 / output $4.50 per 1M), supports strict
-// structured outputs and automatic prompt caching. Set AI_REVIEW_PROVIDER=
-// anthropic to fall back to Claude. The final score/recommendation is always
-// recomputed in code, so the model is advisory and a smaller model is safe.
+// Applicant review provider/model. Defaults to OpenAI's gpt-5.5 — their newest
+// reasoning model (input $5 / cached $0.50 / output $30 per 1M), with strict
+// structured outputs and automatic prompt caching. The large knowledge-base
+// system prompt is cached across applicants, so per-applicant cost is mostly a
+// small dynamic prompt + output — cents each. For a cheaper option set
+// OPENAI_REVIEW_MODEL=gpt-5.4-mini; set AI_REVIEW_PROVIDER=anthropic for Claude.
+// The final score/recommendation is always recomputed in code (advisory model).
 const AI_REVIEW_PROVIDER = (process.env.AI_REVIEW_PROVIDER || 'openai').toLowerCase();
-const OPENAI_REVIEW_MODEL = process.env.OPENAI_REVIEW_MODEL || 'gpt-5.4-mini';
+const OPENAI_REVIEW_MODEL = process.env.OPENAI_REVIEW_MODEL || 'gpt-5.5';
 // Reasoning depth: low | medium | high | xhigh | none. medium is the balanced
 // default OpenAI recommends; bump to high for tougher judgment.
 const OPENAI_REVIEW_EFFORT = process.env.OPENAI_REVIEW_EFFORT || 'medium';

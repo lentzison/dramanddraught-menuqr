@@ -378,9 +378,8 @@ function eventsList(events, user, flashMsg, filter = 'upcoming') {
   const counts = events.reduce((acc, ev) => {
     acc[bucketOf(ev)] = (acc[bucketOf(ev)] || 0) + 1;
     acc.all += 1;
-    acc.signups += ev._count?.signups || 0;
     return acc;
-  }, { all: 0, upcoming: 0, past: 0, hidden: 0, cancelled: 0, signups: 0 });
+  }, { all: 0, upcoming: 0, past: 0, hidden: 0, cancelled: 0 });
 
   const visible = filter === 'all'
     ? events
@@ -590,7 +589,6 @@ function eventsList(events, user, flashMsg, filter = 'upcoming') {
         <p class="page-subtitle" style="margin: 0;">Create public signup pages, manage RSVPs, share QR codes, and build event landing pages.</p>
         <div class="ev-hero-stats">
           <div><strong>${counts.upcoming}</strong><span class="sub">Upcoming</span></div>
-          <div><strong>${counts.signups}</strong><span class="sub">Total signups</span></div>
           <div><strong>${counts.past}</strong><span class="sub">Past</span></div>
         </div>
       </div>

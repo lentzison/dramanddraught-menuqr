@@ -1474,7 +1474,7 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
           </div>
           <div>
             <label for="ev-slug">URL Slug <span style="color:#888; font-weight:400; font-size:0.8rem">(optional — auto-generated from name)</span></label>
-            <input type="text" id="ev-slug" name="slug" value="${escHTML(event?.slug || '')}" placeholder="lubrication-cup" pattern="[a-z0-9-]*" />
+            <input type="text" id="ev-slug" name="slug" value="${escHTML(event?.slug || '')}" placeholder="lubrication-cup" pattern="[-a-z0-9]*" />
           </div>
         </div>
 
@@ -1898,7 +1898,7 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
           var urlInput = document.getElementById(prefix + '-url-input');
           var file = input.files && input.files[0];
           if (!file) return;
-          if (!/^image\//.test(file.type)) {
+          if ((file.type || '').indexOf('image/') !== 0) {
             alert('That file is not an image. Please choose a JPG, PNG, or WebP.');
             input.value = '';
             return;

@@ -24,6 +24,20 @@ const {
 
 const MODEL = 'claude-opus-4-7';
 
+// Applicant review provider/model. Defaults to OpenAI's gpt-5.4-mini — fast,
+// cheap (input $0.75 / cached $0.075 / output $4.50 per 1M), supports strict
+// structured outputs and automatic prompt caching. Set AI_REVIEW_PROVIDER=
+// anthropic to fall back to Claude. The final score/recommendation is always
+// recomputed in code, so the model is advisory and a smaller model is safe.
+const AI_REVIEW_PROVIDER = (process.env.AI_REVIEW_PROVIDER || 'openai').toLowerCase();
+const OPENAI_REVIEW_MODEL = process.env.OPENAI_REVIEW_MODEL || 'gpt-5.4-mini';
+// Reasoning depth: low | medium | high | xhigh | none. medium is the balanced
+// default OpenAI recommends; bump to high for tougher judgment.
+const OPENAI_REVIEW_EFFORT = process.env.OPENAI_REVIEW_EFFORT || 'medium';
+// Budget for reasoning + output tokens (reasoning models spend both).
+const OPENAI_REVIEW_MAX_TOKENS = parseInt(process.env.OPENAI_REVIEW_MAX_TOKENS || '20000', 10);
+const OPENAI_REVIEW_TIMEOUT_MS = parseInt(process.env.OPENAI_REVIEW_TIMEOUT_MS || '90000', 10);
+
 // Keywords that mean "stop, flag for human review" — accommodation,
 // disability, medical, religious, pregnancy, family obligations.
 //
@@ -406,13 +420,69 @@ async function callClaude({ apiKey, systemPrompt, userPrompt, responseSchema }) 
   return message;
 }
 
+// OpenAI path (default). gpt-5.4-mini is a reasoning model, so the request uses
+// max_completion_tokens (not max_tokens), reasoning_effort, and omits
+// temperature. Structured output uses a strict json_schema — our schema is
+// already strict-compatible (every object has additionalProperties:false + full
+// required, nullable via ["string","null"]). Prompt caching is AUTOMATIC: the
+// large static system prompt (knowledge base) goes first and the per-applicant
+// prompt last, so the cached prefix is reused across applicants. Returns a
+// message-like object so parseModelJson() works unchanged for both providers.
+async function callOpenAI({ apiKey, systemPrompt, userPrompt, responseSchema }) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), OPENAI_REVIEW_TIMEOUT_MS);
+  let res;
+  try {
+    res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: OPENAI_REVIEW_MODEL,
+        max_completion_tokens: OPENAI_REVIEW_MAX_TOKENS,
+        reasoning_effort: OPENAI_REVIEW_EFFORT,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        response_format: {
+          type: 'json_schema',
+          json_schema: { name: 'applicant_evaluation', strict: true, schema: responseSchema },
+        },
+      }),
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!res.ok) {
+    const t = await res.text().catch(() => '');
+    throw new Error(`OpenAI HTTP ${res.status}: ${String(t).slice(0, 300)}`);
+  }
+  const data = await res.json();
+  const choice = data && data.choices && data.choices[0];
+  if (choice && choice.message && choice.message.refusal) {
+    throw new Error(`Model refused: ${String(choice.message.refusal).slice(0, 200)}`);
+  }
+  if (choice && choice.finish_reason === 'length') {
+    throw new Error('OpenAI response truncated (raise OPENAI_REVIEW_MAX_TOKENS).');
+  }
+  const text = (choice && choice.message && choice.message.content) || '';
+  // Adapt to the block shape parseModelJson() expects; keep usage so prompt-cache
+  // hit rate (usage.prompt_tokens_details.cached_tokens) can be inspected.
+  return { content: [{ type: 'text', text }], usage: data.usage || null };
+}
+
 // Top-level entry point. Returns the persisted (post-verification) evaluation
 // object — ready to be passed to prisma.jobApplicationAiEvaluation.create.
 async function runAiEvaluation({ application, questionnaire }) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const provider = AI_REVIEW_PROVIDER === 'anthropic' ? 'anthropic' : 'openai';
+  const apiKey = provider === 'openai' ? process.env.OPENAI_API_KEY : process.env.ANTHROPIC_API_KEY;
+  const modelName = provider === 'openai' ? OPENAI_REVIEW_MODEL : MODEL;
+  const keyEnvName = provider === 'openai' ? 'OPENAI_API_KEY' : 'ANTHROPIC_API_KEY';
+  const callModel = provider === 'openai' ? callOpenAI : callClaude;
   if (!apiKey) {
     return {
-      errorDetail: 'ANTHROPIC_API_KEY not configured; AI evaluation skipped.',
+      errorDetail: `${keyEnvName} not configured; AI evaluation skipped.`,
       recommendation: 'hold',
       weightedScore: 0,
       confidence: 'low',
@@ -420,12 +490,12 @@ async function runAiEvaluation({ application, questionnaire }) {
       humanReviewReasons: ['AI evaluation could not run (configuration missing). Manager review required.'],
       candidateSummary: '',
       positiveSignalSummary: '',
-      overallRationale: 'AI evaluation skipped — ANTHROPIC_API_KEY is not set on the server.',
+      overallRationale: `AI evaluation skipped — ${keyEnvName} is not set on the server.`,
       jobRelatedConcerns: [],
       suggestedInterviewQuestions: [],
       possibleBetterRoleFit: null,
       categoryScores: CATEGORIES.map((c) => ({ category: c, score: 0, weight: 0, evidence: [], rationale: 'Not evaluated.', concerns: [] })),
-      modelName: MODEL,
+      modelName,
       promptVersion: PROMPT_VERSION,
       knowledgeBaseVersion: KNOWLEDGE_BASE_VERSION,
       rawAiPayload: null,
@@ -443,13 +513,13 @@ async function runAiEvaluation({ application, questionnaire }) {
   let rawMessage = null;
   let errorDetail = null;
   try {
-    rawMessage = await callClaude({ apiKey, systemPrompt, userPrompt, responseSchema });
+    rawMessage = await callModel({ apiKey, systemPrompt, userPrompt, responseSchema });
     parsed = parseModelJson(rawMessage);
   } catch (err) {
     errorDetail = `First attempt failed: ${err.message}`;
     // Retry once with a stricter instruction appended to the user prompt.
     try {
-      rawMessage = await callClaude({
+      rawMessage = await callModel({
         apiKey,
         systemPrompt,
         userPrompt: userPrompt + '\n\nIMPORTANT: Your previous response was not valid JSON. Return ONLY a single JSON object matching the schema. No prose, no markdown fences, no explanation.',
@@ -477,7 +547,7 @@ async function runAiEvaluation({ application, questionnaire }) {
       suggestedInterviewQuestions: [],
       possibleBetterRoleFit: null,
       categoryScores: CATEGORIES.map((c) => ({ category: c, score: 0, weight: roleWeights[c] || 0, evidence: [], rationale: 'Not evaluated.', concerns: [] })),
-      modelName: MODEL,
+      modelName,
       promptVersion: PROMPT_VERSION,
       knowledgeBaseVersion: KNOWLEDGE_BASE_VERSION,
       rawAiPayload: rawMessage ? { content: rawMessage.content } : null,
@@ -615,7 +685,7 @@ async function runAiEvaluation({ application, questionnaire }) {
       : [],
     possibleBetterRoleFit: parsed.possibleBetterRoleFit ? String(parsed.possibleBetterRoleFit) : null,
     categoryScores: normalizedCategoryScores,
-    modelName: MODEL,
+    modelName,
     promptVersion: PROMPT_VERSION,
     knowledgeBaseVersion: KNOWLEDGE_BASE_VERSION,
     rawAiPayload: parsed,

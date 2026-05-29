@@ -1502,7 +1502,9 @@ function generateEventPage(location, event, signupCount, options = {}) {
            un-cropped). The inline style supplies the actual image URL. */
         .ev-hero.ev-hero-image {
           background-size: cover !important;
-          background-position: center !important;
+          /* Anchor the top edge so banner titles/headers up top are never
+             cropped; any overflow is trimmed from the bottom instead. */
+          background-position: center top !important;
           background-repeat: no-repeat !important;
           min-height: 380px;
           padding: 0;

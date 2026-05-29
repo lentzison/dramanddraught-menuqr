@@ -2135,7 +2135,70 @@ async function getLocations(prisma) {
   return fallbackLocations;
 }
 
+// ─── Media system integration (dram-draught-public) ───
+// Upload an inline data-URL image into the shared media system so it lands in
+// the media dashboard and can be served in any size/crop. Returns
+// { fileId, url } on success, or null when the integration isn't configured
+// (no EXTERNAL_API_KEY) or the upload fails — callers fall back to storing the
+// data URL inline as before, so nothing breaks without the key.
+async function uploadImageToMedia(dataUrl, { collection = 'menuqr', tags = '' } = {}) {
+  const apiKey = process.env.EXTERNAL_API_KEY;
+  if (!apiKey) return null;
+  const m = /^data:(image\/[a-z+.-]+);base64,(.+)$/i.exec(String(dataUrl || '').trim());
+  if (!m) return null; // only inline data URLs get uploaded; hosted URLs pass through
+  const mime = m[1];
+  let buffer;
+  try { buffer = Buffer.from(m[2], 'base64'); } catch { return null; }
+  if (!buffer || buffer.length === 0) return null;
+
+  const origin = process.env.PUBLIC_WEB_ORIGIN || 'https://public.apps.dramanddraught.com';
+  const ext = (mime.split('/')[1] || 'jpg').replace('jpeg', 'jpg').replace('+xml', '');
+  try {
+    const form = new FormData();
+    form.append('file', new Blob([buffer], { type: mime }), `upload.${ext}`);
+    form.append('collection', collection);
+    if (tags) form.append('tags', tags);
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    let res;
+    try {
+      res = await fetch(`${origin}/api/external/upload`, {
+        method: 'POST',
+        headers: { 'X-API-Key': apiKey },
+        body: form,
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+    if (!res.ok) {
+      console.warn('[menuqr] media upload failed:', res.status);
+      return null;
+    }
+    const json = await res.json().catch(() => null);
+    if (!json || !json.fileId) return null;
+    // Store an absolute URL on menuqr's known origin so rendition rewriting is
+    // predictable regardless of the media app's own PUBLIC_APP_URL setting.
+    return { fileId: json.fileId, url: `${origin}/media/image/${json.fileId}?size=xlarge` };
+  } catch (err) {
+    console.warn('[menuqr] media upload error:', err.message);
+    return null;
+  }
+}
+
+// Rewrite a stored media image URL into a specific transform/crop. The public
+// media server route is GET /media/:type/:spec/:fileId (spec before fileId).
+// Non-media URLs (data URLs, arbitrary hosted images) pass through unchanged.
+function mediaRenditionUrl(url, spec) {
+  const m = /^(https?:\/\/[^/]+)\/media\/(image|video)\/([^/?#]+)/i.exec(String(url || ''));
+  if (!m || !spec) return url;
+  return `${m[1]}/media/${m[2]}/${spec}/${m[3]}`;
+}
+
 module.exports = {
+  uploadImageToMedia,
+  mediaRenditionUrl,
   sendHTML, sendJSON, redirect, getDefaultLinks, getIcon, getLinkButtons,
   getEasternDate, getOpenState, getTodayHours, getDayLabel,
   parseBody, unauthorized, isAdmin, fallbackLocations, getLocations, getFlashMsg,

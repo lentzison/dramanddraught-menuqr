@@ -2,6 +2,11 @@ const { vintageThemeCss } = require('./publicTheme');
 const { resolveThemeRender, eventThemesCss } = require('./eventThemes');
 const { brandMarkCss, renderBrandMark } = require('./brandMark');
 const { escHTML } = require('./escapeHtml');
+const { mediaRenditionUrl } = require('../helpers');
+
+// Crop specs for images served by the media system (no-op for other URLs).
+const HERO_RENDITION = 'w_1600,h_600,c_fill,g_auto,f_webp,q_90';
+const SOCIAL_RENDITION = 'w_1200,h_630,c_fill,g_auto,f_jpg,q_85';
 
 function formatEventDate(value) {
   if (!value) return '';
@@ -115,7 +120,10 @@ function eventMetaTags(location, event) {
     || `${event.title} at Dram & Draught ${location.name}. ${formatEventDate(event.startDate)}.`;
   const title = `${event.title} — Dram & Draught ${location.name}`;
   // Only a hosted (http) image works as a social preview; base64/data URLs don't.
-  const img = event.image && /^https?:\/\//i.test(event.image) ? event.image : '';
+  // Media-hosted images get a 1200×630 social crop; other hosted URLs pass through.
+  const img = event.image && /^https?:\/\//i.test(event.image)
+    ? mediaRenditionUrl(event.image, SOCIAL_RENDITION)
+    : '';
   const ld = {
     '@context': 'https://schema.org',
     '@type': 'Event',
@@ -2555,7 +2563,7 @@ function generateEventPage(location, event, signupCount, options = {}) {
         ${renderTopBanners(event.sections)}
 
         ${imageHero ? `
-        <div class="ev-hero ev-hero-image" role="img" aria-label="${escHTML(event.title)}" style="background-image: url('${escHTML(event.image)}');"></div>
+        <div class="ev-hero ev-hero-image" role="img" aria-label="${escHTML(event.title)}" style="background-image: url('${escHTML(mediaRenditionUrl(event.image, HERO_RENDITION))}');"></div>
         ` : `
         <div class="ev-hero">
           ${isArt ? '<div class="ev-hero-statue" aria-hidden="true"></div>' : ''}

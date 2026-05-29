@@ -1,4 +1,4 @@
-const { sendHTML, parseBody, redirect, getFlashMsg, sendEmailViaGoogle } = require('../helpers');
+const { sendHTML, parseBody, redirect, getFlashMsg, sendEmailViaGoogle, uploadImageToMedia } = require('../helpers');
 const { requireAuth, isCompanyWide, getUserLocationSlugs, canAccessLocation } = require('../auth');
 const {
   eventsList,
@@ -139,6 +139,24 @@ function parseCapacity(value) {
   if (value == null || value === '') return null;
   const n = parseInt(value, 10);
   return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+// Resolve the banner image to store. A freshly-uploaded inline photo (data URL)
+// is pushed into the shared media system so it appears in the media dashboard
+// and can be served at any size/crop; we then store the hosted media URL.
+// If the media integration isn't configured (no EXTERNAL_API_KEY) or upload
+// fails, we fall back to storing the data URL inline as before. Already-hosted
+// URLs (including media URLs from a prior save) pass through unchanged, so we
+// never re-upload the same image.
+async function resolveEventImage(rawImage, slugForTags) {
+  const src = sanitizeImageSrc(rawImage);
+  if (!src) return null;
+  if (/^data:/i.test(src)) {
+    const uploaded = await uploadImageToMedia(src, { collection: 'event-banners', tags: slugForTags || '' });
+    if (uploaded && uploaded.url) return uploaded.url;
+    return src; // fallback: keep it inline
+  }
+  return src;
 }
 
 // Allowed background style values for sections that support theming.
@@ -417,6 +435,7 @@ async function handleAdminEvents(req, res, pathname, prisma) {
       if (!startDate) { redirect(res, flashError('Event date and time are required.')); return true; }
 
       const customQuestions = parseCustomQuestions(body);
+      const imageValue = await resolveEventImage(body.image, uniqueSlug);
 
       try {
         const created = await prisma.event.create({
@@ -427,7 +446,7 @@ async function handleAdminEvents(req, res, pathname, prisma) {
             description: normalizeText(body.description) || null,
             startDate,
             endDate: parseDateTimeLocal(body.endDate),
-            image: sanitizeImageSrc(body.image),
+            image: imageValue,
             promoteFrom: parseDateTimeLocal(body.promoteFrom),
             promoteUntil: parseDateTimeLocal(body.promoteUntil),
             capacity: parseCapacity(body.capacity),
@@ -907,6 +926,7 @@ async function handleAdminEvents(req, res, pathname, prisma) {
       const slug = newSlug !== event.slug
         ? await ensureUniqueSlug(prisma, event.locationId, newSlug || slugify(title), eventId)
         : event.slug;
+      const imageValue = await resolveEventImage(body.image, slug);
 
       try {
         await prisma.event.update({
@@ -917,7 +937,7 @@ async function handleAdminEvents(req, res, pathname, prisma) {
             description: normalizeText(body.description) || null,
             startDate: parseDateTimeLocal(body.startDate) || event.startDate,
             endDate: parseDateTimeLocal(body.endDate),
-            image: sanitizeImageSrc(body.image),
+            image: imageValue,
             promoteFrom: parseDateTimeLocal(body.promoteFrom),
             promoteUntil: parseDateTimeLocal(body.promoteUntil),
             capacity: parseCapacity(body.capacity),

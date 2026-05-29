@@ -1488,26 +1488,21 @@ function generateEventPage(location, event, signupCount, options = {}) {
           font-style: italic;
           letter-spacing: 0.04em;
         }
-        /* Image hero: banner fills the header (inline background-image carries
-           a dark scrim + the photo). Force light text so the themed title
-           stays readable over any photo, on light and dark themes alike. */
+        /* Image hero: the banner photo fills the header on its own — no logo,
+           no text, no scrim. !important overrides per-theme ev-hero background
+           rules (which otherwise reset background-size and leave the photo
+           un-cropped). The inline style supplies the actual image URL. */
         .ev-hero.ev-hero-image {
-          background-size: cover;
-          background-position: center;
-          background-repeat: no-repeat;
-          min-height: 360px;
-          display: flex;
-          flex-direction: column;
-          justify-content: flex-end;
-          border-color: rgba(0,0,0,0.35);
+          background-size: cover !important;
+          background-position: center !important;
+          background-repeat: no-repeat !important;
+          min-height: 380px;
+          padding: 0;
+          overflow: hidden;
         }
         .ev-hero.ev-hero-image::before { display: none; }
-        .ev-hero.ev-hero-image .ev-hero-eyebrow { color: #fff; opacity: 0.92; text-shadow: 0 2px 10px rgba(0,0,0,0.7); }
-        .ev-hero.ev-hero-image .ev-hero-title { color: #fff; text-shadow: 0 3px 18px rgba(0,0,0,0.78); }
-        .ev-hero.ev-hero-image .ev-hero-location { color: rgba(255,255,255,0.9); font-style: normal; text-shadow: 0 2px 8px rgba(0,0,0,0.7); }
-        .ev-hero.ev-hero-image .ev-hero-divider { background: rgba(255,255,255,0.85); opacity: 0.9; }
         @media (max-width: 640px) {
-          .ev-hero.ev-hero-image { min-height: 260px; }
+          .ev-hero.ev-hero-image { min-height: 240px; }
         }
         .ev-banner-img {
           width: 100%;
@@ -2559,14 +2554,18 @@ function generateEventPage(location, event, signupCount, options = {}) {
         </div>
         ${renderTopBanners(event.sections)}
 
-        <div class="ev-hero${imageHero ? ' ev-hero-image' : ''}"${imageHero ? ` style="background-image: linear-gradient(180deg, rgba(0,0,0,0.32) 0%, rgba(0,0,0,0.55) 58%, rgba(0,0,0,0.82) 100%), url('${escHTML(event.image)}');"` : ''}>
-          ${isArt && !imageHero ? '<div class="ev-hero-statue" aria-hidden="true"></div>' : ''}
+        ${imageHero ? `
+        <div class="ev-hero ev-hero-image" role="img" aria-label="${escHTML(event.title)}" style="background-image: url('${escHTML(event.image)}');"></div>
+        ` : `
+        <div class="ev-hero">
+          ${isArt ? '<div class="ev-hero-statue" aria-hidden="true"></div>' : ''}
           ${renderBrandMark()}
           <div class="ev-hero-eyebrow">${escHTML(heroEyebrow)}</div>
           <h1 class="ev-hero-title">${escHTML(event.title)}</h1>
           <div class="ev-hero-divider"></div>
           <div class="ev-hero-location">${escHTML(location.name)}</div>
         </div>
+        `}
 
         ${(Array.isArray(event.customQuestions) && event.customQuestions.some(q => q && q.type === 'images-multi')) ? `
         <div class="ev-modal" id="ev-images-modal" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="ev-images-modal-title">

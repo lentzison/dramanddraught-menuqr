@@ -428,6 +428,24 @@ async function callClaude({ apiKey, systemPrompt, userPrompt, responseSchema }) 
 // large static system prompt (knowledge base) goes first and the per-applicant
 // prompt last, so the cached prefix is reused across applicants. Returns a
 // message-like object so parseModelJson() works unchanged for both providers.
+// OpenAI strict structured outputs require that EVERY property of an object be
+// listed in `required` (optional fields aren't allowed; express "optional" as a
+// nullable type instead). Our shared schema leaves some nullable fields out of
+// `required` (fine for Anthropic), so deep-clone it and force every object to
+// list all its keys + additionalProperties:false. Done only for the OpenAI path
+// so the Anthropic schema is unchanged.
+function toStrictSchema(node) {
+  if (Array.isArray(node)) return node.map(toStrictSchema);
+  if (!node || typeof node !== 'object') return node;
+  const out = {};
+  for (const [k, v] of Object.entries(node)) out[k] = toStrictSchema(v);
+  if (out.type === 'object' && out.properties && typeof out.properties === 'object') {
+    out.additionalProperties = false;
+    out.required = Object.keys(out.properties);
+  }
+  return out;
+}
+
 async function callOpenAI({ apiKey, systemPrompt, userPrompt, responseSchema }) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), OPENAI_REVIEW_TIMEOUT_MS);
@@ -447,7 +465,7 @@ async function callOpenAI({ apiKey, systemPrompt, userPrompt, responseSchema }) 
         ],
         response_format: {
           type: 'json_schema',
-          json_schema: { name: 'applicant_evaluation', strict: true, schema: responseSchema },
+          json_schema: { name: 'applicant_evaluation', strict: true, schema: toStrictSchema(responseSchema) },
         },
       }),
     });

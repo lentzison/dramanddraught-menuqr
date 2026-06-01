@@ -389,7 +389,19 @@ async function handlePublicEventsFeed(req, res, prisma) {
       capacity: ev.capacity,
       signupType: effectiveSignupType(ev),
       themeKey: ev.themeKey || null,
-      heroImage: ev.image && /^https?:/i.test(ev.image) ? ev.image : null,
+      heroImage: (() => {
+        const img = ev.image
+        if (!img) return null
+        // Absolute URL or inline data image: send as-is so it transfers to the
+        // public site even when the media upload fell back to a data: URL.
+        if (/^https?:/i.test(img) || /^data:image\//i.test(img)) return img
+        // Relative path (e.g. "/media/...") → absolutize against the media origin.
+        if (img.startsWith('/')) {
+          const mediaOrigin = (process.env.PUBLIC_WEB_ORIGIN || 'https://public.apps.dramanddraught.com').replace(/\/+$/, '')
+          return `${mediaOrigin}${img}`
+        }
+        return null
+      })(),
       // Public URL the candidate event can deep-link to on the menuqr side
       // (for QR scans, signup forms, etc.).
       publicUrl: ev.location?.slug && ev.slug

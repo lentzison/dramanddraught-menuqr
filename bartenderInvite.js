@@ -149,13 +149,38 @@ function buildEmailBody({ firstName, locationName, roleLabel, registrationUrl, s
 // Main export: create the invite row in the bartender DB and email the
 // candidate. Returns { ok, inviteId, token, registrationUrl, reusedExisting,
 // error }. Errors are returned (not thrown) so the caller can show a flash.
-async function createAndSendInvite({ application, locationSlug, role, adminEmail, adminName }) {
+// Resolve the subject/body actually emailed. A caller-supplied (admin-edited)
+// subject/body wins; otherwise we build the default. Placeholders are filled in
+// either case, and we guarantee the registration link is present so an edit
+// can't accidentally drop the one thing the candidate needs.
+function renderInviteEmail(rawSubject, rawBody, ctx) {
+  const subject = (rawSubject && String(rawSubject).trim()) || 'Welcome to the Dram & Draught Team!';
+  let body = (rawBody && String(rawBody).trim()) || buildEmailBody(ctx);
+  const repl = {
+    '{{registrationUrl}}': ctx.registrationUrl || '',
+    '{{firstName}}': ctx.firstName || '',
+    '{{locationName}}': ctx.locationName || '',
+    '{{roleLabel}}': ctx.roleLabel || '',
+    '{{role}}': ctx.roleLabel || '',
+    '{{senderName}}': ctx.senderName || '',
+  };
+  for (const [k, v] of Object.entries(repl)) body = body.split(k).join(v);
+  if (ctx.registrationUrl && !body.includes(ctx.registrationUrl)) {
+    body += `\n\nCreate your account: ${ctx.registrationUrl}`;
+  }
+  return { subject, body };
+}
+
+async function createAndSendInvite({ application, locationSlug, role, adminEmail, adminName, emailSubject, emailBody, attachments }) {
   try {
     if (!application?.email) return { ok: false, error: 'Applicant has no email on file.' };
     if (!locationSlug) return { ok: false, error: 'Applicant has no location.' };
 
     const roleEnum = role || POSITION_TO_ROLE[application.position] || 'OTHER';
+    const roleLabel = ROLE_LABELS[roleEnum] || roleEnum;
+    const senderName = adminName || 'Dram & Draught Hiring';
     const { firstName, lastName } = splitName(application.name);
+    const atts = Array.isArray(attachments) && attachments.length ? attachments : undefined;
 
     const db = getPool();
 
@@ -174,26 +199,42 @@ async function createAndSendInvite({ application, locationSlug, role, adminEmail
       };
     }
 
-    // De-dupe: if there's already an active invite, reuse it (don't create a
-    // second row). The candidate already has a working link.
+    // Resolve the bartender location (for the insert + default-body location name).
+    const locationId = await getLocationIdByMenuqrSlug(locationSlug);
+    let locationName = locationSlug;
+    if (locationId) {
+      const locRow = await db.query('SELECT name FROM "Location" WHERE id = $1', [locationId]);
+      locationName = locRow.rows[0]?.name || locationSlug;
+    }
+
+    // De-dupe: if there's already an active invite, reuse its token (don't
+    // create a second row) but still (re)send the email — with the edited
+    // subject/body + attachment — so "Resend" actually resends.
     const existing = await findActiveInvite(db, application.email);
     if (existing) {
       const registrationUrl = `${BARTENDER_APP_URL}/register?invite=${existing.token}`;
+      const { subject, body } = renderInviteEmail(emailSubject, emailBody, { firstName, locationName, roleLabel, registrationUrl, senderName });
+      let emailError = null;
+      try {
+        await sendEmailViaGoogle({ to: application.email, subject, body, attachments: atts });
+      } catch (e) {
+        emailError = e.message || String(e);
+      }
+      if (!emailError) {
+        await db.query(`UPDATE "EmployeeInvite" SET "emailSubject" = $1, "emailBody" = $2, status = 'SENT', "sentAt" = NOW(), "updatedAt" = NOW() WHERE id = $3`, [subject, body, existing.id]).catch(() => {});
+      }
       return {
         ok: true,
         inviteId: existing.id,
         token: existing.token,
         registrationUrl,
         reusedExisting: true,
-        sentAt: existing.sentAt,
+        sentAt: emailError ? null : new Date(),
+        emailError,
       };
     }
 
-    const locationId = await getLocationIdByMenuqrSlug(locationSlug);
     if (!locationId) return { ok: false, error: `Unknown or inactive bartender location for slug "${locationSlug}".` };
-
-    const locRow = await db.query('SELECT name FROM "Location" WHERE id = $1', [locationId]);
-    const locationName = locRow.rows[0]?.name || locationSlug;
 
     const invitedById = await resolveInvitedById(db, adminEmail);
     if (!invitedById) return { ok: false, error: 'Could not find a bartender admin user to attribute this invite to.' };
@@ -202,17 +243,9 @@ async function createAndSendInvite({ application, locationSlug, role, adminEmail
     const token = generateToken();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + INVITE_TTL_MS);
-    const roleLabel = ROLE_LABELS[roleEnum] || roleEnum;
     const registrationUrl = `${BARTENDER_APP_URL}/register?invite=${token}`;
 
-    const subject = `Welcome to the Dram & Draught Team!`;
-    const body = buildEmailBody({
-      firstName,
-      locationName,
-      roleLabel,
-      registrationUrl,
-      senderName: adminName || 'Dram & Draught Hiring',
-    });
+    const { subject, body } = renderInviteEmail(emailSubject, emailBody, { firstName, locationName, roleLabel, registrationUrl, senderName });
 
     // Insert directly into the bartender DB. We store the body we send so the
     // bartender admin UI can show what the candidate received.
@@ -237,11 +270,7 @@ async function createAndSendInvite({ application, locationSlug, role, adminEmail
     // the caller can flag it.
     let emailError = null;
     try {
-      await sendEmailViaGoogle({
-        to: application.email,
-        subject,
-        body,
-      });
+      await sendEmailViaGoogle({ to: application.email, subject, body, attachments: atts });
     } catch (e) {
       emailError = e.message || String(e);
       // Drop the invite back to PENDING so it's obvious the email didn't send.

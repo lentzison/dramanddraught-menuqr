@@ -2316,6 +2316,45 @@ function renderOnboardingCard(application, dashboardInviteStatus, roleOptions) {
     ? 'Send dashboard invite'
     : (isExpired ? 'Resend invite' : 'Resend invite');
 
+  // Editable email — pre-filled as an offer letter that also carries the
+  // dashboard signup + onboarding steps. {{registrationUrl}} is swapped for the
+  // real link when sent. Fill in pay & start date; attach the training schedule.
+  const firstName = (application.name || '').trim().split(/\s+/)[0] || 'there';
+  const locName = application.location?.name || 'Dram & Draught';
+  const positionLabel = application.position || 'the team';
+  const defaultSubject = `Your offer & onboarding — Dram & Draught ${locName}`.trim();
+  const defaultBody = [
+    `Hi ${firstName},`,
+    '',
+    `We're excited to officially offer you a spot on the team at ${locName} as ${positionLabel}.`,
+    '',
+    'Your offer:',
+    `• Role: ${positionLabel}`,
+    '• Pay: [add pay rate]',
+    '• Start date: [add start date]',
+    `• Location: ${locName}`,
+    '',
+    'Step 1 — Create your employee account',
+    'Set up your account in the Bartender Dashboard here:',
+    '{{registrationUrl}}',
+    '',
+    'Step 2 — Toast onboarding',
+    `After creating your account you'll get an email from Toast (our POS / Payroll system) to complete tax paperwork, intake documents, and direct deposit.`,
+    '',
+    'Step 3 — Set up Sling',
+    `You'll also get an email to set up Sling — where you'll see your schedule, request time off, and chat with the team.`,
+    '',
+    'Step 4 — Training schedule',
+    'Your training schedule is attached. Please review it and confirm you can make the listed shifts.',
+    '',
+    'Questions? Just reply to this email — happy to help.',
+    '',
+    'Welcome aboard,',
+    'The Dram & Draught Team',
+  ].join('\n');
+  const inputStyle = 'width:100%; background:var(--bg-soft); color:var(--text); border:1px solid var(--line); padding:9px 11px; border-radius:var(--radius); font-size:0.9rem; font-family:inherit;';
+  const fieldLabel = 'display:block; font-size:0.72rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em; font-weight:800; margin:12px 0 6px;';
+
   return `
     <div class="ap-card" id="onboarding">
       <div class="ap-card-head">
@@ -2324,16 +2363,49 @@ function renderOnboardingCard(application, dashboardInviteStatus, roleOptions) {
       </div>
       ${statusBlock}
 
-      <form method="POST" action="/admin/applicants/${escHTML(application.id)}/onboarding-invite" style="margin-top:12px;" onsubmit="return confirm('${inviteSent ? 'Resend' : 'Send'} the dashboard invite to ${escAttr(application.email || application.name)}?');">
-        <label style="display:block; font-size:0.72rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.06em; font-weight:800; margin-bottom:6px;">Role</label>
-        <select name="role" style="width:100%; background:var(--bg-soft); color:var(--text); border:1px solid var(--line); padding:9px 11px; border-radius:var(--radius); font-size:0.92rem; font-family:inherit;">
+      <form method="POST" action="/admin/applicants/${escHTML(application.id)}/onboarding-invite" style="margin-top:12px;" onsubmit="return confirm('${inviteSent ? 'Resend' : 'Send'} this offer & onboarding email to ${escAttr(application.email || application.name)}?');">
+        <label style="${fieldLabel} margin-top:0;">Role</label>
+        <select name="role" style="${inputStyle}">
           <option value="">(use position default)</option>
           ${roles}
         </select>
+
+        <details style="margin-top:12px;">
+          <summary style="cursor:pointer; font-size:0.8rem; color:var(--gold-strong); font-weight:700;">Edit email &amp; attach training schedule</summary>
+          <label style="${fieldLabel}">Subject</label>
+          <input type="text" name="emailSubject" value="${escAttr(defaultSubject)}" style="${inputStyle}" />
+          <label style="${fieldLabel}">Email body</label>
+          <textarea name="emailBody" rows="15" style="${inputStyle} line-height:1.45; resize:vertical;">${escHTML(defaultBody)}</textarea>
+          <p style="font-size:0.72rem; color:var(--text-muted); margin:6px 0 0;">The signup link replaces <code>{{registrationUrl}}</code> automatically. Remember to fill in pay &amp; start date.</p>
+          <label style="${fieldLabel}">Training schedule (attached to the email)</label>
+          <input type="file" id="onb-att-${escAttr(application.id)}" accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.xls,.xlsx,.csv" style="font-size:0.85rem; color:var(--text);" />
+          <input type="hidden" name="attachmentName" id="onb-att-name-${escAttr(application.id)}" />
+          <input type="hidden" name="attachmentData" id="onb-att-data-${escAttr(application.id)}" />
+          <div id="onb-att-status-${escAttr(application.id)}" style="font-size:0.74rem; color:var(--text-muted); margin-top:6px;"></div>
+        </details>
+
         <div style="margin-top:12px; text-align:right;">
           <button type="submit" class="btn btn-primary btn-sm">${escHTML(submitLabel)}</button>
         </div>
       </form>
+      <script>
+        (function(){
+          var f = document.getElementById('onb-att-${escAttr(application.id)}');
+          if (!f) return;
+          var nameI = document.getElementById('onb-att-name-${escAttr(application.id)}');
+          var dataI = document.getElementById('onb-att-data-${escAttr(application.id)}');
+          var st = document.getElementById('onb-att-status-${escAttr(application.id)}');
+          f.addEventListener('change', function(){
+            var file = f.files && f.files[0];
+            if (!file) { nameI.value = ''; dataI.value = ''; if (st) st.textContent = ''; return; }
+            if (file.size > 8 * 1024 * 1024) { if (st) st.textContent = 'File too large (max 8 MB).'; f.value = ''; nameI.value = ''; dataI.value = ''; return; }
+            var r = new FileReader();
+            r.onload = function(){ dataI.value = r.result; nameI.value = file.name; if (st) st.textContent = 'Attached: ' + file.name; };
+            r.onerror = function(){ if (st) st.textContent = 'Could not read that file.'; };
+            r.readAsDataURL(file);
+          });
+        })();
+      </script>
     </div>`;
 }
 

@@ -439,8 +439,21 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
       flashRedirect(res, `/admin/applicants/${id}`, 'error', 'Move the applicant to Hired before sending a dashboard invite.');
       return true;
     }
-    const body = await parseBody(req);
+    // Larger cap — the body can carry a base64 training-schedule attachment.
+    const body = await parseBody(req, { maxBytes: 12 * 1024 * 1024 });
     const role = String(body.role || '').trim() || null;
+    const emailSubject = body.emailSubject ? String(body.emailSubject).slice(0, 300) : null;
+    const emailBody = body.emailBody ? String(body.emailBody).slice(0, 20000) : null;
+
+    // Optional training-schedule attachment: sent from the form as a base64
+    // data URL in a hidden field (file → base64 via JS, like the image widgets).
+    let attachments;
+    const attData = String(body.attachmentData || '');
+    const attName = String(body.attachmentName || '').slice(0, 200);
+    const m = /^data:([^;]+);base64,(.+)$/.exec(attData);
+    if (m && attName) {
+      attachments = [{ filename: attName, mimeType: m[1], base64Data: m[2] }];
+    }
 
     const result = await createDashboardInvite({
       application: app,
@@ -448,6 +461,9 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
       role,
       adminEmail: user.email || null,
       adminName: user.email ? user.email.split('@')[0] : null,
+      emailSubject,
+      emailBody,
+      attachments,
     });
 
     if (!result.ok) {

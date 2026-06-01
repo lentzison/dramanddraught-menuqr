@@ -405,6 +405,9 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
     }).catch(() => {});
 
     let flashText = `Moved to ${STATUS_LABELS[next] || next}.`;
+    if (next === 'offer_extended') {
+      flashText = 'Moved to Offer Extended — send the offer & onboarding invite from the Bartender Dashboard (see the Offer & hire checklist).';
+    }
     if (isTerminalDecision) {
       const headline = next === 'rejected' ? 'Rejected' : 'Kept on file';
       const emailLabel = next === 'rejected' ? 'rejection email sent' : 'keep-on-file email sent';

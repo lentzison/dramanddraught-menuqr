@@ -412,7 +412,7 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
           border-radius: 8px;
           border: 1px solid rgba(255, 255, 255, 0.14);
           font-family: inherit;
-          font-size: 0.95rem;
+          font-size: 16px;
           box-sizing: border-box;
         }
         .feedback-form input,
@@ -463,6 +463,11 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
           border: 0;
           background: transparent;
           color: #666b73;
+          min-width: 44px;
+          min-height: 44px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
           font-size: 2rem;
           cursor: pointer;
           line-height: 1;

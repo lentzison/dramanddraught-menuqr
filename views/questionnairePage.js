@@ -29,7 +29,7 @@ function pageShell(title, bodyHtml) {
       background: #15161a; color: #f5f1e6;
       border: 1px solid rgba(212,175,55,0.25);
       border-radius: 8px; padding: 10px 12px;
-      font-size: 0.95rem; font-family: inherit; line-height: 1.5;
+      font-size: 16px; font-family: inherit; line-height: 1.5;
       min-height: 90px; resize: vertical;
     }
     .q-textarea:focus { outline: 2px solid rgba(212,175,55,0.5); border-color: var(--gold); }

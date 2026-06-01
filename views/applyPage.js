@@ -72,7 +72,7 @@ function pageShell(location, title, bodyHtml) {
           background: #15161a; color: #f5f1e6;
           border: 1px solid rgba(212,175,55,0.25);
           border-radius: 8px; padding: 10px 12px;
-          font-size: 0.95rem; font-family: inherit;
+          font-size: 16px; font-family: inherit;
         }
         .apply-field textarea { min-height: 88px; resize: vertical; }
         .apply-field input:focus, .apply-field select:focus, .apply-field textarea:focus {

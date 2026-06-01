@@ -576,6 +576,10 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         .day-nav::-webkit-scrollbar { display: none; }
         .day-tab {
           padding: 8px 12px;
+          min-height: 40px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
           border-radius: 8px;
           font-size: 0.81rem;
           font-weight: 700;
@@ -697,7 +701,10 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           border-radius: 999px;
           background: rgba(255,255,255,0.05);
           color: #d8dbe0;
-          padding: 6px 12px;
+          padding: 8px 14px;
+          min-height: 38px;
+          display: inline-flex;
+          align-items: center;
           font-size: 0.76rem;
           font-weight: 700;
           letter-spacing: 0.05em;
@@ -1113,7 +1120,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           background: rgba(255,255,255,0.05);
           color: var(--text);
           padding: 12px 14px;
-          font-size: 0.9rem;
+          font-size: 16px;
           outline: none;
           transition: border-color 0.2s, box-shadow 0.2s;
         }

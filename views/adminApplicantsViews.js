@@ -2226,7 +2226,7 @@ function renderOfferCard(application) {
     'Confirm they accept and lock in a start date.',
     'Send the official offer + onboarding invite from the Bartender Dashboard.',
     'Build their training schedule and email it to lentz@dramanddraught.com and carrie@dramanddraught.com.',
-    'Once they accept, move them to “Hired” here to issue their dashboard login.',
+    'Once they accept, move them to “Hired” here.',
   ];
   const lis = items.map((t, i) => `
         <li class="ap-offer-item">

@@ -15,6 +15,47 @@ function normalizeText(value) {
   return String(value || '').trim();
 }
 
+// ─── Import-from-Dram support ───────────────────────────────────────────────
+// The public Dram & Draught site exposes events its admins created (and which
+// aren't owned by menuqr yet) at GET /api/external/events, behind a shared
+// X-API-Key. We pull that list to offer a guided "import & finish" on our admin
+// events page. Configure via DRAM_PUBLIC_URL + DRAM_EXTERNAL_API_KEY.
+function dramApiConfig() {
+  const base = (process.env.DRAM_PUBLIC_URL || 'https://public.dramanddraught.com').replace(/\/+$/, '');
+  const key = process.env.DRAM_EXTERNAL_API_KEY || process.env.EXTERNAL_API_KEY || '';
+  return { base, key };
+}
+
+async function fetchImportableDramEvents() {
+  const { base, key } = dramApiConfig();
+  if (!key || typeof fetch !== 'function') return [];
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 4000);
+    const resp = await fetch(`${base}/api/external/events`, {
+      headers: { 'X-API-Key': key, Accept: 'application/json' },
+      signal: ctrl.signal,
+    }).finally(() => clearTimeout(t));
+    if (!resp.ok) { console.warn('[import] Dram feed returned', resp.status); return []; }
+    const data = await resp.json();
+    return Array.isArray(data?.items) ? data.items : [];
+  } catch (err) {
+    console.warn('[import] Could not reach Dram feed:', err.message);
+    return [];
+  }
+}
+
+// Best-effort: match a public event's location (name/city) to a menuqr location.
+function matchLocationId(publicLoc, locations) {
+  if (!publicLoc || !Array.isArray(locations)) return '';
+  const name = String(publicLoc.name || '').trim().toLowerCase();
+  const city = String(publicLoc.city || '').trim().toLowerCase();
+  const byName = locations.find(l => String(l.name || '').trim().toLowerCase() === name && name);
+  if (byName) return byName.id;
+  const bySlug = locations.find(l => String(l.slug || '').trim().toLowerCase() === city && city);
+  return bySlug ? bySlug.id : '';
+}
+
 // Validate the public "spots left" indicator mode.
 function normalizeSpotsLeftMode(value) {
   const v = String(value || '').trim();
@@ -410,7 +451,28 @@ async function handleAdminEvents(req, res, pathname, prisma) {
       return rows;
     });
 
-    sendHTML(res, 200, eventsList(events, user, flashMsg, safeFilter));
+    // Offer a guided import of events the Dram website created but that aren't
+    // on menuqr yet. Best-effort + non-blocking: a feed outage just hides it.
+    let importable = [];
+    if (safeFilter === 'upcoming') {
+      const dramEvents = await fetchImportableDramEvents();
+      if (dramEvents.length) {
+        // Drop any we've already imported (covers the window before the public
+        // sync flips the originating row off its feed).
+        const alreadyImported = await prisma.event
+          .findMany({ where: { importedFromPublicId: { not: null } }, select: { importedFromPublicId: true } })
+          .then(rows => new Set(rows.map(r => r.importedFromPublicId)))
+          .catch(() => new Set());
+        importable = dramEvents.filter(it => !alreadyImported.has(Number(it.id)));
+        // Honor location scoping for non-company-wide users.
+        if (!userIsCompanyWide) {
+          const allowedNames = new Set(locations.map(l => String(l.name || '').toLowerCase()));
+          importable = importable.filter(it => it.location && allowedNames.has(String(it.location.name || '').toLowerCase()));
+        }
+      }
+    }
+
+    sendHTML(res, 200, eventsList(events, user, flashMsg, safeFilter, importable));
     return true;
   }
 
@@ -470,6 +532,12 @@ async function handleAdminEvents(req, res, pathname, prisma) {
             themeKey: normalizeThemeKey(body.themeKey),
             spotsLeftMode: normalizeSpotsLeftMode(body.spotsLeftMode),
             bannerStyle: normalizeBannerStyle(body.bannerStyle),
+            // When finishing an imported Dram event, link it back so the public
+            // sync transfers ownership to that row instead of duplicating it.
+            importedFromPublicId: (() => {
+              const n = parseInt(body.importedFromPublicId, 10);
+              return Number.isFinite(n) ? n : null;
+            })(),
           },
         });
         // Find slug for audit context
@@ -488,6 +556,35 @@ async function handleAdminEvents(req, res, pathname, prisma) {
     }
 
     const flashMsg = getFlashMsg(req.url);
+
+    // Guided import: ?importFrom=<publicEventId> pre-fills the create form from a
+    // Dram website event, then the admin finishes the menuqr-specific setup.
+    const importFrom = new URL(req.url, 'http://x').searchParams.get('importFrom');
+    if (importFrom) {
+      const dramEvents = await fetchImportableDramEvents();
+      const src = dramEvents.find(it => String(it.id) === String(importFrom));
+      if (!src) {
+        redirect(res, '/admin/events?msg=' + encodeURIComponent('error|That Dram event could not be found — it may already be imported.'));
+        return true;
+      }
+      const draft = {
+        title: src.title || '',
+        description: src.description || src.summary || '',
+        slug: '',
+        startDate: src.startAt || null,
+        endDate: src.endAt || null,
+        image: src.heroImage || '',
+        capacity: src.capacity || null,
+        ticketUrl: src.ticketUrl || '',
+        locationId: matchLocationId(src.location, locations),
+      };
+      sendHTML(res, 200, eventEditor(draft, locations, user, flashMsg, 0, {
+        forceNew: true,
+        importedFromPublicId: src.id,
+      }));
+      return true;
+    }
+
     sendHTML(res, 200, eventEditor(null, locations, user, flashMsg));
     return true;
   }

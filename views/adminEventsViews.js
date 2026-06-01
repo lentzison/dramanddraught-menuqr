@@ -365,7 +365,7 @@ function eventStatusBadge(event) {
 // ─── Events list (redesigned) ───
 // Same data, much more scannable: hero thumbnail, status pill, signup count
 // bar, inline action menu (Copy / QR / Public / Signups / Edit).
-function eventsList(events, user, flashMsg, filter = 'upcoming') {
+function eventsList(events, user, flashMsg, filter = 'upcoming', importable = []) {
   const now = new Date();
   const bucketOf = (ev) => {
     if (ev.isCancelled) return 'cancelled';
@@ -604,6 +604,30 @@ function eventsList(events, user, flashMsg, filter = 'upcoming') {
       ${filterChip('cancelled', 'Cancelled', counts.cancelled)}
       ${filterChip('all', 'All', counts.all)}
     </div>
+
+    ${Array.isArray(importable) && importable.length ? `
+    <div class="ev-import-rail" style="margin:0 0 16px;padding:14px 16px;border-radius:12px;background:linear-gradient(180deg,rgba(125,211,252,0.08),rgba(125,211,252,0.02));border:1px solid rgba(125,211,252,0.3);">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+        <span style="font-size:1.05rem;">✨</span>
+        <strong style="color:#cfe4ff;">From the Dram &amp; Draught website</strong>
+        <span style="color:var(--text-muted);font-size:0.84rem;">— ${importable.length} event${importable.length === 1 ? '' : 's'} created on the public site, not yet on menuqr.</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        ${importable.map(it => {
+          const d = it.startAt ? new Date(it.startAt) : null;
+          const when = d ? d.toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Date TBD';
+          const loc = it.location ? [it.location.name, it.location.city].filter(Boolean).join(', ') : '';
+          return `
+          <div style="display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:8px;background:rgba(0,0,0,0.15);">
+            <div style="min-width:0;flex:1;">
+              <div style="color:var(--text);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHTML(it.title || 'Untitled event')}</div>
+              <div style="color:var(--text-muted);font-size:0.8rem;">${escHTML(when)}${loc ? ' · ' + escHTML(loc) : ''}</div>
+            </div>
+            <a class="btn btn-primary btn-sm" href="/admin/events/new?importFrom=${encodeURIComponent(it.id)}">Import &amp; finish →</a>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : ''}
 
     ${visible.length === 0 ? `
       <div class="ev-empty">
@@ -996,13 +1020,17 @@ function renderSectionsCard(event, actionUrl) {
 }
 
 // ─── Event editor (create or edit) ───
-function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
-  const isNew = !event;
+function eventEditor(event, locations, user, flashMsg, signupCount = 0, opts = {}) {
+  // opts.forceNew renders the create form (POSTs to /new) while still seeding
+  // field values from a passed-in `event` shape — used by the "import from Dram"
+  // flow, which pre-fills core fields but leaves it a brand-new menuqr event.
+  const isNew = !event || opts.forceNew === true;
   const title = isNew ? 'New Event' : 'Edit Event';
   const actionUrl = isNew ? '/admin/events/new' : `/admin/events/${escHTML(event.id)}`;
 
   const locationOptions = locations.map(l => {
-    const selected = !isNew && event.locationId === l.id ? ' selected' : '';
+    // Pre-select whenever we have a locationId to seed (real edit OR import).
+    const selected = event && event.locationId === l.id ? ' selected' : '';
     return `<option value="${escHTML(l.id)}"${selected}>${escHTML(l.name)}</option>`;
   }).join('');
 
@@ -1533,6 +1561,11 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0) {
     ${editorTabs}
 
     <form method="POST" action="${actionUrl}" id="ev-form" data-autosave="event-${escHTML(event?.id || 'new')}">
+      ${opts.importedFromPublicId ? `
+      <input type="hidden" name="importedFromPublicId" value="${escHTML(String(opts.importedFromPublicId))}" />
+      <div class="ev-import-banner" style="margin:0 0 1rem;padding:0.75rem 1rem;border-radius:10px;background:#1e3a5f;border:1px solid #2f5a8f;color:#cfe4ff;font-size:0.9rem;">
+        ✨ Pre-filled from a <strong>Dram &amp; Draught</strong> event. Review the basics, add menuqr setup (signups, theme, sections), then save — this will become the menuqr event and stop the website from creating a duplicate.
+      </div>` : ''}
       <div class="ev-tab-panel is-active" data-tab-panel="basics">
       <!-- ─── Basics ─── -->
       <div class="ev-section" id="event-details">

@@ -2212,11 +2212,12 @@ function renderHistoryCard(application, auditEvents, interviews) {
 // Onboarding card for hired applicants — sits in the right rail when the
 // pipeline state is "hired". Shows the dashboard-invite state and lets the
 // admin send / resend / pick a different role.
-// Offer / hire checklist. Offer letters + onboarding invites are sent from the
-// Bartender Dashboard, not menuqr — so once an applicant reaches "Offer
-// Extended" (and through "Hired") this surfaces the steps to complete (state
-// saved per-device in localStorage) plus a direct link to the dashboard's
-// invite screen. Shown for both statuses so the steps get done before/at hire.
+// Offer / hire checklist. The offer letter is sent from the Bartender
+// Dashboard; the employee's dashboard invite is sent from menuqr's Onboarding
+// panel, which only unlocks at "Hired" status. Shown for both offer_extended
+// and hired so the steps get done through the hire (checkbox state saved
+// per-device in localStorage). The callout makes the "move to Hired to send the
+// invite" requirement explicit at the offer stage.
 function renderOfferCard(application) {
   if (application.status !== 'offer_extended' && application.status !== 'hired') return '';
   const base = (process.env.BARTENDER_DASHBOARD_URL || 'https://bartender-app.apps.dramanddraught.com').replace(/\/+$/, '');
@@ -2224,10 +2225,14 @@ function renderOfferCard(application) {
   const items = [
     'Call the candidate and verbally extend the offer — role, pay, and start date.',
     'Confirm they accept and lock in a start date.',
-    'Send the official offer + onboarding invite from the Bartender Dashboard.',
+    'Send the official offer letter from the Bartender Dashboard.',
     'Build their training schedule and email it to lentz@dramanddraught.com and carrie@dramanddraught.com.',
-    'Once they accept, move them to “Hired” here.',
+    'Move them to “Hired” here — that unlocks the dashboard invite below.',
   ];
+  const atOffer = application.status === 'offer_extended';
+  const note = atOffer
+    ? '📩 The employee’s dashboard invite is sent from the <strong>Onboarding</strong> panel here — but it only appears once you move them to <strong>Hired</strong>. Move them to Hired to send the invite.'
+    : '📩 Send their dashboard invite from the <strong>Onboarding</strong> panel below.';
   const lis = items.map((t, i) => `
         <li class="ap-offer-item">
           <label><input type="checkbox" class="ap-offer-check" data-idx="${i}" /> <span>${escHTML(t)}</span></label>
@@ -2240,14 +2245,15 @@ function renderOfferCard(application) {
         .ap-offer-item label { display:flex; gap:9px; align-items:flex-start; cursor:pointer; font-size:0.9rem; line-height:1.4; color:var(--text); }
         .ap-offer-item input { margin-top:3px; flex:0 0 auto; }
         .ap-offer-item.is-done span { text-decoration:line-through; color:var(--text-muted); }
+        .ap-offer-note { margin-top:14px; padding:10px 12px; border-radius:var(--radius); background:rgba(240,199,102,0.12); border:1px solid rgba(240,199,102,0.4); color:var(--text); font-size:0.86rem; line-height:1.45; }
       </style>
       <div class="ap-card-head">
         <h2>Offer &amp; hire checklist</h2>
         <a class="ap-card-aside" href="${escAttr(invitesUrl)}" target="_blank" rel="noopener" style="color:var(--text-muted); text-decoration:none;">Dashboard ↗</a>
       </div>
-      <p class="ap-onb-sub" style="margin:0 0 12px;">Complete these before marking the candidate hired. Offers and onboarding invites go out from the Bartender Dashboard — not here.</p>
+      <p class="ap-onb-sub" style="margin:0 0 12px;">Complete these as you extend the offer and hire the candidate.</p>
       <ul class="ap-offer-list" data-offer-key="${escAttr(key)}">${lis}</ul>
-      <a href="${escAttr(invitesUrl)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm" style="display:block; text-align:center; margin-top:14px;">Send the invite in the Dashboard ↗</a>
+      <div class="ap-offer-note">${note}</div>
       <script>
         (function(){
           var list = document.querySelector('[data-offer-key="${escAttr(key)}"]');

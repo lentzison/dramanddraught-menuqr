@@ -249,7 +249,7 @@ function generateQuestionnaireLinkExpiredPage({ application, locationName, locat
       <p style="margin-top:22px;">
         <a class="action-link" href="/${escHTML(locationSlug)}/apply">Start a new application &rarr;</a>
       </p>
-      <p style="margin-top:14px; color:#8d9299; font-size:0.85rem;">If you'd rather not re-apply, email <a href="mailto:hiring@dramanddraught.com" style="color:var(--gold);">hiring@dramanddraught.com</a> and ask us to reopen reference ${escHTML(application.id)}.</p>
+      <p style="margin-top:14px; color:#8d9299; font-size:0.85rem;">If you'd rather not re-apply, email <a href="mailto:cheers@dramanddraught.com" style="color:var(--gold);">cheers@dramanddraught.com</a> and ask us to reopen reference ${escHTML(application.id)}.</p>
       <p style="margin-top:18px;"><a class="q-back-link" href="/${escHTML(locationSlug)}">&larr; Back to ${escHTML(locationName)}</a></p>
     </div>`;
   return pageShell('Questionnaire link expired', body);

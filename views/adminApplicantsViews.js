@@ -2212,27 +2212,24 @@ function renderHistoryCard(application, auditEvents, interviews) {
 // Onboarding card for hired applicants — sits in the right rail when the
 // pipeline state is "hired". Shows the dashboard-invite state and lets the
 // admin send / resend / pick a different role.
-// Offer / hire checklist. The offer letter is sent from the Bartender
-// Dashboard; the employee's dashboard invite is sent from menuqr's Onboarding
-// panel, which only unlocks at "Hired" status. Shown for both offer_extended
-// and hired so the steps get done through the hire (checkbox state saved
-// per-device in localStorage). The callout makes the "move to Hired to send the
-// invite" requirement explicit at the offer stage.
+// Offer / hire checklist. The invite sent from menuqr's Onboarding panel
+// delivers both the offer letter and the dashboard login in one — and that
+// panel only unlocks at "Hired" status. Shown for both offer_extended and
+// hired so the steps get done through the hire (checkbox state saved per-device
+// in localStorage). The callout makes the "move to Hired to send the invite"
+// requirement explicit at the offer stage.
 function renderOfferCard(application) {
   if (application.status !== 'offer_extended' && application.status !== 'hired') return '';
-  const base = (process.env.BARTENDER_DASHBOARD_URL || 'https://bartender-app.apps.dramanddraught.com').replace(/\/+$/, '');
-  const invitesUrl = `${base}/team/invites`;
   const items = [
     'Call the candidate and verbally extend the offer — role, pay, and start date.',
     'Confirm they accept and lock in a start date.',
-    'Send the official offer letter from the Bartender Dashboard.',
     'Build their training schedule and email it to lentz@dramanddraught.com and carrie@dramanddraught.com.',
-    'Move them to “Hired” here — that unlocks the dashboard invite below.',
+    'Move them to “Hired”, then send their invite from the Onboarding panel — that delivers the offer letter + dashboard login.',
   ];
   const atOffer = application.status === 'offer_extended';
   const note = atOffer
-    ? '📩 The employee’s dashboard invite is sent from the <strong>Onboarding</strong> panel here — but it only appears once you move them to <strong>Hired</strong>. Move them to Hired to send the invite.'
-    : '📩 Send their dashboard invite from the <strong>Onboarding</strong> panel below.';
+    ? '📩 The invite from the <strong>Onboarding</strong> panel sends their offer letter + dashboard login — but it only unlocks once you move them to <strong>Hired</strong>. Move them to Hired to send it.'
+    : '📩 Send their invite from the <strong>Onboarding</strong> panel below — it delivers the offer letter + dashboard login.';
   const lis = items.map((t, i) => `
         <li class="ap-offer-item">
           <label><input type="checkbox" class="ap-offer-check" data-idx="${i}" /> <span>${escHTML(t)}</span></label>
@@ -2249,7 +2246,6 @@ function renderOfferCard(application) {
       </style>
       <div class="ap-card-head">
         <h2>Offer &amp; hire checklist</h2>
-        <a class="ap-card-aside" href="${escAttr(invitesUrl)}" target="_blank" rel="noopener" style="color:var(--text-muted); text-decoration:none;">Dashboard ↗</a>
       </div>
       <p class="ap-onb-sub" style="margin:0 0 12px;">Complete these as you extend the offer and hire the candidate.</p>
       <ul class="ap-offer-list" data-offer-key="${escAttr(key)}">${lis}</ul>

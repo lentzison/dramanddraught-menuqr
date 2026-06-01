@@ -1526,7 +1526,13 @@ function generateEventPage(location, event, signupCount, options = {}) {
         .ev-hero.ev-hero-image::before { display: none; }
         .ev-hero-banner {
           display: block;
-          width: 100%;
+          margin: 0 auto;
+          /* Never upscale: a small source (e.g. 450x200) shows crisp at its
+             native size, centered on the themed hero; larger images scale down
+             to fill the width. Avoids the blurry/"distorted" stretch. */
+          max-width: 100%;
+          max-height: 78vh;
+          width: auto;
           height: auto;
         }
         .ev-banner-img {

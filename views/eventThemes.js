@@ -618,6 +618,22 @@ const RAW_THEMES = [
       font: "'Trebuchet MS', 'Avenir Next', 'Segoe UI', sans-serif",
     },
   },
+  {
+    key: 'run-club',
+    label: 'Run Club',
+    description: 'Energetic morning-run look — cool asphalt and sky with race-day orange. For run clubs, fun runs and group workouts.',
+    group: 'Active',
+    bodyClass: 'ev-t-runclub',
+    swatch: { bg: '#eef5f8', bg2: '#dbe7ee', accent: '#ff5a36', accent2: '#1f9fb5' },
+    palette: {
+      scheme: 'light',
+      accent: '#ff5a36', accent2: '#1f9fb5',
+      bgA: '#eef5f8', bgMid: '#e6eef3', bgB: '#dbe7ee',
+      text: '#1b2932', steel: '#34495a', muted: '#5e7384', smoke: '#8aa0ad',
+      panel: '#ffffff', panelStrong: '#eef5f8',
+      font: "'Trebuchet MS', 'Avenir Next', 'Segoe UI', sans-serif",
+    },
+  },
 ];
 
 const EVENT_THEMES = RAW_THEMES;

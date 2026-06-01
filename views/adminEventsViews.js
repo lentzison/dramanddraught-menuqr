@@ -606,28 +606,36 @@ function eventsList(events, user, flashMsg, filter = 'upcoming', importable = []
     </div>
 
     ${Array.isArray(importable) && importable.length ? `
-    <div class="ev-import-rail" style="margin:0 0 16px;padding:14px 16px;border-radius:12px;background:linear-gradient(180deg,rgba(125,211,252,0.08),rgba(125,211,252,0.02));border:1px solid rgba(125,211,252,0.3);">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+    <style>
+      .ev-import-rail > summary::-webkit-details-marker { display:none; }
+      .ev-import-rail .ev-import-toggle::after { content:'Show ▾'; }
+      .ev-import-rail[open] .ev-import-toggle::after { content:'Hide ▴'; }
+    </style>
+    <details class="ev-import-rail" style="margin:0 0 16px;border-radius:12px;background:linear-gradient(180deg,rgba(125,211,252,0.08),rgba(125,211,252,0.02));border:1px solid rgba(125,211,252,0.3);">
+      <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;padding:12px 16px;">
         <span style="font-size:1.05rem;">✨</span>
         <strong style="color:#cfe4ff;">From the Dram &amp; Draught website</strong>
-        <span style="color:var(--text-muted);font-size:0.84rem;">— ${importable.length} event${importable.length === 1 ? '' : 's'} created on the public site, not yet on menuqr.</span>
+        <span style="color:var(--text-muted);font-size:0.84rem;">— ${importable.length} event${importable.length === 1 ? '' : 's'} not yet on menuqr</span>
+        <span class="ev-import-toggle" style="margin-left:auto;color:#9cc7ee;font-size:0.78rem;font-weight:700;white-space:nowrap;"></span>
+      </summary>
+      <div style="padding:0 16px 14px;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px;max-height:300px;overflow:auto;">
+          ${importable.map(it => {
+            const d = it.startAt ? new Date(it.startAt) : null;
+            const when = d ? d.toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Date TBD';
+            const loc = it.location ? [it.location.name, it.location.city].filter(Boolean).join(', ') : '';
+            return `
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:rgba(0,0,0,0.15);">
+              <div style="min-width:0;flex:1;">
+                <div style="color:var(--text);font-weight:700;font-size:0.88rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHTML(it.title || 'Untitled event')}</div>
+                <div style="color:var(--text-muted);font-size:0.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHTML(when)}${loc ? ' · ' + escHTML(loc) : ''}</div>
+              </div>
+              <a class="btn btn-primary btn-sm" href="/admin/events/new?importFrom=${encodeURIComponent(it.id)}" style="white-space:nowrap;">Import →</a>
+            </div>`;
+          }).join('')}
+        </div>
       </div>
-      <div style="display:flex;flex-direction:column;gap:8px;">
-        ${importable.map(it => {
-          const d = it.startAt ? new Date(it.startAt) : null;
-          const when = d ? d.toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Date TBD';
-          const loc = it.location ? [it.location.name, it.location.city].filter(Boolean).join(', ') : '';
-          return `
-          <div style="display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:8px;background:rgba(0,0,0,0.15);">
-            <div style="min-width:0;flex:1;">
-              <div style="color:var(--text);font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHTML(it.title || 'Untitled event')}</div>
-              <div style="color:var(--text-muted);font-size:0.8rem;">${escHTML(when)}${loc ? ' · ' + escHTML(loc) : ''}</div>
-            </div>
-            <a class="btn btn-primary btn-sm" href="/admin/events/new?importFrom=${encodeURIComponent(it.id)}">Import &amp; finish →</a>
-          </div>`;
-        }).join('')}
-      </div>
-    </div>` : ''}
+    </details>` : ''}
 
     ${visible.length === 0 ? `
       <div class="ev-empty">

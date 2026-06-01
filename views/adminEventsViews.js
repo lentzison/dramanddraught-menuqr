@@ -1586,10 +1586,10 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0, opts = {
         <div class="ev-field-grid">
           <div>
             <label for="ev-location">Location <span style="color:#f87171">*</span></label>
-            <select id="ev-location" name="locationId" required ${!isNew ? 'disabled' : ''}>
+            <select id="ev-location" name="locationId" required>
               ${locationOptions}
             </select>
-            ${!isNew ? `<input type="hidden" name="locationId" value="${escHTML(event.locationId)}" />` : ''}
+            ${!isNew ? `<p style="color:#888; font-size:0.78rem; margin:6px 0 0">Changing the location moves the event (and its public URL) to that venue.</p>` : ''}
           </div>
           <div>
             <label for="ev-slug">URL Slug <span style="color:#888; font-weight:400; font-size:0.8rem">(optional — auto-generated from name)</span></label>

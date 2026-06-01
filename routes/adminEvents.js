@@ -1019,9 +1019,27 @@ async function handleAdminEvents(req, res, pathname, prisma) {
       if (!title) { redirect(res, editFlashError('Event name is required.')); return true; }
 
       const customQuestions = parseCustomQuestions(body);
-      const newSlug = body.slug ? slugify(body.slug) : event.slug;
-      const slug = newSlug !== event.slug
-        ? await ensureUniqueSlug(prisma, event.locationId, newSlug || slugify(title), eventId)
+
+      // Allow moving the event to a different location (e.g. saved to the wrong
+      // one). Validate it's a real location the user can manage.
+      let targetLocationId = event.locationId;
+      const requestedLoc = normalizeText(body.locationId);
+      if (requestedLoc && requestedLoc !== event.locationId) {
+        if (!locations.some(l => l.id === requestedLoc)) {
+          redirect(res, editFlashError('Unknown location.')); return true;
+        }
+        if (!userIsCompanyWide && !allowedLocationIds.has(requestedLoc)) {
+          redirect(res, editFlashError('You can only move events to your own location.')); return true;
+        }
+        targetLocationId = requestedLoc;
+      }
+      const locationChanged = targetLocationId !== event.locationId;
+
+      // Re-check slug uniqueness whenever the slug OR the location changes
+      // (slugs are unique per location).
+      const desiredSlug = body.slug ? slugify(body.slug) : event.slug;
+      const slug = (desiredSlug !== event.slug || locationChanged)
+        ? await ensureUniqueSlug(prisma, targetLocationId, desiredSlug || slugify(title), eventId)
         : event.slug;
       const imageValue = await resolveEventImage(body.image, slug);
 
@@ -1031,6 +1049,7 @@ async function handleAdminEvents(req, res, pathname, prisma) {
           data: {
             title,
             slug,
+            locationId: targetLocationId,
             description: normalizeText(body.description) || null,
             startDate: parseDateTimeLocal(body.startDate) || event.startDate,
             endDate: parseDateTimeLocal(body.endDate),

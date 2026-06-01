@@ -405,6 +405,9 @@ async function handlePublicEventsFeed(req, res, prisma) {
       ticketUrl: ev.ticketUrl || null,
       ticketProvider: ev.ticketProvider || null,
       ticketingMode: ev.ticketUrl ? (ev.ticketProvider || 'external') : 'internal',
+      // If this was imported from the public Dram site, tell the public sync so
+      // it re-points the original row (ownership transfer) instead of dup'ing.
+      importedFromPublicId: ev.importedFromPublicId ?? null,
     }));
 
     sendJSON(res, 200, { ok: true, count: items.length, items, fetchedAt: new Date().toISOString() });

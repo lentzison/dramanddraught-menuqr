@@ -323,6 +323,12 @@ model Event {
   // per event (e.g. info-only events that don't really need a T-24h ping).
   remindersEnabled Boolean   @default(true)
 
+  // When this event was imported from the public Dram & Draught site, the id of
+  // the originating public event. Sent in the /api/public/events feed so the
+  // public side re-points (transfers ownership to) that original row instead of
+  // creating a duplicate. Null for events authored directly in menuqr.
+  importedFromPublicId Int?
+
   location         Location       @relation(fields: [locationId], references: [id], onDelete: Cascade)
   signups          EventSignup[]
 

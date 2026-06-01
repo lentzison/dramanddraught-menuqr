@@ -2189,11 +2189,16 @@ async function uploadImageToMedia(dataUrl, { collection = 'menuqr', tags = '' } 
 
 // Rewrite a stored media image URL into a specific transform/crop. The public
 // media server route is GET /media/:type/:spec/:fileId (spec before fileId).
-// Non-media URLs (data URLs, arbitrary hosted images) pass through unchanged.
+// Handles URLs that are EITHER plain (/media/image/<fileId>[?query]) OR already
+// carry a transform (/media/image/<oldSpec>/<fileId>) — the fileId is always
+// the last path segment, so we take that and swap in our spec. Non-media URLs
+// (data URLs, arbitrary hosted images) pass through unchanged.
 function mediaRenditionUrl(url, spec) {
-  const m = /^(https?:\/\/[^/]+)\/media\/(image|video)\/([^/?#]+)/i.exec(String(url || ''));
+  const m = /^(https?:\/\/[^/]+)\/media\/(image|video)\/([^?#]+)/i.exec(String(url || ''));
   if (!m || !spec) return url;
-  return `${m[1]}/media/${m[2]}/${spec}/${m[3]}`;
+  const fileId = m[3].split('/').filter(Boolean).pop();
+  if (!fileId) return url;
+  return `${m[1]}/media/${m[2]}/${spec}/${fileId}`;
 }
 
 module.exports = {

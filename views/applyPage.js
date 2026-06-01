@@ -151,7 +151,7 @@ function generateApplyPage(location, opts = {}) {
       </p>
       <p style="color: #d6d2c5; line-height: 1.55; margin: 0;">
         Need an accommodation or an alternate way to complete this application? Email
-        <a href="mailto:hiring@dramanddraught.com" style="color: var(--gold); text-decoration: underline;">hiring@dramanddraught.com</a>.
+        <a href="mailto:cheers@dramanddraught.com" style="color: var(--gold); text-decoration: underline;">cheers@dramanddraught.com</a>.
         Requesting accommodation won't be held against you.
       </p>
     </div>

@@ -141,20 +141,37 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
         .hero {
           position: relative;
           overflow: hidden;
-          padding: 48px 22px 40px;
+          padding: 34px 22px 34px;
           text-align: center;
+          border-radius: 0 0 30px 30px;
+          border: 1px solid var(--line);
+          border-top: 0;
           margin: 0 auto;
           max-width: 1020px;
-          background: transparent;
+          background:
+            linear-gradient(180deg, rgba(24, 25, 28, 0.97), rgba(7, 7, 8, 0.98)),
+            radial-gradient(circle at top, rgba(255, 255, 255, 0.08), transparent 42%);
+          box-shadow: 0 22px 58px var(--shadow), inset 0 0 0 1px rgba(255,255,255,0.04);
         }
-        /* One soft, centered glow behind the wordmark — no busy texture
-           (the page background already carries the grain). */
+        .hero::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background:
+            repeating-linear-gradient(90deg, rgba(255,255,255,0.03), rgba(255,255,255,0.03) 1px, transparent 1px, transparent 8px),
+            repeating-linear-gradient(0deg, rgba(0,0,0,0.06), rgba(0,0,0,0.06) 1px, transparent 1px, transparent 10px);
+          opacity: 0.28;
+          pointer-events: none;
+        }
         .hero::after {
           content: '';
           position: absolute;
           inset: 0;
-          background: radial-gradient(560px 240px at 50% 8%, rgba(210, 170, 103, 0.10), transparent 60%);
+          background:
+            radial-gradient(520px 220px at 70% 12%, rgba(255,255,255,0.08), transparent 45%),
+            radial-gradient(430px 180px at 18% 74%, rgba(111,118,127,0.12), transparent 50%);
           pointer-events: none;
+          opacity: 0.9;
         }
         .hero-title {
           position: relative;
@@ -296,50 +313,35 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
         }
         .linktree {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-          gap: 10px;
+          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+          gap: 12px;
         }
         .link-btn {
           display: flex;
           align-items: center;
           justify-content: center;
+          gap: 12px;
           text-decoration: none;
           text-align: center;
-          padding: 17px 18px;
-          border-radius: 12px;
-          margin: 0;
-          min-height: 58px;
-          font-weight: 700;
-          text-transform: uppercase;
-          letter-spacing: 0.14em;
-          line-height: 1.25;
-          font-size: 0.78rem;
-          transition: border-color .2s ease, background .2s ease, color .2s ease, transform .2s ease;
-        }
-        /* Secondary links: flat, hairline-bordered tiles. Gold appears only
-           on hover — restraint reads more expensive than constant gold. */
-        .link-btn:not(.link-btn-primary) {
-          color: var(--steel);
-          background: rgba(255, 255, 255, 0.018);
-          border: 1px solid var(--line);
-        }
-        .link-btn:not(.link-btn-primary):hover {
-          color: var(--accent-light);
-          border-color: rgba(210, 170, 103, 0.5);
-          background: rgba(210, 170, 103, 0.06);
-          transform: translateY(-1px);
-        }
-        /* Primary CTAs: a single flat gold fill, full width — confident, not loud. */
-        .link-btn-primary {
-          grid-column: 1 / -1;
-          min-height: 62px;
-          font-size: 0.9rem;
-          letter-spacing: 0.16em;
           color: var(--ink);
-          background: linear-gradient(180deg, #e7ce98, var(--gold));
-          border: 1px solid rgba(210, 170, 103, 0.55);
+          background: linear-gradient(180deg, var(--accent-light), var(--gold) 64%, var(--amber));
+          padding: 18px 20px;
+          border-radius: 14px;
+          font-weight: 800;
+          margin: 0;
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38), 0 12px 24px rgba(0,0,0,0.32);
+          transition: transform .2s ease, filter .2s ease, box-shadow .2s ease;
+          min-height: 78px;
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          text-transform: uppercase;
+          letter-spacing: 0.06em;
+          line-height: 1.35;
         }
-        .link-btn-primary:hover { filter: brightness(1.05); transform: translateY(-1px); }
+        .link-btn-primary {
+          min-height: 86px;
+          font-size: 0.96rem;
+        }
+        .link-btn:hover { transform: translateY(-2px) scale(1.01); filter: saturate(1.08); box-shadow: 0 12px 28px rgba(0,0,0,0.6); }
         .link-btn:focus-visible { outline: 2px solid #f8e7a8; outline-offset: 2px; }
         .chip {
           background: rgba(255,255,255,0.05);
@@ -801,18 +803,16 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
             gap: 10px;
           }
           .link-btn {
-            min-height: 56px;
-            padding: 14px 8px;
-            border-radius: 12px;
-            font-size: 0.72rem;
-            letter-spacing: 0.09em;
+            min-height: 64px;
+            padding: 13px 10px;
+            border-radius: 14px;
+            font-size: 0.78rem;
             line-height: 1.25;
           }
           .link-btn-primary {
             grid-column: 1 / -1;
-            min-height: 58px;
-            font-size: 0.82rem;
-            letter-spacing: 0.12em;
+            min-height: 76px;
+            font-size: 0.93rem;
           }
           .loc-menu-stack { order: 2; }
           .loc-events { order: 3; padding-top: 6px; padding-bottom: 10px; }

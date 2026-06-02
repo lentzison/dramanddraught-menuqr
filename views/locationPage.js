@@ -4,6 +4,32 @@ const { brandMarkCss, renderBrandMark } = require('./brandMark');
 const { escHTML } = require('./escapeHtml');
 const { eventStatus, formatEventDate, formatEventTime } = require('./eventPage');
 
+// Pick a recognizable line icon for a quick-link based on its label, so the
+// linktree reads as a designed set of actions rather than a stack of words.
+function linkIcon(label) {
+  const l = String(label || '').toLowerCase();
+  const svg = (paths) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+  if (/instagram|insta/.test(l)) return svg('<rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.4" cy="6.6" r="1" fill="currentColor" stroke="none"/>');
+  if (/facebook|fb\b/.test(l)) return svg('<path d="M15 8h2V5.2A.2.2 0 0 0 16.8 5H15a3 3 0 0 0-3 3v2H10v3h2v6h3v-6h2.3l.4-3H15V8.2A.2.2 0 0 1 15 8"/>');
+  if (/tiktok/.test(l)) return svg('<path d="M14 4v9.5a3.5 3.5 0 1 1-3-3.46"/><path d="M14 4a4.5 4.5 0 0 0 4.5 4.5"/>');
+  if (/twitter|^x$|\bx\b/.test(l)) return svg('<path d="M4 4l16 16M20 4L4 20"/>');
+  if (/special/.test(l)) return svg('<path d="M5 4h14l-7 8z"/><path d="M12 12v6"/><path d="M8 21h8"/>');
+  if (/draft|beer|tap\b|brew/.test(l)) return svg('<path d="M6 8h9v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2z"/><path d="M15 10h2.5A1.5 1.5 0 0 1 19 11.5v3a1.5 1.5 0 0 1-1.5 1.5H15"/><path d="M8 8V6a2 2 0 0 1 2-2"/>');
+  if (/flight|spirit|whiskey|whisky|tasting|pour/.test(l)) return svg('<path d="M7 4h10l-1 14a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2z"/><path d="M7 9h10"/>');
+  if (/reserve|table|book/.test(l)) return svg('<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/><path d="M9 15l2 2 4-4"/>');
+  if (/event/.test(l)) return svg('<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/>');
+  if (/private|party|group/.test(l)) return svg('<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 6a3 3 0 0 1 0 6M21 20a6 6 0 0 0-4.2-5.7"/>');
+  if (/menu|food|kitchen|eat/.test(l)) return svg('<path d="M7 3v18M5 3v5a2 2 0 0 0 2 2M9 3v5a2 2 0 0 1-2 2"/><path d="M17 3c-1.5 0-2.5 2-2.5 5s1 4 2.5 4v9"/>');
+  if (/order|delivery|togo|to-go/.test(l)) return svg('<path d="M6 7h12l-1 13H7z"/><path d="M9 7a3 3 0 0 1 6 0"/>');
+  if (/call|phone|text/.test(l)) return svg('<path d="M5 4h3l2 5-2 1a11 11 0 0 0 5 5l1-2 5 2v3a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>');
+  if (/direction|map|location|address|find/.test(l)) return svg('<path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10"/><circle cx="12" cy="11" r="2.2"/>');
+  if (/gift|merch|shop|store/.test(l)) return svg('<rect x="4" y="8" width="16" height="12" rx="1"/><path d="M4 12h16M12 8v12"/><path d="M12 8S10 3 8 4s0 4 4 4M12 8s2-5 4-4-0 4-4 4"/>');
+  if (/hour|open|time/.test(l)) return svg('<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>');
+  if (/email|mail|contact/.test(l)) return svg('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M4 7l8 6 8-6"/>');
+  // default: external link / website
+  return svg('<path d="M9 15l6-6"/><path d="M11 6l1-1a4 4 0 0 1 6 6l-1 1"/><path d="M13 18l-1 1a4 4 0 0 1-6-6l1-1"/>');
+}
+
 function locationEventMeta(event) {
   const status = eventStatus(event, event.signupCount || 0);
   const isVendor = event.isVendorEvent === true;
@@ -304,42 +330,61 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
         .rl-card p { position: relative; margin: 0.45rem 0; font-size: 1rem; }
         .rl-strong { color: var(--gold); font-weight: 800; }
         .qr-actions {
+          width: 100%;
           max-width: 760px;
           margin: 0 auto;
           padding-top: 18px;
           padding-bottom: 12px;
+          box-sizing: border-box;
         }
         .linktree {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+          grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
           gap: 12px;
         }
         .link-btn {
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 12px;
+          gap: 11px;
           text-decoration: none;
           text-align: center;
-          color: var(--ink);
-          background: linear-gradient(180deg, var(--accent-light), var(--gold) 64%, var(--amber));
-          padding: 18px 20px;
+          padding: 16px 18px;
           border-radius: 14px;
           font-weight: 800;
           margin: 0;
-          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38), 0 12px 24px rgba(0,0,0,0.32);
-          transition: transform .2s ease, filter .2s ease, box-shadow .2s ease;
-          min-height: 78px;
-          border: 1px solid rgba(255, 255, 255, 0.12);
+          transition: transform .2s ease, filter .2s ease, box-shadow .2s ease, border-color .2s ease;
+          min-height: 68px;
           text-transform: uppercase;
-          letter-spacing: 0.06em;
-          line-height: 1.35;
+          letter-spacing: 0.05em;
+          line-height: 1.2;
+          font-size: 0.85rem;
         }
+        .link-btn svg { width: 20px; height: 20px; flex: 0 0 auto; }
+        /* Secondary links: refined dark glass with a gold accent + gold icon. */
+        .link-btn:not(.link-btn-primary) {
+          color: var(--cream);
+          background: linear-gradient(180deg, rgba(31, 33, 37, 0.92), rgba(15, 16, 18, 0.96));
+          border: 1px solid rgba(210, 170, 103, 0.26);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 10px 22px rgba(0,0,0,0.3);
+        }
+        .link-btn:not(.link-btn-primary) svg { color: var(--gold); }
+        .link-btn:not(.link-btn-primary):hover {
+          border-color: rgba(210, 170, 103, 0.62);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.07), 0 14px 30px rgba(0,0,0,0.5), 0 0 0 1px rgba(210,170,103,0.12);
+        }
+        /* Primary CTAs: the rich gold treatment, full width, larger. */
         .link-btn-primary {
-          min-height: 86px;
-          font-size: 0.96rem;
+          grid-column: 1 / -1;
+          min-height: 78px;
+          font-size: 1rem;
+          color: var(--ink);
+          background: linear-gradient(180deg, var(--accent-light), var(--gold) 64%, var(--amber));
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38), 0 13px 26px rgba(0,0,0,0.34);
         }
-        .link-btn:hover { transform: translateY(-2px) scale(1.01); filter: saturate(1.08); box-shadow: 0 12px 28px rgba(0,0,0,0.6); }
+        .link-btn-primary:hover { filter: saturate(1.08); box-shadow: 0 14px 30px rgba(0,0,0,0.6); }
+        .link-btn:hover { transform: translateY(-2px) scale(1.01); }
         .link-btn:focus-visible { outline: 2px solid #f8e7a8; outline-offset: 2px; }
         .chip {
           background: rgba(255,255,255,0.05);
@@ -805,13 +850,23 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
             padding: 13px 10px;
             border-radius: 14px;
             font-size: 0.78rem;
-            line-height: 1.25;
+            line-height: 1.2;
           }
+          /* Secondary tiles: icon stacked over label — gives the label full
+             tile width so longer labels never crowd, app-grid feel. */
+          .link-btn:not(.link-btn-primary) {
+            flex-direction: column;
+            gap: 7px;
+            min-height: 80px;
+            padding: 14px 8px;
+          }
+          .link-btn:not(.link-btn-primary) svg { width: 22px; height: 22px; }
           .link-btn-primary {
             grid-column: 1 / -1;
-            min-height: 76px;
+            min-height: 72px;
             font-size: 0.93rem;
           }
+          .link-btn-primary svg { width: 19px; height: 19px; }
           .loc-menu-stack { order: 2; }
           .loc-events { order: 3; padding-top: 6px; padding-bottom: 10px; }
           .loc-events-head {
@@ -909,7 +964,7 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
         `).join('')}</div>` : ''}
         <section class="qr-actions container" aria-label="Quick actions">
           <div class="linktree">
-            ${buttons.map((l, i) => `<a class="${actionButtonClass(l)} stagger" href="${l.url}"${l.url.startsWith('/') ? '' : ' target="_blank" rel="noopener noreferrer"'} style="animation-delay:${Math.min(i * 0.04, 0.2)}s;"><span>${l.label}</span></a>`).join('')}
+            ${buttons.map((l, i) => `<a class="${actionButtonClass(l)} stagger" href="${l.url}"${l.url.startsWith('/') ? '' : ' target="_blank" rel="noopener noreferrer"'} style="animation-delay:${Math.min(i * 0.04, 0.2)}s;">${linkIcon(l.label)}<span>${escHTML(l.label)}</span></a>`).join('')}
           </div>
         </section>
         <div class="review-cta">

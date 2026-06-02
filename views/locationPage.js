@@ -141,37 +141,20 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
         .hero {
           position: relative;
           overflow: hidden;
-          padding: 34px 22px 34px;
+          padding: 48px 22px 40px;
           text-align: center;
-          border-radius: 0 0 30px 30px;
-          border: 1px solid var(--line);
-          border-top: 0;
           margin: 0 auto;
           max-width: 1020px;
-          background:
-            linear-gradient(180deg, rgba(24, 25, 28, 0.97), rgba(7, 7, 8, 0.98)),
-            radial-gradient(circle at top, rgba(255, 255, 255, 0.08), transparent 42%);
-          box-shadow: 0 22px 58px var(--shadow), inset 0 0 0 1px rgba(255,255,255,0.04);
+          background: transparent;
         }
-        .hero::before {
-          content: '';
-          position: absolute;
-          inset: 0;
-          background:
-            repeating-linear-gradient(90deg, rgba(255,255,255,0.03), rgba(255,255,255,0.03) 1px, transparent 1px, transparent 8px),
-            repeating-linear-gradient(0deg, rgba(0,0,0,0.06), rgba(0,0,0,0.06) 1px, transparent 1px, transparent 10px);
-          opacity: 0.28;
-          pointer-events: none;
-        }
+        /* One soft, centered glow behind the wordmark — no busy texture
+           (the page background already carries the grain). */
         .hero::after {
           content: '';
           position: absolute;
           inset: 0;
-          background:
-            radial-gradient(520px 220px at 70% 12%, rgba(255,255,255,0.08), transparent 45%),
-            radial-gradient(430px 180px at 18% 74%, rgba(111,118,127,0.12), transparent 50%);
+          background: radial-gradient(560px 240px at 50% 8%, rgba(210, 170, 103, 0.10), transparent 60%);
           pointer-events: none;
-          opacity: 0.9;
         }
         .hero-title {
           position: relative;
@@ -291,7 +274,7 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
           color: #dedbd7;
           line-height: 1.65;
           text-align: left;
-          box-shadow: 0 16px 34px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(255,255,255,0.03);
+          box-shadow: 0 6px 20px rgba(0,0,0,0.18);
         }
         .rl-card::before {
           content: '';
@@ -313,50 +296,50 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
         }
         .linktree {
           display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-          gap: 12px;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 10px;
         }
         .link-btn {
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 11px;
           text-decoration: none;
           text-align: center;
-          padding: 16px 18px;
-          border-radius: 14px;
-          font-weight: 800;
+          padding: 17px 18px;
+          border-radius: 12px;
           margin: 0;
-          transition: transform .2s ease, filter .2s ease, box-shadow .2s ease, border-color .2s ease;
-          min-height: 68px;
+          min-height: 58px;
+          font-weight: 700;
           text-transform: uppercase;
-          letter-spacing: 0.05em;
-          line-height: 1.2;
-          font-size: 0.85rem;
+          letter-spacing: 0.14em;
+          line-height: 1.25;
+          font-size: 0.78rem;
+          transition: border-color .2s ease, background .2s ease, color .2s ease, transform .2s ease;
         }
-        /* Secondary links: refined dark glass with a gold accent border. */
+        /* Secondary links: flat, hairline-bordered tiles. Gold appears only
+           on hover — restraint reads more expensive than constant gold. */
         .link-btn:not(.link-btn-primary) {
-          color: var(--cream);
-          background: linear-gradient(180deg, rgba(31, 33, 37, 0.92), rgba(15, 16, 18, 0.96));
-          border: 1px solid rgba(210, 170, 103, 0.26);
-          box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 10px 22px rgba(0,0,0,0.3);
+          color: var(--steel);
+          background: rgba(255, 255, 255, 0.018);
+          border: 1px solid var(--line);
         }
         .link-btn:not(.link-btn-primary):hover {
-          border-color: rgba(210, 170, 103, 0.62);
-          box-shadow: inset 0 1px 0 rgba(255,255,255,0.07), 0 14px 30px rgba(0,0,0,0.5), 0 0 0 1px rgba(210,170,103,0.12);
+          color: var(--accent-light);
+          border-color: rgba(210, 170, 103, 0.5);
+          background: rgba(210, 170, 103, 0.06);
+          transform: translateY(-1px);
         }
-        /* Primary CTAs: the rich gold treatment, full width, larger. */
+        /* Primary CTAs: a single flat gold fill, full width — confident, not loud. */
         .link-btn-primary {
           grid-column: 1 / -1;
-          min-height: 78px;
-          font-size: 1rem;
+          min-height: 62px;
+          font-size: 0.9rem;
+          letter-spacing: 0.16em;
           color: var(--ink);
-          background: linear-gradient(180deg, var(--accent-light), var(--gold) 64%, var(--amber));
-          border: 1px solid rgba(255, 255, 255, 0.14);
-          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.38), 0 13px 26px rgba(0,0,0,0.34);
+          background: linear-gradient(180deg, #e7ce98, var(--gold));
+          border: 1px solid rgba(210, 170, 103, 0.55);
         }
-        .link-btn-primary:hover { filter: saturate(1.08); box-shadow: 0 14px 30px rgba(0,0,0,0.6); }
-        .link-btn:hover { transform: translateY(-2px) scale(1.01); }
+        .link-btn-primary:hover { filter: brightness(1.05); transform: translateY(-1px); }
         .link-btn:focus-visible { outline: 2px solid #f8e7a8; outline-offset: 2px; }
         .chip {
           background: rgba(255,255,255,0.05);
@@ -379,7 +362,7 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
           background: linear-gradient(180deg, rgba(20, 21, 24, 0.95), rgba(9, 9, 10, 0.98));
           padding: 22px 18px 18px;
           text-align: center;
-          box-shadow: 0 16px 32px rgba(0,0,0,0.28), inset 0 0 0 1px rgba(255,255,255,0.03);
+          box-shadow: 0 6px 20px rgba(0,0,0,0.18);
         }
         .review-cta h3 {
           color: var(--gold);
@@ -573,7 +556,7 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
           border-radius: 18px;
           border: 1px solid var(--line);
           background: linear-gradient(180deg, rgba(20,21,24,0.96), rgba(9,9,10,0.99));
-          box-shadow: 0 14px 30px rgba(0,0,0,0.22);
+          box-shadow: 0 6px 20px rgba(0,0,0,0.16);
         }
         .loc-event-card-featured {
           background:
@@ -674,7 +657,7 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
           border: 1px solid var(--line);
           border-radius: 16px;
           padding: 20px 20px 14px;
-          box-shadow: 0 10px 28px rgba(0,0,0,0.25);
+          box-shadow: 0 6px 20px rgba(0,0,0,0.16);
         }
         .menu-section-hdr {
           color: var(--gold);
@@ -818,16 +801,18 @@ function generateLocationPage(location, allLocations = [], menuCategories = [], 
             gap: 10px;
           }
           .link-btn {
-            min-height: 64px;
-            padding: 13px 10px;
-            border-radius: 14px;
-            font-size: 0.78rem;
-            line-height: 1.2;
+            min-height: 56px;
+            padding: 14px 8px;
+            border-radius: 12px;
+            font-size: 0.72rem;
+            letter-spacing: 0.09em;
+            line-height: 1.25;
           }
           .link-btn-primary {
             grid-column: 1 / -1;
-            min-height: 72px;
-            font-size: 0.93rem;
+            min-height: 58px;
+            font-size: 0.82rem;
+            letter-spacing: 0.12em;
           }
           .loc-menu-stack { order: 2; }
           .loc-events { order: 3; padding-top: 6px; padding-bottom: 10px; }

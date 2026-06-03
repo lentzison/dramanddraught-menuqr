@@ -257,7 +257,15 @@ function generateTvBoardPage(location, board, data) {
     .tv-item-price {
       color: var(--gold); font-weight: 800; white-space: nowrap;
       font-size: clamp(1.2rem, 1.9vw, 2.2rem); font-family: var(--display);
+      flex: 0 0 auto;
     }
+    /* In the narrow rail, force single-column lists so the price always has
+       full row width and never clips against the edge. */
+    .tv-rail-modules .tv-list-2col { grid-template-columns: 1fr; gap: clamp(6px,1vh,12px); }
+    .tv-rail-modules .tv-item { gap: 12px; }
+    .tv-rail-modules .tv-item-name { font-size: clamp(1rem, 1.4vw, 1.5rem); }
+    .tv-rail-modules .tv-item-price { font-size: clamp(1rem, 1.4vw, 1.5rem); }
+    .tv-rail-modules .tv-item-note { font-size: clamp(0.78rem, 1vw, 1.05rem); }
     /* events */
     .tv-events { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(14px,1.8vw,28px); }
     .tv-event {

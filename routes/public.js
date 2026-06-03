@@ -14,6 +14,7 @@ const {
   sendFeedbackEmails,
   sendEmailViaGoogle,
   getFeedbackFromAddress,
+  mediaRenditionUrl,
 } = require('../helpers');
 const { generateHomepage } = require('../views/homepage');
 const { generateHiringIndexPage } = require('../views/hiringIndexPage');
@@ -1067,7 +1068,9 @@ async function loadTvEvents(prisma, location) {
     title: ev.title,
     startDate: ev.startDate,
     endDate: ev.endDate,
-    image: absolutizeMediaUrl(ev.image, mediaOrigin),
+    // Force a TV-safe JPEG rendition — f_auto can serve AVIF/WebP that some
+    // smart-TV / streaming-stick browsers can't decode, leaving images blank.
+    image: mediaRenditionUrl(absolutizeMediaUrl(ev.image, mediaOrigin), 'w_900,h_700,c_fill,f_jpg,q_82'),
     blurb: ev.description
       ? String(ev.description).replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().slice(0, 110)
       : null,

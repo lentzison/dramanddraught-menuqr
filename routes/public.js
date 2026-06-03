@@ -1070,7 +1070,7 @@ async function loadTvEvents(prisma, location) {
     endDate: ev.endDate,
     // Force a TV-safe JPEG rendition — f_auto can serve AVIF/WebP that some
     // smart-TV / streaming-stick browsers can't decode, leaving images blank.
-    image: mediaRenditionUrl(absolutizeMediaUrl(ev.image, mediaOrigin), 'w_900,h_700,c_fill,f_jpg,q_82'),
+    image: mediaRenditionUrl(absolutizeMediaUrl(ev.image, mediaOrigin), 'w_1000,h_560,c_fill,g_auto,f_jpg,q_82'),
     blurb: ev.description
       ? String(ev.description).replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().slice(0, 110)
       : null,

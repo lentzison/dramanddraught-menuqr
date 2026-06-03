@@ -260,14 +260,15 @@ function generateTvBoardPage(location, board, data) {
     .tv-rail-modules .tv-item-price { font-size: clamp(1rem, 1.4vw, 1.5rem); }
     .tv-rail-modules .tv-item-note { font-size: clamp(0.78rem, 1vw, 1.05rem); }
     /* events */
-    .tv-events { display: grid; grid-template-columns: 1fr 1fr; gap: clamp(14px,1.8vw,28px); }
+    .tv-events { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: clamp(14px,1.8vw,28px); align-content: start; }
     .tv-event {
-      display: flex; gap: 16px; align-items: stretch;
+      display: flex; flex-direction: column;
       border: 1px solid var(--line); border-radius: 16px; overflow: hidden;
-      background: rgba(255,255,255,0.02); padding: 0;
+      background: rgba(255,255,255,0.02);
     }
-    .tv-event-img { width: clamp(90px,9vw,150px); flex: 0 0 auto; background-size: cover; background-position: center; }
-    .tv-event-body { padding: clamp(14px,1.6vh,22px); display: flex; flex-direction: column; justify-content: center; }
+    /* Full-width banner image on top, details below — reads like an event poster. */
+    .tv-event-img { width: 100%; height: clamp(150px, 22vh, 300px); flex: 0 0 auto; background-size: cover; background-position: center; }
+    .tv-event-body { padding: clamp(14px,1.8vh,24px); }
     .tv-event-when { color: var(--gold); font-family: var(--display); text-transform: uppercase; letter-spacing: 0.08em; font-size: clamp(0.85rem,1.05vw,1.2rem); }
     .tv-event-title { color: var(--cream); font-weight: 700; font-size: clamp(1.2rem,1.7vw,2rem); line-height: 1.1; margin-top: 6px; }
     .tv-event-blurb { color: var(--muted); font-size: clamp(0.9rem,1.1vw,1.25rem); margin-top: 6px; }

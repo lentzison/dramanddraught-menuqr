@@ -121,58 +121,62 @@ function generateTvBoardPage(location, board, data) {
       border-radius: 22px;
       background: linear-gradient(180deg, rgba(22,23,26,0.86), rgba(8,8,9,0.92));
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
-      padding: clamp(20px, 2.4vw, 38px);
+      padding: clamp(14px, 1.6vw, 26px);
       overflow: hidden;
     }
+    /* Compact header — logo, clock, location, date kept small so the pinned
+       module (e.g. the beer list) gets the bulk of the rail height. */
+    .tv-rail-head { flex: 0 0 auto; }
     .tv-brand {
       font-family: var(--display);
-      font-size: clamp(1.6rem, 2.6vw, 2.8rem);
+      font-size: clamp(1.15rem, 1.8vw, 1.8rem);
       line-height: 1.02;
       letter-spacing: 0.01em;
       color: var(--cream);
     }
     .tv-brand .amp { color: var(--gold); }
-    .tv-logo { display:block; max-width:100%; max-height: clamp(64px, 15vh, 200px); object-fit: contain; }
+    .tv-logo { display:block; max-width:100%; max-height: clamp(34px, 6vh, 76px); object-fit: contain; }
     .tv-loc {
       font-family: var(--display);
       text-transform: uppercase;
-      letter-spacing: 0.22em;
-      font-size: clamp(0.85rem, 1.1vw, 1.25rem);
+      letter-spacing: 0.16em;
+      font-size: clamp(0.62rem, 0.85vw, 0.95rem);
       color: var(--gold);
-      margin-top: 6px;
+      margin-top: 3px;
     }
     .tv-rule {
-      height: 2px; margin: clamp(14px,2vh,26px) 0;
+      height: 1px; margin: clamp(8px,1.1vh,13px) 0;
       background: linear-gradient(90deg, var(--gold), transparent);
       border-radius: 2px;
     }
     .tv-clock {
       font-family: var(--display);
-      font-size: clamp(2.6rem, 5vw, 5.4rem);
+      font-size: clamp(1.6rem, 2.7vw, 3rem);
       line-height: 1; color: var(--cream);
       letter-spacing: 0.01em;
     }
     .tv-clock .ampm { font-size: 0.4em; color: var(--gold); margin-left: 0.2em; }
     .tv-date {
       color: var(--muted);
-      font-size: clamp(0.95rem, 1.2vw, 1.4rem);
-      margin-top: 6px; text-transform: uppercase; letter-spacing: 0.12em;
+      font-size: clamp(0.7rem, 0.95vw, 1.05rem);
+      margin-top: 3px; text-transform: uppercase; letter-spacing: 0.1em;
     }
-    .tv-rail-modules { position: relative; margin-top: clamp(16px, 2.4vh, 30px); min-height: 0; overflow: hidden; flex: 1; }
+    .tv-rail-modules { position: relative; margin-top: clamp(10px, 1.4vh, 18px); min-height: 0; overflow: hidden; flex: 1 1 auto; }
     .tv-rail-modules > .tv-fit { position: absolute; inset: 0; padding: 0; }
-    .tv-rail-modules .tv-mod-title { font-size: clamp(1.3rem, 2vw, 2.1rem); }
-    .tv-rail-foot { margin-top: auto; padding-top: 18px; }
-    .tv-ticker { list-style: none; display: flex; flex-direction: column; gap: clamp(8px,1.2vh,16px); }
+    .tv-rail-modules .tv-mod-title { font-size: clamp(1.1rem, 1.7vw, 1.7rem); }
+    .tv-rail-foot { flex: 0 0 auto; margin-top: clamp(8px,1.2vh,14px); padding-top: clamp(8px,1.1vh,12px); border-top: 1px solid rgba(255,255,255,0.08); }
+    /* Section toggle: a compact horizontal strip along the bottom. */
+    .tv-ticker { list-style: none; display: flex; flex-direction: row; flex-wrap: wrap; gap: 5px 12px; }
     .tv-ticker-item {
-      display: flex; align-items: center; gap: 12px;
+      display: flex; align-items: center; gap: 6px;
       font-family: var(--display);
-      text-transform: uppercase; letter-spacing: 0.06em;
-      font-size: clamp(0.85rem, 1.15vw, 1.3rem);
+      text-transform: uppercase; letter-spacing: 0.05em;
+      font-size: clamp(0.56rem, 0.8vw, 0.85rem);
       color: var(--muted);
       transition: color 0.3s;
     }
     .tv-ticker-dot {
-      width: 10px; height: 10px; border-radius: 50%;
+      width: 7px; height: 7px; border-radius: 50%;
       background: rgba(255,255,255,0.18); flex: 0 0 auto; transition: background 0.3s, box-shadow 0.3s;
     }
     .tv-ticker-item.is-active { color: var(--gold-bright); }

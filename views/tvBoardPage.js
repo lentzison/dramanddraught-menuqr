@@ -126,6 +126,7 @@ function generateTvBoardPage(location, board, data) {
       gap: clamp(16px, 2vw, 34px);
     }
     .tv-body-norail { display: block; }
+    .tv-body-norail .tv-stage { height: 100%; }
     /* ── Persistent rail (holds the pinned module) ── */
     .tv-rail {
       display: flex; flex-direction: column;

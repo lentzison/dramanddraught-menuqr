@@ -169,7 +169,7 @@ function tvBoardEditor({ board, locations, user, flashMsg, defaultLocationSlug, 
       .tvm-pin input { width:auto; margin:0; }
       .tvm-body { padding:14px; }
       .tvm-grid { display:grid; grid-template-columns:1fr 140px; gap:12px; }
-      .tvm-pick { display:grid; grid-template-columns:1fr 1fr 120px 90px auto; gap:8px; align-items:center; margin-bottom:8px; }
+      .tvm-pick { display:grid; grid-template-columns:1fr 1fr 1.5fr 90px auto; gap:8px; align-items:center; margin-bottom:8px; }
       .tvm-icon-btn { min-height:34px; padding:6px 10px; }
       .tvm-empty { color:var(--text-soft); padding:24px; text-align:center; border:1px dashed var(--line); border-radius:var(--radius); }
       @media (max-width:768px){ .tvm-grid{grid-template-columns:1fr} .tvm-pick{grid-template-columns:1fr 1fr} }
@@ -180,7 +180,7 @@ function tvBoardEditor({ board, locations, user, flashMsg, defaultLocationSlug, 
       window.__TV_TYPES__ = ${typeMetaJson};
       window.__TV_MODULES__ = ${modulesJson};
     </script>
-    <script src="/assets/tv-board-editor.js?v=2"></script>
+    <script src="/assets/tv-board-editor.js?v=3"></script>
     <script>
       (function(){ if (window.initTvBoardEditor) window.initTvBoardEditor(); })();
       ${imageUploadWidgetScript()}

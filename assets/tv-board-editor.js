@@ -50,9 +50,9 @@
     function pickRowHtml(mi, pi, item) {
       return '' +
         '<div class="tvm-pick">' +
-        '<input type="text" placeholder="Drink name" data-act="pf" data-mi="' + mi + '" data-pi="' + pi + '" data-pf="name" value="' + esc(item.name) + '" />' +
-        '<input type="text" placeholder="Tasting note (optional)" data-act="pf" data-mi="' + mi + '" data-pi="' + pi + '" data-pf="description" value="' + esc(item.description) + '" />' +
-        '<input type="text" placeholder="By (optional)" data-act="pf" data-mi="' + mi + '" data-pi="' + pi + '" data-pf="by" value="' + esc(item.by) + '" />' +
+        '<input type="text" placeholder="Bartender name" data-act="pf" data-mi="' + mi + '" data-pi="' + pi + '" data-pf="by" value="' + esc(item.by) + '" />' +
+        '<input type="text" placeholder="Drink of choice" data-act="pf" data-mi="' + mi + '" data-pi="' + pi + '" data-pf="name" value="' + esc(item.name) + '" />' +
+        '<input type="text" placeholder="Note (optional)" data-act="pf" data-mi="' + mi + '" data-pi="' + pi + '" data-pf="description" value="' + esc(item.description) + '" />' +
         '<input type="text" placeholder="Price" data-act="pf" data-mi="' + mi + '" data-pi="' + pi + '" data-pf="price" value="' + esc(item.price) + '" />' +
         '<button type="button" class="btn btn-danger btn-sm tvm-icon-btn" data-act="rmpick" data-mi="' + mi + '" data-pi="' + pi + '" aria-label="Remove pick">&times;</button>' +
         '</div>';

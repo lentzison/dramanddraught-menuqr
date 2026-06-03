@@ -164,8 +164,9 @@ function renderPicks(mod) {
     return head("Bartender's", moduleTitle(mod)) + emptyBody('Add some picks in the board editor.');
   }
   const rows = items.slice(0, 10).map((it) => {
-    const note = [it.by ? `— ${it.by}` : '', it.description || ''].filter(Boolean).join(' ');
-    return priceRow(it.name, note, it.price || '');
+    // Drink is the headline; the bartender (and optional note) sit beneath it.
+    const sub = [it.by ? `${it.by}'s pick` : '', it.description || ''].filter(Boolean).join(' · ');
+    return priceRow(it.name, sub, it.price || '');
   }).join('');
   return head("Bartender's", moduleTitle(mod)) + `<ul class="tv-list">${rows}</ul>`;
 }

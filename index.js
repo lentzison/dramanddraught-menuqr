@@ -12,6 +12,7 @@ const { handleAdminMenu } = require('./routes/adminMenu');
 const { handleAdminEvents } = require('./routes/adminEvents');
 const { handleAdminApplicants } = require('./routes/adminApplicants');
 const { handleAdminLtos } = require('./routes/adminLtos');
+const { handleAdminTv } = require('./routes/adminTv');
 const { scheduleInterviewReminders } = require('./interviewReminders');
 const { scheduleEventReminders } = require('./eventReminders');
 const { scheduleScreeningRetry } = require('./screeningRetry');
@@ -62,6 +63,11 @@ const handler = async (req, res) => {
     // Admin LTO routes: /admin/ltos, /admin/ltos/new, /admin/ltos/:id
     if (pathname.startsWith('/admin/ltos')) {
       if (await handleAdminLtos(req, res, pathname, prisma)) return;
+    }
+
+    // Admin TV board routes: /admin/tv, /admin/tv/new, /admin/tv/:id
+    if (pathname.startsWith('/admin/tv')) {
+      if (await handleAdminTv(req, res, pathname, prisma)) return;
     }
 
     // Admin routes: /admin/login, /admin/logout, /admin, /admin/seed, /admin/locations/*

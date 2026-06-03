@@ -42,6 +42,7 @@ const { generateMenuPage } = require('../views/menuPage');
 const { generateSpiritsPage } = require('../views/spiritsPage');
 const { generateEventPage, generateEventConfirmationPage, generateEventTermsPage, eventStatus, buildEventIcs } = require('../views/eventPage');
 const { generateEventsIndexPage } = require('../views/eventsIndexPage');
+const { generateTvBoardPage, renderBoardPayload } = require('../views/tvBoardPage');
 
 // In-memory throttle for the public event-signup endpoint. This is a
 // single-process Node server, so a Map is enough to blunt bot/abuse hammering
@@ -1015,6 +1016,122 @@ async function handleSpecials(req, res, prisma, parsedUrl, location) {
       eventCocktails,
     }), sid),
   );
+  return true;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// TV menu boards: /{slug}/tv (picker) and /{slug}/tv/{boardSlug} (display).
+// ─────────────────────────────────────────────────────────────────────────
+
+function absolutizeMediaUrl(img, origin) {
+  if (!img) return null;
+  if (/^https?:/i.test(img) || /^data:image\//i.test(img)) return img;
+  if (img.startsWith('/')) return origin + img;
+  return null;
+}
+
+async function loadTvSpecials(prisma, location) {
+  if (!prisma || !prisma.dayTheme) return { items: [] };
+  const day = getEasternDay().dayOfWeek;
+  const dayLabel = getDayLabel(day);
+  const include = { specials: { where: { isActive: true }, orderBy: { displayOrder: 'asc' } } };
+  const locTheme = await prisma.dayTheme.findFirst({ where: { dayOfWeek: day, locationId: location.id, isActive: true }, include }).catch(() => null);
+  const defTheme = await prisma.dayTheme.findFirst({ where: { dayOfWeek: day, locationId: null, isActive: true }, include }).catch(() => null);
+  const theme = locTheme || defTheme;
+  if (!theme) return { items: [], dayLabel };
+  const themeSpecials = (theme.specials && theme.specials.length) ? theme.specials : (defTheme ? defTheme.specials || [] : []);
+  return {
+    dayLabel,
+    themeName: theme.name,
+    tagline: theme.tagline || null,
+    items: themeSpecials.map((s) => ({
+      name: s.name,
+      description: s.description || s.section || null,
+      price: s.price || null,
+    })),
+  };
+}
+
+async function loadTvEvents(prisma, location) {
+  if (!prisma || !prisma.event) return [];
+  const now = new Date();
+  // Include events that started in the last few hours so a live event still shows.
+  const since = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+  const rows = await prisma.event.findMany({
+    where: { locationId: location.id, isActive: true, isCancelled: false, startDate: { gte: since } },
+    orderBy: { startDate: 'asc' },
+    take: 6,
+  }).catch(() => []);
+  const mediaOrigin = (process.env.PUBLIC_WEB_ORIGIN || 'https://public.apps.dramanddraught.com').replace(/\/+$/, '');
+  return rows.map((ev) => ({
+    title: ev.title,
+    startDate: ev.startDate,
+    endDate: ev.endDate,
+    image: absolutizeMediaUrl(ev.image, mediaOrigin),
+    blurb: ev.description
+      ? String(ev.description).replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().slice(0, 110)
+      : null,
+  }));
+}
+
+// Load only the data the board's modules actually need.
+async function loadTvBoardData(prisma, location, board) {
+  const types = new Set((Array.isArray(board.modules) ? board.modules : []).filter((m) => m && m.type).map((m) => m.type));
+  const data = {};
+  const slug = location.slug;
+  await Promise.all([
+    types.has('specials') ? loadTvSpecials(prisma, location).then((r) => { data.specials = r; }).catch(() => {}) : null,
+    types.has('draft') ? getOnTap(slug).then((r) => { data.draft = r; }).catch(() => { data.draft = { items: [] }; }) : null,
+    types.has('events') ? loadTvEvents(prisma, location).then((r) => { data.events = r; }).catch(() => { data.events = []; }) : null,
+    types.has('flights') ? getFeaturedFlights(slug).then((r) => { data.flights = r.items || []; }).catch(() => { data.flights = []; }) : null,
+    types.has('bottles') ? getBreakEvenBottles(slug).then((r) => { data.bottles = r.items || []; }).catch(() => { data.bottles = []; }) : null,
+  ].filter(Boolean));
+  return data;
+}
+
+function tvPickerPage(location, boards) {
+  const esc = (s) => String(s || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const cards = boards.length
+    ? boards.map((b) => `<a class="pick" href="/${esc(location.slug)}/tv/${esc(b.slug)}">${esc(b.name)}<span>Open board &rarr;</span></a>`).join('')
+    : `<p style="color:#a7a3a0">No active TV boards for this location yet. Create one in <a style="color:#d2aa67" href="/admin/tv">the admin TV builder</a>.</p>`;
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>${esc(location.name)} — TV Boards</title>
+  <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0d0e10;color:#f3f1ee;min-height:100vh;padding:48px 20px;display:flex;flex-direction:column;align-items:center}
+  h1{font-size:1.6rem;margin-bottom:6px}.sub{color:#a7a3a0;margin-bottom:28px}.grid{display:grid;gap:14px;width:100%;max-width:520px}
+  .pick{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:20px 22px;border:1px solid rgba(210,170,103,.3);border-radius:14px;background:rgba(255,255,255,.03);color:#fff;text-decoration:none;font-weight:700;font-size:1.15rem}
+  .pick:hover{border-color:rgba(210,170,103,.7)}.pick span{color:#d2aa67;font-weight:600;font-size:.9rem}</style></head>
+  <body><h1>${esc(location.name)} — TV Boards</h1><p class="sub">Pick a board to display full-screen.</p><div class="grid">${cards}</div></body></html>`;
+}
+
+async function handleTvBoard(req, res, prisma, slug, boardSlug) {
+  const locs = await getLocations(prisma);
+  const location = locs.find((l) => l.slug === slug);
+  if (!location || !prisma || !prisma.tvBoard) { await send404(req, res, prisma); return true; }
+  const board = await prisma.tvBoard.findFirst({
+    where: { locationId: location.id, slug: boardSlug, isActive: true },
+  }).catch(() => null);
+  if (!board) { await send404(req, res, prisma); return true; }
+
+  const data = await loadTvBoardData(prisma, location, board);
+  const parsed = url.parse(req.url, true);
+  if (String(parsed.query.format || '') === 'json') {
+    res.setHeader('Cache-Control', 'no-store');
+    sendJSON(res, 200, renderBoardPayload(location, board, data));
+    return true;
+  }
+  // In-house display — no visitor tracking injected.
+  sendHTML(res, 200, generateTvBoardPage(location, board, data));
+  return true;
+}
+
+async function handleTvPicker(req, res, prisma, slug) {
+  const locs = await getLocations(prisma);
+  const location = locs.find((l) => l.slug === slug);
+  if (!location) { await send404(req, res, prisma); return true; }
+  const boards = prisma && prisma.tvBoard
+    ? await prisma.tvBoard.findMany({ where: { locationId: location.id, isActive: true }, orderBy: { name: 'asc' } }).catch(() => [])
+    : [];
+  if (boards.length === 1) { redirect(res, `/${slug}/tv/${boards[0].slug}`); return true; }
+  sendHTML(res, 200, tvPickerPage(location, boards));
   return true;
 }
 
@@ -2084,6 +2201,10 @@ async function handlePublic(req, res, pathname, prisma) {
         '.otf': 'font/otf',
         '.woff': 'font/woff',
         '.woff2': 'font/woff2',
+        '.js': 'text/javascript; charset=utf-8',
+        '.mjs': 'text/javascript; charset=utf-8',
+        '.css': 'text/css; charset=utf-8',
+        '.json': 'application/json; charset=utf-8',
       })[ext] || 'application/octet-stream';
       res.writeHead(200, {
         'Content-Type': mime,
@@ -2211,6 +2332,17 @@ async function handlePublic(req, res, pathname, prisma) {
   if (draftMatch) {
     const slug = draftMatch[1];
     return handleDraft(req, res, prisma, slug);
+  }
+
+  // TV menu board display: /{slug}/tv/{boardSlug} (+ ?format=json refresh feed)
+  const tvBoardMatch = pathname.match(/^\/([a-z0-9-]+)\/tv\/([a-z0-9-]+)$/);
+  if (tvBoardMatch) {
+    return handleTvBoard(req, res, prisma, tvBoardMatch[1], tvBoardMatch[2]);
+  }
+  // TV board picker: /{slug}/tv
+  const tvMatch = pathname.match(/^\/([a-z0-9-]+)\/tv$/);
+  if (tvMatch) {
+    return handleTvPicker(req, res, prisma, tvMatch[1]);
   }
 
   // Menu page: /{slug}/menu

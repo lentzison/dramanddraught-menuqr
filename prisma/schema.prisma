@@ -58,8 +58,32 @@ model Location {
   jobApplications  JobApplication[]
   interviews       Interview[]
   ltos             LimitedTimeOffer[]
+  tvBoards         TvBoard[]
 
   @@index([slug])
+}
+
+// A configurable digital menu board shown full-screen on an in-house TV.
+// Each board belongs to a location and holds an ordered list of "modules"
+// (specials, on-tap, events, bartender's picks, etc.) as JSON. The public
+// display page (/{slug}/tv/{boardSlug}) renders a persistent rail plus the
+// rotating modules; staff compose boards in /admin/tv.
+model TvBoard {
+  id            String   @id @default(uuid())
+  locationId    String
+  name          String   // e.g. "Main Bar TV"
+  slug          String   // URL slug, unique per location: "main-bar"
+  isActive      Boolean  @default(true)
+  rotateSeconds Int      @default(15) // default per-slide duration
+  modules       Json     @default("[]") // ordered [{ id, type, title?, seconds?, pinned?, ... }]
+
+  location      Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([locationId, slug])
+  @@index([locationId])
 }
 
 enum DayOfWeek {

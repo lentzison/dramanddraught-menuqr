@@ -5,7 +5,7 @@ const { escHTML } = require('./escapeHtml');
 // live data per render. Order here is the order shown in the admin picker.
 const TV_MODULE_TYPES = [
   { type: 'specials', label: "Today's Specials", desc: "The current day's themed specials + half-price picks.", curated: false },
-  { type: 'draft', label: 'On Draft / Beer', desc: "What's pouring right now, live from the bartender system.", curated: false },
+  { type: 'draft', label: 'On Draught', desc: "What's pouring right now, live from the bartender system.", curated: false },
   { type: 'events', label: 'Upcoming Events', desc: 'The next few events with date & time.', curated: false },
   { type: 'flights', label: 'Featured Flights', desc: 'Current spirit/cocktail flights with pours & price.', curated: false },
   { type: 'bottles', label: 'Featured Bottles', desc: 'Break-even / featured bottles for the week.', curated: false },
@@ -55,7 +55,7 @@ function fmtEventWhen(start, end) {
 
 function head(kicker, title) {
   return `<div class="tv-mod-head">
-    <span class="tv-kicker">${escHTML(kicker)}</span>
+    ${kicker ? `<span class="tv-kicker">${escHTML(kicker)}</span>` : ''}
     <h2 class="tv-mod-title">${escHTML(title)}</h2>
   </div>`;
 }
@@ -97,13 +97,13 @@ function renderDraft(mod, data) {
   const d = (data && data.draft) || {};
   const items = (Array.isArray(d.items) ? d.items : []).filter((t) => t && t.beerName);
   if (items.length === 0) {
-    return head('On Tap', moduleTitle(mod)) + emptyBody('No taps to show right now.');
+    return head('', moduleTitle(mod)) + emptyBody('No taps to show right now.');
   }
   const rows = items.slice(0, 12).map((t) => {
     const meta = [t.brewery, t.style, t.abv ? `${t.abv}% ABV` : null].filter(Boolean).join(' · ');
     return priceRow(t.beerName, meta, t.price || '');
   }).join('');
-  return head('On Tap', moduleTitle(mod)) + `<ul class="tv-list tv-list-2col">${rows}</ul>`;
+  return head('', moduleTitle(mod)) + `<ul class="tv-list tv-list-2col">${rows}</ul>`;
 }
 
 function renderEvents(mod, data) {

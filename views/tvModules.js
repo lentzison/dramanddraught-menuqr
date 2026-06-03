@@ -54,8 +54,8 @@ function fmtEventWhen(start, end) {
 }
 
 function head(kicker, title) {
+  // The gold kicker label was removed — modules show just the title.
   return `<div class="tv-mod-head">
-    ${kicker ? `<span class="tv-kicker">${escHTML(kicker)}</span>` : ''}
     <h2 class="tv-mod-title">${escHTML(title)}</h2>
   </div>`;
 }

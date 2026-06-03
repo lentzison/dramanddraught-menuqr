@@ -43,6 +43,7 @@
       var m = { id: uid(), type: type };
       if (type === 'picks') m.items = [{ name: '', description: '', by: '', price: '' }];
       if (type === 'message') { m.heading = ''; m.body = ''; }
+      if (type === 'image') { m.image = ''; m.caption = ''; m.fit = 'contain'; }
       return m;
     }
 
@@ -77,6 +78,26 @@
           '<input type="text" maxlength="80" placeholder="e.g. Trivia Tonight" data-act="field" data-mi="' + mi + '" data-field="heading" value="' + esc(m.heading || '') + '" />' +
           '<label>Message</label>' +
           '<textarea maxlength="300" placeholder="e.g. 7:30 PM — win a $50 bar tab" data-act="field" data-mi="' + mi + '" data-field="body">' + esc(m.body || '') + '</textarea>' +
+          '</div>';
+      } else if (m.type === 'image') {
+        var img = m.image || '';
+        var isUrl = /^https?:\/\//i.test(img);
+        rows += '<div style="margin-top:14px">' +
+          '<label>Image</label>' +
+          '<input type="file" accept="image/jpeg,image/png,image/webp,image/gif" data-act="imgfile" data-mi="' + mi + '" />' +
+          '<div class="field-help">Upload a file (max ~500&#8239;KB) or paste a hosted image URL. Uploads are stored in your media library.</div>' +
+          '<input type="text" placeholder="https://... (optional)" data-act="imgurl" data-mi="' + mi + '" value="' + esc(isUrl ? img : '') + '" />' +
+          '<div style="display:flex;align-items:center;gap:12px;margin-top:8px;flex-wrap:wrap">' +
+          '<img class="tvm-img-preview" data-mi="' + mi + '" src="' + esc(img) + '" alt="" style="max-width:200px;max-height:120px;border-radius:6px;border:1px solid var(--line);' + (img ? '' : 'display:none') + '" />' +
+          (img ? '<button type="button" class="btn btn-secondary btn-sm" data-act="imgclear" data-mi="' + mi + '">Remove image</button>' : '') +
+          '</div>' +
+          '<div class="tvm-grid" style="margin-top:12px">' +
+          '<div><label>Caption <span style="font-weight:400;color:var(--text-soft)">(optional)</span></label>' +
+          '<input type="text" maxlength="120" placeholder="e.g. Now booking holiday parties" data-act="field" data-mi="' + mi + '" data-field="caption" value="' + esc(m.caption || '') + '" /></div>' +
+          '<div><label>Fit</label><select data-act="field" data-mi="' + mi + '" data-field="fit">' +
+          '<option value="contain"' + (m.fit !== 'cover' ? ' selected' : '') + '>Contain (show whole image)</option>' +
+          '<option value="cover"' + (m.fit === 'cover' ? ' selected' : '') + '>Cover (fill screen, may crop)</option>' +
+          '</select></div></div>' +
           '</div>';
       } else {
         rows += '<p class="field-help" style="margin-top:10px">Pulls live data automatically when the board is shown.</p>';
@@ -129,16 +150,39 @@
         if (!modules[mi2] || !modules[mi2].items || !modules[mi2].items[pi]) return;
         modules[mi2].items[pi][pf] = t.value;
         sync();
+      } else if (act === 'imgurl') {
+        var mi3 = +t.getAttribute('data-mi');
+        if (!modules[mi3]) return;
+        modules[mi3].image = t.value.trim();
+        var prev = container.querySelector('.tvm-img-preview[data-mi="' + mi3 + '"]');
+        if (prev) {
+          if (/^https?:\/\//i.test(modules[mi3].image)) { prev.src = modules[mi3].image; prev.style.display = ''; }
+          else { prev.style.display = 'none'; }
+        }
+        sync();
       }
     });
 
-    // Pin checkbox: only one module may be pinned.
+    // change events: pin checkbox, fit/other selects, and image file uploads.
     container.addEventListener('change', function (e) {
       var t = e.target;
-      if (t.getAttribute('data-act') !== 'pin') return;
-      var mi = +t.getAttribute('data-mi');
-      modules.forEach(function (m, i) { m.pinned = (i === mi) ? t.checked : false; });
-      render();
+      var act = t.getAttribute('data-act');
+      if (act === 'pin') {
+        var mi = +t.getAttribute('data-mi');
+        modules.forEach(function (m, i) { m.pinned = (i === mi) ? t.checked : false; });
+        render();
+      } else if (act === 'field' && t.tagName === 'SELECT') {
+        var mis = +t.getAttribute('data-mi');
+        if (modules[mis]) { modules[mis][t.getAttribute('data-field')] = t.value; sync(); }
+      } else if (act === 'imgfile') {
+        var mif = +t.getAttribute('data-mi');
+        var file = t.files && t.files[0];
+        if (!file || !modules[mif]) return;
+        if (file.size > 750 * 1024) { alert('Image is too large. Max ~500 KB — compress it or paste a hosted URL.'); t.value = ''; return; }
+        var reader = new FileReader();
+        reader.onload = function () { modules[mif].image = reader.result; render(); };
+        reader.readAsDataURL(file);
+      }
     });
 
     // Buttons.
@@ -152,6 +196,7 @@
       else if (act === 'down' && mi < modules.length - 1) { var b = modules[mi]; modules[mi] = modules[mi + 1]; modules[mi + 1] = b; render(); }
       else if (act === 'addpick') { if (modules[mi]) { modules[mi].items = modules[mi].items || []; modules[mi].items.push({ name: '', description: '', by: '', price: '' }); render(); } }
       else if (act === 'rmpick') { var pi = +btn.getAttribute('data-pi'); if (modules[mi] && modules[mi].items) { modules[mi].items.splice(pi, 1); render(); } }
+      else if (act === 'imgclear') { if (modules[mi]) { modules[mi].image = ''; render(); } }
     });
 
     addBtn.addEventListener('click', function () {

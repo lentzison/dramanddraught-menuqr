@@ -74,8 +74,9 @@ model TvBoard {
   name          String   // e.g. "Main Bar TV"
   slug          String   // URL slug, unique per location: "main-bar"
   isActive      Boolean  @default(true)
+  logo          String?  // Optional logo image (media URL) shown in the TV rail
   rotateSeconds Int      @default(15) // default per-slide duration
-  modules       Json     @default("[]") // ordered [{ id, type, title?, seconds?, pinned?, ... }]
+  modules       Json     @default("[]") // ordered [{ id, type, title?, seconds?, pinned?, image?, ... }]
 
   location      Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
 

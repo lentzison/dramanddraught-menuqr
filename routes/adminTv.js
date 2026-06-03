@@ -1,6 +1,7 @@
-const { sendHTML, parseBody, redirect, getFlashMsg } = require('../helpers');
+const { sendHTML, parseBody, redirect, getFlashMsg, uploadImageToMedia } = require('../helpers');
 const { requireAuth, isCompanyWide, getUserLocationSlugs } = require('../auth');
 const { tvBoardsList, tvBoardEditor } = require('../views/adminTvViews');
+const { sanitizeImageSrc } = require('../views/imageUploadWidget');
 const { writeAudit } = require('../auditLog');
 
 const VALID_TYPES = new Set(['specials', 'draft', 'events', 'flights', 'bottles', 'picks', 'message']);
@@ -82,9 +83,34 @@ function parseModules(raw) {
       const heading = trimOrUndef(m.heading, 80); if (heading) mod.heading = heading;
       const body = trimOrUndef(m.body, 300); if (body) mod.body = body;
     }
+    if (m.type === 'image') {
+      const img = sanitizeImageSrc(m.image); if (img) mod.image = img;
+      const caption = trimOrUndef(m.caption, 120); if (caption) mod.caption = caption;
+      mod.fit = m.fit === 'cover' ? 'cover' : 'contain';
+    }
     out.push(mod);
   }
   return out;
+}
+
+// Push any inline data-URL image into the media library and swap in the hosted
+// URL; already-hosted URLs (and data URLs when media isn't configured) pass
+// through unchanged. Covers the board logo + every Image module.
+async function uploadIfDataUrl(src, tags) {
+  if (!src) return null;
+  if (!/^data:/i.test(src)) return src;
+  const uploaded = await uploadImageToMedia(src, { collection: 'tv-boards', tags: tags || '' });
+  return (uploaded && uploaded.url) ? uploaded.url : src;
+}
+
+async function resolveBoardMedia(modules, logoRaw, slug) {
+  const logo = await uploadIfDataUrl(sanitizeImageSrc(logoRaw), slug);
+  for (const m of modules) {
+    if (m.type === 'image' && m.image) {
+      m.image = await uploadIfDataUrl(m.image, slug);
+    }
+  }
+  return { logo, modules };
 }
 
 async function handleAdminTv(req, res, pathname, prisma) {
@@ -138,14 +164,16 @@ async function handleAdminTv(req, res, pathname, prisma) {
       if (!locationId || !allowedLocationIds.has(locationId)) { flashRedirect(res, '/admin/tv/new', 'error', 'Pick a valid location.'); return true; }
       const slugBase = slugify(body.slug) || slugify(name);
       const slug = await ensureUniqueSlug(prisma, locationId, slugBase, null);
+      const { logo, modules } = await resolveBoardMedia(parseModules(body.modulesJson), body.logo, slug);
       const created = await prisma.tvBoard.create({
         data: {
           locationId,
           name,
           slug,
+          logo,
           rotateSeconds: clampInt(body.rotateSeconds, 4, 120, 15),
           isActive: body.isActive === 'on',
-          modules: parseModules(body.modulesJson),
+          modules,
         },
       });
       writeAudit(prisma, req, user, { action: 'create', resourceType: 'tv_board', resourceId: created.id, resourceLabel: name }).catch(() => {});
@@ -181,15 +209,17 @@ async function handleAdminTv(req, res, pathname, prisma) {
       }
       const slugBase = slugify(body.slug) || slugify(name) || board.slug;
       const slug = await ensureUniqueSlug(prisma, locationId, slugBase, id);
+      const { logo, modules } = await resolveBoardMedia(parseModules(body.modulesJson), body.logo, slug);
       await prisma.tvBoard.update({
         where: { id },
         data: {
           locationId,
           name,
           slug,
+          logo,
           rotateSeconds: clampInt(body.rotateSeconds, 4, 120, 15),
           isActive: body.isActive === 'on',
-          modules: parseModules(body.modulesJson),
+          modules,
         },
       });
       writeAudit(prisma, req, user, { action: 'update', resourceType: 'tv_board', resourceId: id, resourceLabel: name }).catch(() => {});

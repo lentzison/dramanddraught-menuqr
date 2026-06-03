@@ -1,6 +1,7 @@
 const { adminLayout } = require('./adminLayout');
 const { escHTML } = require('./escapeHtml');
 const { TV_MODULE_TYPES, TV_MODULE_LABELS } = require('./tvModules');
+const { imageUploadWidget, imageUploadWidgetCss, imageUploadWidgetScript } = require('./imageUploadWidget');
 
 function attr(value) {
   return String(value == null ? '' : value).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
@@ -127,6 +128,11 @@ function tvBoardEditor({ board, locations, user, flashMsg, defaultLocationSlug, 
             <div class="field-help">Default time each rotating module is shown. Individual modules can override this.</div>
           </div>
         </div>
+        <div style="margin-top:14px">
+          <label>Logo <span style="font-weight:400;color:var(--text-soft)">(optional)</span></label>
+          <div class="field-help" style="margin-top:0;margin-bottom:8px">Shown at the top of the side rail in place of the text wordmark. Upload a transparent PNG for best results.</div>
+          ${imageUploadWidget({ name: 'logo', prefix: 'tv-logo', value: board ? board.logo : '' })}
+        </div>
         <label class="checkbox-card" style="margin-top:14px">
           <input type="checkbox" name="isActive" ${(!board || board.isActive) ? 'checked' : ''} />
           <span><strong>Active</strong> — board is reachable and shows on the TV. Uncheck to hide it.</span>
@@ -167,15 +173,17 @@ function tvBoardEditor({ board, locations, user, flashMsg, defaultLocationSlug, 
       .tvm-icon-btn { min-height:34px; padding:6px 10px; }
       .tvm-empty { color:var(--text-soft); padding:24px; text-align:center; border:1px dashed var(--line); border-radius:var(--radius); }
       @media (max-width:768px){ .tvm-grid{grid-template-columns:1fr} .tvm-pick{grid-template-columns:1fr 1fr} }
+      ${imageUploadWidgetCss()}
     </style>
 
     <script>
       window.__TV_TYPES__ = ${typeMetaJson};
       window.__TV_MODULES__ = ${modulesJson};
     </script>
-    <script src="/assets/tv-board-editor.js?v=1"></script>
+    <script src="/assets/tv-board-editor.js?v=2"></script>
     <script>
       (function(){ if (window.initTvBoardEditor) window.initTvBoardEditor(); })();
+      ${imageUploadWidgetScript()}
     </script>
   `, user, { pathname: '/admin/tv', flashMsg });
 }

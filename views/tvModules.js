@@ -11,6 +11,7 @@ const TV_MODULE_TYPES = [
   { type: 'bottles', label: 'Featured Bottles', desc: 'Break-even / featured bottles for the week.', curated: false },
   { type: 'picks', label: "Bartender's Picks", desc: 'A curated list you type in (name, note, price).', curated: true },
   { type: 'message', label: 'Announcement', desc: 'A big custom headline + message (e.g. a promo or notice).', curated: true },
+  { type: 'image', label: 'Image / Promo', desc: 'A full-screen image (poster, promo graphic, photo) with an optional caption.', curated: true },
 ];
 
 const TV_MODULE_LABELS = TV_MODULE_TYPES.reduce((acc, m) => { acc[m.type] = m.label; return acc; }, {});
@@ -169,6 +170,17 @@ function renderPicks(mod) {
   return head("Bartender's", moduleTitle(mod)) + `<ul class="tv-list">${rows}</ul>`;
 }
 
+function renderImage(mod) {
+  const src = String(mod && mod.image ? mod.image : '').trim();
+  if (!src) {
+    return head('Image', moduleTitle(mod)) + emptyBody('Upload an image in the board editor.');
+  }
+  const fit = mod && mod.fit === 'cover' ? 'cover' : 'contain';
+  const caption = String(mod && mod.caption ? mod.caption : '').trim();
+  return `<div class="tv-image tv-image-${fit}" style="background-image:url('${escHTML(src)}')" role="img" aria-label="${escHTML(caption || moduleTitle(mod))}"></div>
+    ${caption ? `<div class="tv-image-caption">${escHTML(caption)}</div>` : ''}`;
+}
+
 function renderMessage(mod) {
   const heading = String(mod && mod.heading ? mod.heading : moduleTitle(mod)).trim();
   const body = String(mod && mod.body ? mod.body : '').trim();
@@ -189,6 +201,7 @@ function renderTvModule(mod, data) {
     case 'bottles': return renderBottles(mod, data);
     case 'picks': return renderPicks(mod);
     case 'message': return renderMessage(mod);
+    case 'image': return renderImage(mod);
     default: return emptyBody('Unknown module.');
   }
 }

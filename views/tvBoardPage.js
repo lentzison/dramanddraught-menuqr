@@ -17,6 +17,7 @@ function buildBoardView(location, board, data) {
     id: String(m.id || `m${i}`),
     title: moduleTitle(m),
     seconds: Math.max(4, parseInt(m.seconds, 10) || defaultSeconds),
+    full: m.type === 'image', // image slides go edge-to-edge (no slide padding)
     html: renderTvModule(m, data),
   }));
 
@@ -34,7 +35,7 @@ function tickerHtml(slides) {
 
 function slidesDomHtml(slides) {
   return slides.map((s, i) => `
-    <div class="tv-slide${i === 0 ? ' is-active' : ''}" data-id="${escHTML(s.id)}" data-seconds="${s.seconds}" data-title="${escHTML(s.title)}">
+    <div class="tv-slide${i === 0 ? ' is-active' : ''}${s.full ? ' tv-slide-full' : ''}" data-id="${escHTML(s.id)}" data-seconds="${s.seconds}" data-title="${escHTML(s.title)}">
       ${s.html}
     </div>`).join('');
 }
@@ -46,7 +47,7 @@ function renderBoardPayload(location, board, data) {
     ok: true,
     railHtml: view.railModuleHtml,
     pinned: view.pinned,
-    slides: view.slides.map((s) => ({ id: s.id, title: s.title, seconds: s.seconds, html: s.html })),
+    slides: view.slides.map((s) => ({ id: s.id, title: s.title, seconds: s.seconds, full: !!s.full, html: s.html })),
     ticker: view.slides.map((s) => ({ id: s.id, title: s.title })),
     refreshedAt: new Date().toISOString(),
   };
@@ -131,6 +132,7 @@ function generateTvBoardPage(location, board, data) {
       color: var(--cream);
     }
     .tv-brand .amp { color: var(--gold); }
+    .tv-logo { display:block; max-width:100%; max-height: clamp(64px, 15vh, 200px); object-fit: contain; }
     .tv-loc {
       font-family: var(--display);
       text-transform: uppercase;
@@ -198,6 +200,18 @@ function generateTvBoardPage(location, board, data) {
       overflow: hidden;
     }
     .tv-slide.is-active { opacity: 1; transform: none; }
+    /* Image / promo slides fill edge-to-edge. */
+    .tv-slide-full { padding: 0; }
+    .tv-image { flex: 1; background-position: center; background-repeat: no-repeat; }
+    .tv-image-contain { background-size: contain; }
+    .tv-image-cover { background-size: cover; }
+    .tv-image-caption {
+      position: absolute; left: 0; right: 0; bottom: 0;
+      padding: clamp(16px,3vh,40px) clamp(24px,3vw,56px);
+      font-family: var(--display); color: var(--cream);
+      font-size: clamp(1.4rem, 2.6vw, 3rem); line-height: 1.1;
+      background: linear-gradient(0deg, rgba(0,0,0,0.78), transparent);
+    }
     /* ── Module content ── */
     .tv-mod-head { margin-bottom: clamp(14px, 2.2vh, 30px); }
     .tv-kicker {
@@ -276,7 +290,9 @@ function generateTvBoardPage(location, board, data) {
 <body>
   <div class="tv-wrap">
     <aside class="tv-rail">
-      <div class="tv-brand">Dram <span class="amp">&amp;</span> Draught</div>
+      ${board.logo
+        ? `<img class="tv-logo" src="${escHTML(board.logo)}" alt="${locName}" />`
+        : `<div class="tv-brand">Dram <span class="amp">&amp;</span> Draught</div>`}
       <div class="tv-loc">${locName}</div>
       <div class="tv-rule"></div>
       <div class="tv-clock" id="tv-clock">—</div>
@@ -361,7 +377,8 @@ function generateTvBoardPage(location, board, data) {
           var curId = cur[idx] ? cur[idx].getAttribute('data-id') : null;
           stage.innerHTML = data.slides.map(function(s) {
             var t = String(s.title || '').replace(/"/g, '&quot;');
-            return '<div class="tv-slide" data-id="' + s.id + '" data-seconds="' + s.seconds + '" data-title="' + t + '">' + s.html + '</div>';
+            var cls = 'tv-slide' + (s.full ? ' tv-slide-full' : '');
+            return '<div class="' + cls + '" data-id="' + s.id + '" data-seconds="' + s.seconds + '" data-title="' + t + '">' + s.html + '</div>';
           }).join('');
           var foot = document.querySelector('.tv-rail-foot');
           if (foot) {

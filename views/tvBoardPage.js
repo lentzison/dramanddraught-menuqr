@@ -36,7 +36,7 @@ function tickerHtml(slides) {
 function slidesDomHtml(slides) {
   return slides.map((s, i) => `
     <div class="tv-slide${i === 0 ? ' is-active' : ''}${s.full ? ' tv-slide-full' : ''}" data-id="${escHTML(s.id)}" data-seconds="${s.seconds}" data-title="${escHTML(s.title)}">
-      ${s.html}
+      <div class="tv-fit">${s.html}</div>
     </div>`).join('');
 }
 
@@ -158,7 +158,8 @@ function generateTvBoardPage(location, board, data) {
       font-size: clamp(0.95rem, 1.2vw, 1.4rem);
       margin-top: 6px; text-transform: uppercase; letter-spacing: 0.12em;
     }
-    .tv-rail-modules { margin-top: clamp(16px, 2.4vh, 30px); min-height: 0; overflow: hidden; flex: 1; }
+    .tv-rail-modules { position: relative; margin-top: clamp(16px, 2.4vh, 30px); min-height: 0; overflow: hidden; flex: 1; }
+    .tv-rail-modules > .tv-fit { position: absolute; inset: 0; padding: 0; }
     .tv-rail-modules .tv-mod-title { font-size: clamp(1.3rem, 2vw, 2.1rem); }
     .tv-rail-foot { margin-top: auto; padding-top: 18px; }
     .tv-ticker { list-style: none; display: flex; flex-direction: column; gap: clamp(8px,1.2vh,16px); }
@@ -192,16 +193,22 @@ function generateTvBoardPage(location, board, data) {
     .tv-slides { position: absolute; inset: 0; }
     .tv-slide {
       position: absolute; inset: 0;
-      padding: clamp(28px, 4vh, 64px) clamp(28px, 3.4vw, 70px);
-      display: flex; flex-direction: column;
-      opacity: 0; transform: scale(1.012);
-      transition: opacity 0.6s ease, transform 0.6s ease;
+      opacity: 0;
+      transition: opacity 0.6s ease;
       pointer-events: none;
       overflow: hidden;
     }
-    .tv-slide.is-active { opacity: 1; transform: none; }
-    /* Image / promo slides fill edge-to-edge. */
-    .tv-slide-full { padding: 0; }
+    .tv-slide.is-active { opacity: 1; }
+    /* Content wrapper that gets scaled down to always fit its box (no clipping). */
+    .tv-fit {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      padding: clamp(28px, 4vh, 64px) clamp(28px, 3.4vw, 70px);
+      transform-origin: center center;
+      will-change: transform;
+    }
+    /* Image / promo slides fill edge-to-edge (not scaled). */
+    .tv-slide-full > .tv-fit { padding: 0; }
     .tv-image { flex: 1; background-position: center; background-repeat: no-repeat; }
     .tv-image-contain { background-size: contain; }
     .tv-image-cover { background-size: cover; }
@@ -297,7 +304,7 @@ function generateTvBoardPage(location, board, data) {
       <div class="tv-rule"></div>
       <div class="tv-clock" id="tv-clock">—</div>
       <div class="tv-date" id="tv-date"></div>
-      <div class="tv-rail-modules" id="tv-rail-modules">${view.railModuleHtml}</div>
+      <div class="tv-rail-modules" id="tv-rail-modules">${view.railModuleHtml ? `<div class="tv-fit">${view.railModuleHtml}</div>` : ''}</div>
       <div class="tv-rail-foot">${tickerHtml(view.slides)}</div>
     </aside>
     <main class="tv-stage">
@@ -312,6 +319,26 @@ function generateTvBoardPage(location, board, data) {
     var idx = 0, timer = null;
 
     function slides() { return Array.prototype.slice.call(stage.querySelectorAll('.tv-slide')); }
+
+    // Scale a .tv-fit wrapper down until its content fits its box — so a long
+    // beer list (or any module) never gets clipped. Image slides fill on their
+    // own and are skipped.
+    function fitBox(box) {
+      if (!box) return;
+      var fit = box.querySelector('.tv-fit');
+      if (!fit) return;
+      if (box.classList.contains('tv-slide-full') || fit.querySelector('.tv-image')) { fit.style.transform = 'none'; return; }
+      fit.style.transform = 'none';
+      var ch = fit.clientHeight, cw = fit.clientWidth;
+      var sh = fit.scrollHeight, sw = fit.scrollWidth;
+      if (!ch || !sh) return;
+      var scale = Math.min(1, ch / sh, cw / sw);
+      fit.style.transform = scale < 0.995 ? 'scale(' + scale.toFixed(4) + ')' : 'none';
+    }
+    function fitAll() {
+      slides().forEach(fitBox);
+      fitBox(document.getElementById('tv-rail-modules'));
+    }
 
     function updateTicker() {
       var s = slides();
@@ -346,6 +373,7 @@ function generateTvBoardPage(location, board, data) {
       if (!s.length) return;
       idx = ((i % s.length) + s.length) % s.length;
       s.forEach(function(el, j) { el.classList.toggle('is-active', j === idx); });
+      fitBox(s[idx]);
       updateTicker();
       scheduleNext();
     }
@@ -378,7 +406,7 @@ function generateTvBoardPage(location, board, data) {
           stage.innerHTML = data.slides.map(function(s) {
             var t = String(s.title || '').replace(/"/g, '&quot;');
             var cls = 'tv-slide' + (s.full ? ' tv-slide-full' : '');
-            return '<div class="' + cls + '" data-id="' + s.id + '" data-seconds="' + s.seconds + '" data-title="' + t + '">' + s.html + '</div>';
+            return '<div class="' + cls + '" data-id="' + s.id + '" data-seconds="' + s.seconds + '" data-title="' + t + '"><div class="tv-fit">' + s.html + '</div></div>';
           }).join('');
           var foot = document.querySelector('.tv-rail-foot');
           if (foot) {
@@ -387,17 +415,25 @@ function generateTvBoardPage(location, board, data) {
             }).join('') + '</ol>';
           }
           var railMods = document.getElementById('tv-rail-modules');
-          if (railMods && typeof data.railHtml === 'string') railMods.innerHTML = data.railHtml;
+          if (railMods && typeof data.railHtml === 'string') railMods.innerHTML = data.railHtml ? '<div class="tv-fit">' + data.railHtml + '</div>' : '';
           var all = slides();
           var start = -1;
           for (var k = 0; k < all.length; k++) { if (all[k].getAttribute('data-id') === curId) { start = k; break; } }
           show(start < 0 ? 0 : start);
+          fitAll();
         })
         .catch(function() {});
     }
     setInterval(refresh, 60000);
 
     show(0);
+    fitAll();
+    // Re-fit after fonts/images settle and whenever the screen size changes.
+    setTimeout(fitAll, 400);
+    if (document.fonts && document.fonts.ready) { document.fonts.ready.then(fitAll).catch(function(){}); }
+    window.addEventListener('load', fitAll);
+    var rzTimer = null;
+    window.addEventListener('resize', function () { clearTimeout(rzTimer); rzTimer = setTimeout(fitAll, 150); });
   })();
   </script>
 </body>

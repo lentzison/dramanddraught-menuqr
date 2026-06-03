@@ -1,6 +1,6 @@
 const { sendHTML, parseBody, redirect, getFlashMsg, sendEmailViaGoogle } = require('../helpers');
 const { requireAuth, isCompanyWide, getUserLocationSlugs } = require('../auth');
-const { applicantsList, applicantDetail, STATUS_LABELS } = require('../views/adminApplicantsViews');
+const { applicantsList, applicantDetail, STATUS_LABELS, CONTACT_KINDS, contactBadgeHtml, contactHistoryHtml } = require('../views/adminApplicantsViews');
 const { writeAudit } = require('../auditLog');
 const { runAiEvaluation } = require('../hiring/aiEvaluation');
 const { createAndSendInvite: createDashboardInvite, fetchInviteStatus, ROLE_OPTIONS: DASHBOARD_ROLE_OPTIONS } = require('../bartenderInvite');
@@ -546,6 +546,57 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
       return true;
     }
     flashRedirect(res, `/admin/applicants/${id}`, 'success', 'Notes saved.');
+    return true;
+  }
+
+  // ─── Log a call/contact attempt: POST /admin/applicants/:id/contact ───
+  // Outreach tracking that sits alongside the pipeline status, so the team can
+  // see who's been called / left a voicemail / reached and not call repeatedly.
+  const contactMatch = pathname.match(/^\/admin\/applicants\/([0-9a-f-]{8,})\/contact$/i);
+  if (contactMatch && req.method === 'POST') {
+    const id = contactMatch[1];
+    const isXhr = String(req.headers['x-requested-with'] || '').toLowerCase() === 'xmlhttprequest';
+    const app = await prisma.jobApplication.findUnique({ where: { id } }).catch(() => null);
+    if (!app || (!userIsCompanyWide && !allowedLocationIds.has(app.locationId))) {
+      if (isXhr) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ ok: false, error: 'not_found' })); return true; }
+      sendHTML(res, 404, '<h1>Not found</h1>');
+      return true;
+    }
+    const body = await parseBody(req);
+    const kind = String(body.kind || '').trim();
+    const log = Array.isArray(app.contactLog) ? app.contactLog.filter((e) => e && CONTACT_KINDS[e.kind]) : [];
+    if (kind === 'undo') {
+      log.pop();
+    } else if (CONTACT_KINDS[kind]) {
+      log.push({ at: new Date().toISOString(), by: user.email || null, kind });
+    } else {
+      if (isXhr) { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ ok: false, error: 'bad_kind' })); return true; }
+      flashRedirect(res, `/admin/applicants/${id}`, 'error', 'Unknown contact type.');
+      return true;
+    }
+    // Keep the log bounded.
+    const trimmed = log.slice(-100);
+    try {
+      await prisma.jobApplication.update({ where: { id }, data: { contactLog: trimmed } });
+    } catch (err) {
+      console.warn('[applicants] contact log save failed:', err.message);
+      if (isXhr) { res.writeHead(500, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ ok: false, error: err.message })); return true; }
+      flashRedirect(res, `/admin/applicants/${id}`, 'error', `Contact log failed: ${err.message}`);
+      return true;
+    }
+    writeAudit(prisma, req, user, {
+      action: kind === 'undo' ? 'contact_undo' : 'contact_log',
+      resourceType: 'jobApplication',
+      resourceId: id,
+      resourceLabel: `${app.name} — ${kind}`,
+    }).catch(() => {});
+    const updated = { id, contactLog: trimmed };
+    if (isXhr) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, badgeHtml: contactBadgeHtml(updated), historyHtml: contactHistoryHtml(updated) }));
+      return true;
+    }
+    flashRedirect(res, `/admin/applicants/${id}`, 'success', kind === 'undo' ? 'Removed last call.' : `Logged: ${CONTACT_KINDS[kind].label}.`);
     return true;
   }
 

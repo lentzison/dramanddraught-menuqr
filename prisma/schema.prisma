@@ -455,6 +455,11 @@ model JobApplication {
   decisionAt      DateTime?
   decisionNote    String?
   internalNotes   String?  // GM-only
+  // Outreach tracking, separate from the pipeline status: an ordered log of
+  // call attempts so the team can see who's been called / left a voicemail /
+  // reached, and avoid calling the same person repeatedly.
+  // Entries: { at: ISO string, by: email, kind: "called"|"voicemail"|"reached" }
+  contactLog      Json     @default("[]")
 
   // Tracking
   ipAddress       String?

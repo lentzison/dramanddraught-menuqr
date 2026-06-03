@@ -35,6 +35,62 @@ const CONTACT_METHOD_LABELS = {
 // Same as escHTML but tolerates non-string inputs (null/undefined/numbers).
 function escAttr(s) { return escHTML(String(s == null ? '' : s)); }
 
+// ─── Contact / call tracking (separate from the pipeline status) ───
+const CONTACT_KINDS = {
+  called: { label: 'Called', short: 'Called', icon: '☎' },
+  voicemail: { label: 'Left voicemail', short: 'Left VM', icon: '☎' },
+  reached: { label: 'Reached', short: 'Reached', icon: '✓' },
+};
+
+function contactLogArray(a) {
+  return Array.isArray(a && a.contactLog) ? a.contactLog.filter((e) => e && CONTACT_KINDS[e.kind]) : [];
+}
+
+function contactShortDate(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+// Compact chip for the list/detail header: last contact + attempt count.
+function contactBadgeHtml(a) {
+  const log = contactLogArray(a);
+  if (!log.length) return '';
+  const attempts = log.filter((e) => e.kind === 'called' || e.kind === 'voicemail').length;
+  const last = log[log.length - 1];
+  const k = CONTACT_KINDS[last.kind];
+  const reached = last.kind === 'reached';
+  const txt = `${k.icon} ${k.short} ${contactShortDate(last.at)}${!reached && attempts > 1 ? ` · ${attempts}×` : ''}`;
+  return `<span class="al-contact-badge${reached ? ' is-reached' : ''}" title="Last contact: ${escAttr(k.label)} on ${escAttr(contactShortDate(last.at))}">${escHTML(txt)}</span>`;
+}
+
+// Quick-log buttons. `compact` (list card) shows tight icon buttons; the
+// detail page shows labelled buttons + a "reached" + undo.
+function contactButtonsHtml(a, opts = {}) {
+  const compact = !!opts.compact;
+  const kinds = compact ? ['called', 'voicemail'] : ['called', 'voicemail', 'reached'];
+  const btns = kinds.map((kind) => {
+    const k = CONTACT_KINDS[kind];
+    if (compact) {
+      return `<button type="button" class="icon-btn" data-log-contact="${escAttr(a.id)}" data-kind="${kind}" title="Log: ${escAttr(k.label)}" aria-label="Log ${escAttr(k.label)}">${kind === 'voicemail' ? 'VM' : k.icon}</button>`;
+    }
+    return `<button type="button" class="btn btn-secondary btn-sm" data-log-contact="${escAttr(a.id)}" data-kind="${kind}">${k.icon} ${escHTML(k.label)}</button>`;
+  }).join('');
+  return btns;
+}
+
+// Full history list (newest first) for the detail page.
+function contactHistoryHtml(a) {
+  const log = contactLogArray(a);
+  if (!log.length) return '<p class="ap-contact-empty">No calls logged yet.</p>';
+  const rows = log.slice().reverse().map((e) => {
+    const k = CONTACT_KINDS[e.kind];
+    const who = e.by ? ` · ${escHTML(String(e.by).split('@')[0])}` : '';
+    return `<li><span class="ap-contact-kind">${k.icon} ${escHTML(k.label)}</span><span class="ap-contact-meta">${escHTML(formatFriendly(e.at))}${who}</span></li>`;
+  }).join('');
+  return `<ul class="ap-contact-list">${rows}</ul>`;
+}
+
 function statusBadge(status) {
   const label = STATUS_LABELS[status] || status;
   return `<span class="app-badge app-badge-${escHTML(status || 'new')}">${escHTML(label)}</span>`;
@@ -93,6 +149,14 @@ function applicantStyles() {
       .ai-rec-pending         { background:rgba(143,183,255,0.16); color:#a8c6ff; }
       .ai-rec-error           { background:rgba(255,123,123,0.18); color:#ffb3b3; }
       .ai-review-badge { display:inline-block; padding:4px 10px; border-radius:999px; font-size:0.7rem; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; margin-left:6px; background:rgba(242,166,90,0.18); color:var(--amber); }
+      .al-contact-badge { display:inline-flex; align-items:center; padding:3px 9px; border-radius:999px; font-size:0.72rem; font-weight:800; letter-spacing:0.02em; margin-left:6px; background:rgba(143,183,255,0.16); color:#c7dcff; white-space:nowrap; }
+      .al-contact-badge.is-reached { background:rgba(98,210,143,0.18); color:#b9f7cc; }
+      .ap-contact-list { list-style:none; margin:10px 0 0; padding:0; display:flex; flex-direction:column; gap:6px; }
+      .ap-contact-list li { display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:8px 12px; background:rgba(255,255,255,0.03); border:1px solid var(--line); border-radius:8px; }
+      .ap-contact-kind { font-weight:800; color:var(--text); font-size:0.9rem; }
+      .ap-contact-meta { color:var(--text-soft); font-size:0.82rem; }
+      .ap-contact-empty { color:var(--text-soft); font-size:0.88rem; margin-top:8px; }
+      .ap-contact-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
 
       /* === Applicants list (used by /admin/applicants) === */
       .app-row { display:flex; align-items:center; gap:14px; padding:14px 16px; border:1px solid var(--line); border-radius:var(--radius); margin-bottom:10px; background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01)), var(--surface); }
@@ -1248,6 +1312,7 @@ function renderApplicantCard(a) {
           ${statusBadge(a.status)}
           ${aiRecBadge(a)}
           ${ev && ev.humanReviewRequired ? '<span class="ai-review-badge">Needs review</span>' : ''}
+          <span data-contact-badge="${escAttr(a.id)}">${contactBadgeHtml(a)}</span>
         </div>
         <div class="al-card-meta">
           <span>${escHTML(positionLabel)}</span>
@@ -1259,6 +1324,7 @@ function renderApplicantCard(a) {
       </a>
       <div class="al-score">${scoreHtml}</div>
       <div class="al-card-actions">
+        ${!TERMINAL_STATUSES.has(a.status) ? contactButtonsHtml(a, { compact: true }) : ''}
         ${next && next.status ? `
           <form method="POST" action="/admin/applicants/${escAttr(a.id)}/status" style="margin:0;" onsubmit="return confirm('Move ${escAttr(a.name)} to ${escAttr(STATUS_LABELS[next.status])}?')">
             <input type="hidden" name="status" value="${escAttr(next.status)}" />
@@ -1442,6 +1508,43 @@ function rejectModalScript() {
       });
       keepBtn.addEventListener('click', function () {
         submitDecision('keep_on_file', keepBtn, 'Saving…');
+      });
+    })();
+  `;
+}
+
+// Wires up the quick call-logging buttons on both the list and detail pages.
+// Logs via fetch and swaps the contact badge (and history list) in place so
+// the GM can call down the list without a page reload.
+function contactLogScript() {
+  return `
+    (function () {
+      if (window.__contactLogInit) return;
+      window.__contactLogInit = true;
+      document.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-log-contact]');
+        if (!btn) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (btn.dataset.busy) return;
+        var id = btn.getAttribute('data-log-contact');
+        var kind = btn.getAttribute('data-kind');
+        btn.dataset.busy = '1';
+        fetch('/admin/applicants/' + encodeURIComponent(id) + '/contact', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+          body: 'kind=' + encodeURIComponent(kind),
+          credentials: 'same-origin'
+        }).then(function (r) { return r.json(); }).then(function (d) {
+          delete btn.dataset.busy;
+          if (!d || !d.ok) return;
+          var fallback = '<span style="color:var(--text-soft); font-size:0.85rem;">Not contacted yet</span>';
+          Array.prototype.forEach.call(document.querySelectorAll('[data-contact-badge="' + id + '"]'), function (el) {
+            el.innerHTML = d.badgeHtml || fallback;
+          });
+          var hist = document.querySelector('[data-contact-history="' + id + '"]');
+          if (hist && typeof d.historyHtml === 'string') hist.innerHTML = d.historyHtml;
+        }).catch(function () { delete btn.dataset.busy; });
       });
     })();
   `;
@@ -1859,6 +1962,7 @@ function applicantsList({ applications, locations, filters, counts, user, flashM
       })();
 
       ${rejectModalScript()}
+      ${contactLogScript()}
     </script>
   `, user);
 }
@@ -2531,6 +2635,17 @@ function applicantDetail({ application, interviews, user, flashMsg, dashboardInv
           <span></span>
         </div>` : ''}
       </div>
+      <div class="ap-contact-calls" style="border-top:1px solid var(--line); margin-top:12px; padding-top:12px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px; flex-wrap:wrap;">
+          <span style="color:var(--text-soft); font-size:0.8rem; font-weight:700;">Call tracking</span>
+          <span data-contact-badge="${escHTML(application.id)}">${contactBadgeHtml(application) || '<span style="color:var(--text-soft); font-size:0.85rem;">Not contacted yet</span>'}</span>
+        </div>
+        <div class="ap-contact-actions">
+          ${contactButtonsHtml(application, { compact: false })}
+          <button type="button" class="btn btn-secondary btn-sm" data-log-contact="${escHTML(application.id)}" data-kind="undo" title="Remove the last logged call">Undo last</button>
+        </div>
+        <div data-contact-history="${escHTML(application.id)}">${contactHistoryHtml(application)}</div>
+      </div>
     </div>`;
 
   const availabilityCard = `
@@ -2821,6 +2936,7 @@ function applicantDetail({ application, interviews, user, flashMsg, dashboardInv
       })();
 
       ${rejectModalScript()}
+      ${contactLogScript()}
     </script>
   `, user);
 }
@@ -2977,4 +3093,7 @@ module.exports = {
   applicantsList,
   applicantDetail,
   hiringConfigPage,
+  CONTACT_KINDS,
+  contactBadgeHtml,
+  contactHistoryHtml,
 };

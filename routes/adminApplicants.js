@@ -355,6 +355,10 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
       return true;
     }
     const note = body.note ? String(body.note).slice(0, 1000) : null;
+    // INTERNAL note (`note`) is saved to the record and never emailed. A
+    // candidate-facing line, if any, comes from a separate explicit field so
+    // internal/AI assessment language can never leak into the applicant's email.
+    const candidateMessage = body.candidateMessage ? String(body.candidateMessage).replace(/\s+/g, ' ').trim().slice(0, 500) : null;
     const sendEmail = body.sendEmail === '1' || body.sendEmail === 'on' || body.sendEmail === true;
 
     await prisma.jobApplication.update({
@@ -392,7 +396,8 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
 
       if (sendEmail) {
         const sendFn = next === 'rejected' ? sendRejectionEmail : sendKeepOnFileEmail;
-        sendFn(app, note).catch((err) => console.warn(`[applicants] ${next} email failed:`, err.message));
+        // Pass ONLY the explicit candidate-facing message — never the internal note.
+        sendFn(app, candidateMessage).catch((err) => console.warn(`[applicants] ${next} email failed:`, err.message));
       }
     }
 

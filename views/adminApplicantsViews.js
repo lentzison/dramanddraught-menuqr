@@ -1283,8 +1283,9 @@ function rejectModalHtml() {
         <h3 id="alRejectTitle">Decide on this applicant</h3>
         <p class="al-modal-sub" id="alRejectSub">Choose a final decision.</p>
 
-        <label for="alRejectReason">Reason / note (optional, saved to internal notes)</label>
-        <textarea id="alRejectReason" placeholder="e.g. Availability didn't match the role, or experience gap on bartending"></textarea>
+        <label for="alRejectReason">Internal note (optional)</label>
+        <textarea id="alRejectReason" placeholder="Private — saved to the applicant's record. Never sent to the candidate. e.g. availability didn't match, experience gap"></textarea>
+        <div style="color:var(--text-soft); font-size:0.78rem; margin:-2px 0 6px;">🔒 Internal only — saved to the record, never emailed to the candidate.</div>
 
         <div class="al-modal-row" id="alRejectInterviewsRow" style="display:none;">
           <span aria-hidden="true">⛌</span>
@@ -1296,6 +1297,12 @@ function rejectModalHtml() {
           <label for="alRejectSendEmail" style="margin:0; text-transform:none; letter-spacing:0; font-size:0.88rem; color:var(--text); font-weight:600;">
             Send a polite email to the candidate <span style="color:var(--text-muted); font-weight:500;">(copy matches the button you pick — "Reject" sends a final-no note; "Keep on file" sends a we'll-reach-back-out note)</span>
           </label>
+        </div>
+
+        <div id="alRejectCandidateRow" style="display:none; margin-top:4px;">
+          <label for="alRejectCandidateMsg">Add a line to the candidate's email (optional)</label>
+          <textarea id="alRejectCandidateMsg" maxlength="500" placeholder="Leave blank to send the standard polite note with no specific reason."></textarea>
+          <div style="color:var(--amber); font-size:0.78rem; margin-top:-2px;">✉️ This exact text is emailed to the candidate. Keep it kind and general — don't paste internal or AI assessment notes.</div>
         </div>
 
         <div class="al-modal-note">
@@ -1321,6 +1328,16 @@ function rejectModalScript() {
       var sub = document.getElementById('alRejectSub');
       var reason = document.getElementById('alRejectReason');
       var sendEmail = document.getElementById('alRejectSendEmail');
+      var candidateMsg = document.getElementById('alRejectCandidateMsg');
+      var candidateRow = document.getElementById('alRejectCandidateRow');
+      // The candidate-message field only matters when an email is being sent —
+      // reveal it on demand so internal notes and candidate copy never blur.
+      if (sendEmail && candidateRow) {
+        sendEmail.addEventListener('change', function () {
+          candidateRow.style.display = sendEmail.checked ? '' : 'none';
+          if (!sendEmail.checked && candidateMsg) candidateMsg.value = '';
+        });
+      }
       var ivRow = document.getElementById('alRejectInterviewsRow');
       var ivCount = document.getElementById('alRejectInterviewCount');
       var ivPlural = document.getElementById('alRejectInterviewPlural');
@@ -1347,6 +1364,8 @@ function rejectModalScript() {
         }
         reason.value = '';
         sendEmail.checked = false;
+        if (candidateMsg) candidateMsg.value = '';
+        if (candidateRow) candidateRow.style.display = 'none';
         if (pending.interviews > 0) {
           ivRow.style.display = '';
           ivCount.textContent = pending.interviews;
@@ -1399,11 +1418,13 @@ function rejectModalScript() {
         // copy: a firm rejection note for 'rejected', a softer
         // we'll-reach-back-out note for 'keep_on_file'.
         var doEmail = sendEmail.checked ? '1' : '';
+        var candidateText = (doEmail && candidateMsg) ? candidateMsg.value.trim() : '';
         Promise.all(pending.ids.map(function (id) {
           var body = new URLSearchParams();
           body.set('status', targetStatus);
-          if (note) body.set('note', note);
+          if (note) body.set('note', note); // internal only
           if (doEmail) body.set('sendEmail', '1');
+          if (candidateText) body.set('candidateMessage', candidateText); // candidate-facing only
           return fetch('/admin/applicants/' + encodeURIComponent(id) + '/status', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

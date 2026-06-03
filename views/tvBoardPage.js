@@ -106,72 +106,60 @@ function generateTvBoardPage(location, board, data) {
         repeating-linear-gradient(0deg, rgba(0,0,0,0.05), rgba(0,0,0,0.05) 1px, transparent 1px, transparent 9px);
       opacity: 0.5; mix-blend-mode: soft-light;
     }
-    .tv-wrap {
+    .tv-screen {
       position: relative; z-index: 1;
       height: 100vh; width: 100vw;
-      display: grid;
-      grid-template-columns: 30% 1fr;
-      gap: clamp(16px, 2vw, 34px);
-      padding: clamp(18px, 2.4vh, 40px);
+      display: flex; flex-direction: column;
+      gap: clamp(12px, 1.6vh, 24px);
+      padding: clamp(16px, 2vh, 34px);
     }
-    /* ── Persistent rail ── */
+    /* Full-width top bar: logo on the left, time + date on the right. */
+    .tv-topbar {
+      flex: 0 0 auto;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 20px; padding: 0 clamp(4px, 0.6vw, 14px);
+    }
+    .tv-topbar-meta { text-align: right; line-height: 1; }
+    .tv-body {
+      flex: 1 1 auto; min-height: 0;
+      display: grid; grid-template-columns: 30% 1fr;
+      gap: clamp(16px, 2vw, 34px);
+    }
+    .tv-body-norail { display: block; }
+    /* ── Persistent rail (holds the pinned module) ── */
     .tv-rail {
       display: flex; flex-direction: column;
       border: 1px solid var(--line);
       border-radius: 22px;
       background: linear-gradient(180deg, rgba(22,23,26,0.86), rgba(8,8,9,0.92));
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
-      padding: clamp(14px, 1.6vw, 26px);
+      padding: clamp(16px, 1.8vw, 30px);
       overflow: hidden;
     }
-    /* Compact header — logo, clock, location, date kept small so the pinned
-       module (e.g. the beer list) gets the bulk of the rail height. */
-    .tv-rail-head { flex: 0 0 auto; }
-    .tv-brand {
-      font-family: var(--display);
-      font-size: clamp(1.15rem, 1.8vw, 1.8rem);
-      line-height: 1.02;
-      letter-spacing: 0.01em;
-      color: var(--cream);
-    }
-    .tv-brand .amp { color: var(--gold); }
-    .tv-logo { display:block; max-width: min(100%, 260px); max-height: clamp(34px, 6vh, 76px); object-fit: contain; object-position: left center; margin: 0 auto 4px 0; }
-    .tv-loc {
-      font-family: var(--display);
-      text-transform: uppercase;
-      letter-spacing: 0.16em;
-      font-size: clamp(0.62rem, 0.85vw, 0.95rem);
-      color: var(--gold);
-      margin-top: 3px;
-    }
-    .tv-rule {
-      height: 1px; margin: clamp(8px,1.1vh,13px) 0;
-      background: linear-gradient(90deg, var(--gold), transparent);
-      border-radius: 2px;
-    }
+    .tv-logo { display: block; max-height: clamp(40px, 7vh, 84px); max-width: clamp(150px, 22vw, 340px); object-fit: contain; object-position: left center; }
     .tv-clock {
       font-family: var(--display);
-      font-size: clamp(1.6rem, 2.7vw, 3rem);
+      font-size: clamp(1.7rem, 2.9vw, 3.2rem);
       line-height: 1; color: var(--cream);
       letter-spacing: 0.01em;
     }
     .tv-clock .ampm { font-size: 0.4em; color: var(--gold); margin-left: 0.2em; }
     .tv-date {
       color: var(--muted);
-      font-size: clamp(0.7rem, 0.95vw, 1.05rem);
-      margin-top: 3px; text-transform: uppercase; letter-spacing: 0.1em;
+      font-size: clamp(0.72rem, 0.95vw, 1.05rem);
+      margin-top: 4px; text-transform: uppercase; letter-spacing: 0.12em;
     }
-    .tv-rail-modules { position: relative; margin-top: clamp(10px, 1.4vh, 18px); min-height: 0; overflow: hidden; flex: 1 1 auto; }
+    .tv-rail-modules { position: relative; min-height: 0; overflow: hidden; flex: 1 1 auto; }
     .tv-rail-modules > .tv-fit { position: absolute; inset: 0; padding: 0; }
-    .tv-rail-modules .tv-mod-title { font-size: clamp(1.1rem, 1.7vw, 1.7rem); }
-    .tv-rail-foot { flex: 0 0 auto; margin-top: clamp(8px,1.2vh,14px); padding-top: clamp(8px,1.1vh,12px); border-top: 1px solid rgba(255,255,255,0.08); }
-    /* Section toggle: a compact horizontal strip along the bottom. */
-    .tv-ticker { list-style: none; display: flex; flex-direction: row; flex-wrap: wrap; gap: 5px 12px; }
+    .tv-rail-modules .tv-mod-title { font-size: clamp(1.2rem, 1.9vw, 1.9rem); }
+    /* Section toggle: a compact, centered strip along the very bottom. */
+    .tv-foot { flex: 0 0 auto; padding-top: clamp(4px,0.8vh,10px); }
+    .tv-ticker { list-style: none; display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px 16px; justify-content: center; }
     .tv-ticker-item {
       display: flex; align-items: center; gap: 6px;
       font-family: var(--display);
       text-transform: uppercase; letter-spacing: 0.05em;
-      font-size: clamp(0.56rem, 0.8vw, 0.85rem);
+      font-size: clamp(0.58rem, 0.82vw, 0.9rem);
       color: var(--muted);
       transition: color 0.3s;
     }
@@ -296,31 +284,33 @@ function generateTvBoardPage(location, board, data) {
     .tv-message { margin: auto 0; }
     .tv-message-heading { font-family: var(--display); color: var(--gold-bright); font-size: clamp(2.6rem,5.5vw,6rem); line-height: 1.02; }
     .tv-message-body { color: var(--text); font-size: clamp(1.3rem,2.4vw,2.8rem); margin-top: clamp(14px,2vh,28px); line-height: 1.3; }
-    /* Portrait / small screens: stack rail on top */
+    /* Portrait / small screens: stack the rail above the stage. */
     @media (max-aspect-ratio: 1/1), (max-width: 820px) {
-      .tv-wrap { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-      .tv-rail { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 14px 28px; }
-      .tv-rail-modules, .tv-rail-foot { display: none; }
-      .tv-clock { font-size: clamp(2rem, 9vw, 3.2rem); }
+      .tv-body { grid-template-columns: 1fr; grid-template-rows: minmax(0, 0.9fr) 1fr; }
+      .tv-clock { font-size: clamp(1.6rem, 7vw, 2.6rem); }
       .tv-list-2col, .tv-events { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
-  <div class="tv-wrap">
-    <aside class="tv-rail">
-      <img class="tv-logo" src="${board.logo ? escHTML(board.logo) : '/assets/dram-draught-logo-white.png'}" alt="${locName}" />
-      <div class="tv-loc">${locName}</div>
-      <div class="tv-rule"></div>
-      <div class="tv-clock" id="tv-clock">—</div>
-      <div class="tv-date" id="tv-date"></div>
-      <div class="tv-rail-modules" id="tv-rail-modules">${view.railModuleHtml ? `<div class="tv-fit">${view.railModuleHtml}</div>` : ''}</div>
-      <div class="tv-rail-foot">${tickerHtml(view.slides)}</div>
-    </aside>
-    <main class="tv-stage">
-      <div class="tv-progress" id="tv-progress"></div>
-      <div class="tv-slides" id="tv-slides">${slidesDomHtml(view.slides)}</div>
-    </main>
+  <div class="tv-screen">
+    <header class="tv-topbar">
+      <img class="tv-logo" src="${board.logo ? escHTML(board.logo) : '/assets/dram-draught-logo-white.png'}" alt="Dram &amp; Draught" />
+      <div class="tv-topbar-meta">
+        <div class="tv-clock" id="tv-clock">—</div>
+        <div class="tv-date" id="tv-date"></div>
+      </div>
+    </header>
+    <div class="tv-body${view.pinned ? '' : ' tv-body-norail'}">
+      ${view.pinned ? `<aside class="tv-rail">
+        <div class="tv-rail-modules" id="tv-rail-modules"><div class="tv-fit">${view.railModuleHtml}</div></div>
+      </aside>` : ''}
+      <main class="tv-stage">
+        <div class="tv-progress" id="tv-progress"></div>
+        <div class="tv-slides" id="tv-slides">${slidesDomHtml(view.slides)}</div>
+      </main>
+    </div>
+    <footer class="tv-foot">${tickerHtml(view.slides)}</footer>
   </div>
   <script>
   (function() {
@@ -418,7 +408,7 @@ function generateTvBoardPage(location, board, data) {
             var cls = 'tv-slide' + (s.full ? ' tv-slide-full' : '');
             return '<div class="' + cls + '" data-id="' + s.id + '" data-seconds="' + s.seconds + '" data-title="' + t + '"><div class="tv-fit">' + s.html + '</div></div>';
           }).join('');
-          var foot = document.querySelector('.tv-rail-foot');
+          var foot = document.querySelector('.tv-foot');
           if (foot) {
             foot.innerHTML = '<ol class="tv-ticker">' + (data.ticker || []).map(function(s) {
               return '<li class="tv-ticker-item" data-id="' + s.id + '"><span class="tv-ticker-dot"></span>' + String(s.title || '').replace(/</g, '&lt;') + '</li>';

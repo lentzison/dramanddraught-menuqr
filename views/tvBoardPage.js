@@ -135,7 +135,7 @@ function generateTvBoardPage(location, board, data) {
       color: var(--cream);
     }
     .tv-brand .amp { color: var(--gold); }
-    .tv-logo { display:block; max-width:100%; max-height: clamp(34px, 6vh, 76px); object-fit: contain; }
+    .tv-logo { display:block; max-width: min(100%, 260px); max-height: clamp(34px, 6vh, 76px); object-fit: contain; object-position: left center; margin: 0 auto 4px 0; }
     .tv-loc {
       font-family: var(--display);
       text-transform: uppercase;
@@ -309,9 +309,7 @@ function generateTvBoardPage(location, board, data) {
 <body>
   <div class="tv-wrap">
     <aside class="tv-rail">
-      ${board.logo
-        ? `<img class="tv-logo" src="${escHTML(board.logo)}" alt="${locName}" />`
-        : `<div class="tv-brand">Dram <span class="amp">&amp;</span> Draught</div>`}
+      <img class="tv-logo" src="${board.logo ? escHTML(board.logo) : '/assets/dram-draught-logo-white.png'}" alt="${locName}" />
       <div class="tv-loc">${locName}</div>
       <div class="tv-rule"></div>
       <div class="tv-clock" id="tv-clock">—</div>

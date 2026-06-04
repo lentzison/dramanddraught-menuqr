@@ -198,6 +198,20 @@ function applicantStyles() {
       .ap-hero-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
       .ap-hero-actions .ap-action-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
       .ap-hero-status-line { display: flex; align-items: center; gap: 10px; margin-top: 6px; flex-wrap: wrap; }
+      /* Mobile: stack the hero, full-width actions, and drop the keyboard hint. */
+      @media (max-width: 768px) {
+        .ap-shortcut-hint { display: none; }
+      }
+      @media (max-width: 640px) {
+        .ap-hero { grid-template-columns: 1fr; gap: 14px; padding: 16px; }
+        .ap-hero h1 { font-size: 1.5rem; }
+        .ap-hero .ap-meta-line { line-height: 1.5; }
+        .ap-hero-actions { align-items: stretch; }
+        .ap-hero-actions .ap-action-row { justify-content: stretch; }
+        .ap-hero-actions .ap-action-row > * { flex: 1 1 auto; }
+        .ap-hero-actions .ap-menu > summary { width: 100%; }
+        .ap-hero-actions .btn { min-height: 44px; }
+      }
 
       /* === Dropdown menu (Change status) === */
       .ap-menu { position: relative; }

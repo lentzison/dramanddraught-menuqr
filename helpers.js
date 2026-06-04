@@ -19,6 +19,10 @@ const OPENAI_COCKTAIL_IMAGE_MODEL = process.env.OPENAI_COCKTAIL_IMAGE_MODEL || '
 const OPENAI_COCKTAIL_IMAGE_SIZE = process.env.OPENAI_COCKTAIL_IMAGE_SIZE || '1024x1024';
 const OPENAI_COCKTAIL_IMAGE_STYLE = process.env.OPENAI_COCKTAIL_IMAGE_STYLE || 'natural';
 const OPENAI_COCKTAIL_IMAGE_QUALITY = process.env.OPENAI_COCKTAIL_IMAGE_QUALITY || 'standard';
+// AI special/cocktail image generation is OFF unless explicitly enabled. These
+// images only ever appeared as small admin thumbnails (never guest-facing) and
+// the paid image API is an easy cost/abuse vector, so it's opt-in now.
+const ENABLE_AI_SPECIAL_IMAGES = (process.env.ENABLE_AI_SPECIAL_IMAGES || '').toLowerCase() === 'true';
 const OPENAI_NOTES_REQUEST_TIMEOUT_MS = parseTimeoutMs(process.env.OPENAI_NOTES_REQUEST_TIMEOUT_MS, 22000);
 const OPENAI_FEEDBACK_REQUEST_TIMEOUT_MS = parseTimeoutMs(process.env.OPENAI_FEEDBACK_REQUEST_TIMEOUT_MS, 7000);
 const OPENAI_IMAGE_REQUEST_TIMEOUT_MS = parseTimeoutMs(process.env.OPENAI_IMAGE_REQUEST_TIMEOUT_MS, 45000);
@@ -1815,6 +1819,10 @@ async function fetchCocktailImage(special, timeoutMs = 45000) {
 }
 
 async function generateCocktailImage(special) {
+  // Hard off-switch: no paid image API calls from any caller (admin regenerate
+  // endpoint, force-regenerate-on-save, or the seed script) unless explicitly
+  // enabled via ENABLE_AI_SPECIAL_IMAGES=true.
+  if (!ENABLE_AI_SPECIAL_IMAGES) return null;
   if (!special || !special.name) return null;
   const cacheKey = normalizeCocktailImageCacheKey(special);
   const cached = openAiCocktailImageCache.get(cacheKey);

@@ -6,7 +6,10 @@ const { getSpiritCategories, getSpiritCatalog, getHalfPriceSpirits } = require('
 const { sendJSON } = require('../helpers');
 const { sanitizeImageSrc } = require('../views/imageUploadWidget');
 const { writeAudit } = require('../auditLog');
-const OP_IMAGE_REGEN_TOKEN = process.env.OP_SPECIAL_IMAGE_REGEN_TOKEN || 'menuqr-special-image-regenerate';
+// No insecure default — an unset token means the optional second-factor check
+// is simply skipped (the endpoint still requires an admin login + company role).
+const OP_IMAGE_REGEN_TOKEN = process.env.OP_SPECIAL_IMAGE_REGEN_TOKEN || '';
+const AI_SPECIAL_IMAGES_ENABLED = (process.env.ENABLE_AI_SPECIAL_IMAGES || '').toLowerCase() === 'true';
 
 function normalizeText(value) {
   return String(value || '').trim();
@@ -433,29 +436,37 @@ async function buildFlightDeleteRedirect(prisma, month, year, deletedLocationId 
 }
 
 async function handleAdminSpecials(req, res, pathname, prisma) {
-  if (pathname === '/admin/specials/regenerate-images') {
-    const body = await parseBody(req);
-    const token = body?.token || req.headers['x-regenerate-token'];
-    if (!OP_IMAGE_REGEN_TOKEN || token !== OP_IMAGE_REGEN_TOKEN) {
-      sendHTML(res, 401, '<p>Unauthorized</p>');
-      return true;
-    }
-
-    const requestedDay = String(body.day || '').toUpperCase().trim();
-    void runSpecialImageRegeneration(prisma, requestedDay).catch((err) => {
-      console.error('Regenerate images background job failed:', err.message || err);
-    });
-
-    res.writeHead(202, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, message: 'Regeneration started.' }));
-    return true;
-  }
-
   const user = requireAuth(req, res);
   if (!user) { redirect(res, '/admin/login'); return true; }
 
   const userIsCompanyWide = isCompanyWide(user);
   const userSlugs = userIsCompanyWide ? null : getUserLocationSlugs(user);
+
+  // Bulk image regeneration — now behind admin auth (was previously reachable
+  // without a login) and disabled entirely unless ENABLE_AI_SPECIAL_IMAGES is
+  // on, so it can never fan out paid image-API calls by accident.
+  if (pathname === '/admin/specials/regenerate-images') {
+    if (req.method !== 'POST') { sendHTML(res, 405, '<p>Method Not Allowed</p>'); return true; }
+    if (!userIsCompanyWide) { sendHTML(res, 403, '<p>Forbidden</p>'); return true; }
+    if (!AI_SPECIAL_IMAGES_ENABLED) {
+      res.writeHead(409, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'AI special-image generation is disabled (set ENABLE_AI_SPECIAL_IMAGES=true to enable).' }));
+      return true;
+    }
+    const body = await parseBody(req);
+    // Optional second factor: only enforced if an ops token is configured.
+    if (OP_IMAGE_REGEN_TOKEN) {
+      const token = body?.token || req.headers['x-regenerate-token'];
+      if (token !== OP_IMAGE_REGEN_TOKEN) { sendHTML(res, 401, '<p>Unauthorized</p>'); return true; }
+    }
+    const requestedDay = String(body.day || '').toUpperCase().trim();
+    void runSpecialImageRegeneration(prisma, requestedDay).catch((err) => {
+      console.error('Regenerate images background job failed:', err.message || err);
+    });
+    res.writeHead(202, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, message: 'Regeneration started.' }));
+    return true;
+  }
 
   if (pathname === '/admin/feedback/export') {
     try {

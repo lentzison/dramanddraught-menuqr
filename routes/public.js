@@ -1121,8 +1121,11 @@ async function handleTvBoard(req, res, prisma, slug, boardSlug) {
     sendJSON(res, 200, renderBoardPayload(location, board, data));
     return true;
   }
-  // In-house display — no visitor tracking injected.
-  sendHTML(res, 200, generateTvBoardPage(location, board, data));
+  // In-house display — no visitor tracking injected. Honor ?orientation=portrait
+  // so a physically-rotated sign renders the vertical layout regardless of what
+  // the panel reports for aspect ratio.
+  const portrait = /^(portrait|vertical)$/i.test(String(parsed.query.orientation || ''));
+  sendHTML(res, 200, generateTvBoardPage(location, board, data, { portrait }));
   return true;
 }
 
@@ -1681,6 +1684,8 @@ async function handleApply(req, res, prisma, locationSlug) {
   const earliestStartRaw = trimField(body.earliestStart, 20);
   const yearsRaw = trimField(body.yearsExperience, 10);
   const yearsExperience = /^\d{1,2}$/.test(yearsRaw) ? Math.min(parseInt(yearsRaw, 10), 60) : null;
+  const hoursRaw = trimField(body.hoursPerWeek, 6);
+  const hoursPerWeek = /^\d{1,3}$/.test(hoursRaw) ? Math.min(Math.max(parseInt(hoursRaw, 10), 1), 80) : null;
   const priorEmployers = trimField(body.priorEmployers, 4000);
   const certifications = trimField(body.certifications, 500);
   const spiritKnowledge = trimField(body.spiritKnowledge, 4000);
@@ -1695,6 +1700,7 @@ async function handleApply(req, res, prisma, locationSlug) {
   if (!position || !APPLY_POSITIONS_SET.has(position)) errors.push('Please select a position.');
   if (position === 'Other' && !positionOther) errors.push('Please tell us which "Other" role.');
   if (!age21Raw) errors.push('Please tell us if you are 21 or older.');
+  if (hoursPerWeek == null) errors.push('Please tell us how many hours per week you are available to work.');
   // Required for any role that pours or serves alcohol. Host is the only
   // applied position that doesn't, so they're exempt.
   const ALCOHOL_ROLES = new Set(['Bartender', 'Barback', 'Server', 'Floor Manager']);
@@ -1717,7 +1723,7 @@ async function handleApply(req, res, prisma, locationSlug) {
       prev: {
         name, email, phone, position, positionOther,
         age21: age21Raw, alcoholEligibility: alcEligRaw, earliestStart: earliestStartRaw,
-        yearsExperience: yearsRaw, priorEmployers, certifications,
+        yearsExperience: yearsRaw, hoursPerWeek: hoursRaw, priorEmployers, certifications,
         spiritKnowledge, whyDD, referredBy, availability,
       },
     }), sid));
@@ -1745,6 +1751,7 @@ async function handleApply(req, res, prisma, locationSlug) {
         alcoholEligibility,
         earliestStart,
         availability: Object.keys(availability).length ? availability : null,
+        hoursPerWeek,
         yearsExperience,
         priorEmployers: priorEmployers || null,
         certifications: certifications || null,
@@ -1996,6 +2003,7 @@ async function notifyApplicationSubmitted(location, application) {
       application.referredBy ? `Referred by: ${application.referredBy}` : null,
       application.age21 ? '21+: yes' : '21+: no',
       application.earliestStart ? `Earliest start: ${new Date(application.earliestStart).toISOString().slice(0, 10)}` : null,
+      application.hoursPerWeek != null ? `Hours/week available: ${application.hoursPerWeek}` : null,
       application.yearsExperience != null ? `Years experience: ${application.yearsExperience}` : null,
       application.certifications ? `Certifications: ${application.certifications}` : null,
       application.priorEmployers ? `Prior employers:\n${application.priorEmployers}` : null,

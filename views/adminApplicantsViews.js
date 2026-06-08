@@ -2626,6 +2626,11 @@ function applicantDetail({ application, interviews, user, flashMsg, dashboardInv
           <span></span>
         </div>
         <div class="ap-contact-row">
+          <span class="lbl">Hours/wk</span>
+          <span class="val">${application.hoursPerWeek != null ? `${application.hoursPerWeek} hrs/week` : '—'}</span>
+          <span></span>
+        </div>
+        <div class="ap-contact-row">
           <span class="lbl">Years exp</span>
           <span class="val">${application.yearsExperience != null ? application.yearsExperience : '—'}</span>
           <span></span>

@@ -243,6 +243,12 @@ function generateApplyPage(location, opts = {}) {
           <span class="avail-head">Late</span>
           ${availabilityRows}
         </div>
+        <div class="apply-row" style="margin-top: 16px;">
+          <div class="apply-field">
+            <label for="ap-hours">How many hours per week are you available to work?</label>
+            <input type="number" id="ap-hours" name="hoursPerWeek" min="1" max="80" step="1" inputmode="numeric" required placeholder="e.g. 30" value="${escHTML(prev.hoursPerWeek || '')}" />
+          </div>
+        </div>
         <div class="apply-commit-notice">
           <strong>Heads up:</strong> we ask that the availability you give here stays consistent through
           your first <strong>90 days</strong> of employment. Availability is a key part of how we make
@@ -302,7 +308,7 @@ function generateApplyPage(location, opts = {}) {
         var KEY = 'dd-apply-draft-${escHTML(location.slug || '')}';
         var status = document.getElementById('ap-draft-status');
         var saveTimer = null;
-        var fields = ['name','email','phone','referredBy','position','positionOther','age21','alcoholEligibility','earliestStart','yearsExperience','certifications','priorEmployers','spiritKnowledge','whyDD'];
+        var fields = ['name','email','phone','referredBy','position','positionOther','age21','alcoholEligibility','earliestStart','hoursPerWeek','yearsExperience','certifications','priorEmployers','spiritKnowledge','whyDD'];
         function snapshot() {
           var data = {};
           fields.forEach(function (n) {

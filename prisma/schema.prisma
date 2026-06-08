@@ -432,6 +432,8 @@ model JobApplication {
 
   // Availability stored as JSON: { mon: ["day","evening","late"], tue: [...], ... }
   availability    Json?
+  // How many hours per week the applicant says they're available to work.
+  hoursPerWeek    Int?
 
   // Experience + narrative
   yearsExperience Int?

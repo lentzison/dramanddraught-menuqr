@@ -53,10 +53,11 @@ function renderBoardPayload(location, board, data) {
   };
 }
 
-function generateTvBoardPage(location, board, data) {
+function generateTvBoardPage(location, board, data, opts = {}) {
   const view = buildBoardView(location, board, data);
   const locName = escHTML(location.name || 'Dram & Draught');
   const boardName = escHTML(board.name || 'Menu Board');
+  const portrait = !!opts.portrait;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -292,9 +293,46 @@ function generateTvBoardPage(location, board, data) {
       .tv-clock { font-size: clamp(1.6rem, 7vw, 2.6rem); }
       .tv-list-2col, .tv-events { grid-template-columns: 1fr; }
     }
+    /* ── Forced vertical sign (?orientation=portrait) ──
+       The pinned module sits as a compact band on top; the rotating stage takes
+       the majority of the tall screen. Class-driven so it applies even when a
+       physically-rotated panel still reports a landscape viewport. On the narrow
+       axis, vw maps to width — so type that scaled with vw is bumped back up for
+       legibility from a distance. */
+    body.tv-portrait .tv-body {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto minmax(0, 1fr);
+      gap: clamp(12px, 1.8vh, 26px);
+    }
+    body.tv-portrait .tv-body-norail { display: flex; flex-direction: column; }
+    /* Cap the pinned band so the stage always wins the lion's share of height. */
+    body.tv-portrait .tv-rail { max-height: 34vh; padding: clamp(14px, 2.4vw, 26px); }
+    body.tv-portrait .tv-logo { max-height: clamp(46px, 9vw, 96px); max-width: 60vw; }
+    body.tv-portrait .tv-clock { font-size: clamp(1.9rem, 6vw, 3.6rem); }
+    body.tv-portrait .tv-date { font-size: clamp(0.8rem, 2.2vw, 1.2rem); }
+    /* On the wide, short band the pinned list can run two columns again. */
+    body.tv-portrait .tv-rail-modules .tv-list-2col {
+      grid-template-columns: 1fr 1fr; gap: clamp(6px,1vh,12px) clamp(20px,4vw,48px);
+    }
+    body.tv-portrait .tv-rail-modules .tv-mod-title { font-size: clamp(1.4rem, 3vw, 2.4rem); }
+    body.tv-portrait .tv-rail-modules .tv-item-name,
+    body.tv-portrait .tv-rail-modules .tv-item-price { font-size: clamp(1.1rem, 2.4vw, 1.8rem); }
+    body.tv-portrait .tv-rail-modules .tv-item-note { font-size: clamp(0.85rem, 1.8vw, 1.2rem); }
+    /* Single-column content on the narrow stage; scale text up for distance. */
+    body.tv-portrait .tv-list-2col, body.tv-portrait .tv-events { grid-template-columns: 1fr; }
+    body.tv-portrait .tv-fit { padding: clamp(24px, 3.4vh, 56px) clamp(22px, 4.5vw, 56px); }
+    body.tv-portrait .tv-mod-title { font-size: clamp(2.4rem, 6.5vw, 4.6rem); }
+    body.tv-portrait .tv-mod-sub { font-size: clamp(1.1rem, 2.4vw, 1.8rem); }
+    body.tv-portrait .tv-item-name,
+    body.tv-portrait .tv-item-price { font-size: clamp(1.5rem, 3.4vw, 2.6rem); }
+    body.tv-portrait .tv-item-note { font-size: clamp(1.05rem, 2.2vw, 1.6rem); }
+    body.tv-portrait .tv-flight-name { font-size: clamp(1.6rem, 3.6vw, 2.6rem); }
+    body.tv-portrait .tv-message-heading { font-size: clamp(2.8rem, 8vw, 6rem); }
+    body.tv-portrait .tv-message-body { font-size: clamp(1.4rem, 3.4vw, 2.8rem); }
+    body.tv-portrait .tv-ticker { font-size: clamp(0.7rem, 1.9vw, 1rem); }
   </style>
 </head>
-<body>
+<body class="${portrait ? 'tv-portrait' : ''}">
   <div class="tv-screen">
     <header class="tv-topbar">
       <img class="tv-logo" src="${board.logo ? escHTML(board.logo) : '/assets/dram-draught-logo-white.png'}" alt="Dram &amp; Draught" />

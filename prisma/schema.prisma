@@ -75,6 +75,7 @@ model TvBoard {
   slug          String   // URL slug, unique per location: "main-bar"
   isActive      Boolean  @default(true)
   logo          String?  // Optional logo image (media URL) shown in the TV rail
+  orientation   String   @default("portrait") // "portrait" (vertical sign) | "landscape"
   rotateSeconds Int      @default(15) // default per-slide duration
   modules       Json     @default("[]") // ordered [{ id, type, title?, seconds?, pinned?, image?, ... }]
 

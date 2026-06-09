@@ -301,12 +301,14 @@ function generateTvBoardPage(location, board, data, opts = {}) {
        legibility from a distance. */
     body.tv-portrait .tv-body {
       grid-template-columns: 1fr;
-      grid-template-rows: auto minmax(0, 1fr);
+      /* Explicit band height — the rail's content is absolutely positioned, so an
+         auto-sized track would collapse to zero and swallow the pinned module.
+         The band gets ~30vh; the rotating stage takes the rest. */
+      grid-template-rows: clamp(150px, 30vh, 460px) minmax(0, 1fr);
       gap: clamp(12px, 1.8vh, 26px);
     }
     body.tv-portrait .tv-body-norail { display: flex; flex-direction: column; }
-    /* Cap the pinned band so the stage always wins the lion's share of height. */
-    body.tv-portrait .tv-rail { max-height: 34vh; padding: clamp(14px, 2.4vw, 26px); }
+    body.tv-portrait .tv-rail { padding: clamp(14px, 2.4vw, 26px); }
     body.tv-portrait .tv-logo { max-height: clamp(46px, 9vw, 96px); max-width: 60vw; }
     body.tv-portrait .tv-clock { font-size: clamp(1.9rem, 6vw, 3.6rem); }
     body.tv-portrait .tv-date { font-size: clamp(0.8rem, 2.2vw, 1.2rem); }

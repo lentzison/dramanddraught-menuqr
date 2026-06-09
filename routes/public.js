@@ -1121,10 +1121,13 @@ async function handleTvBoard(req, res, prisma, slug, boardSlug) {
     sendJSON(res, 200, renderBoardPayload(location, board, data));
     return true;
   }
-  // In-house display — no visitor tracking injected. Honor ?orientation=portrait
-  // so a physically-rotated sign renders the vertical layout regardless of what
-  // the panel reports for aspect ratio.
-  const portrait = /^(portrait|vertical)$/i.test(String(parsed.query.orientation || ''));
+  // In-house display — no visitor tracking injected. Orientation comes from the
+  // board setting, but a ?orientation= query param overrides it (handy for
+  // previewing or a one-off rotated panel).
+  const orientationOverride = String(parsed.query.orientation || '').toLowerCase();
+  let portrait = board.orientation !== 'landscape'; // default/portrait unless set to landscape
+  if (/^(portrait|vertical)$/.test(orientationOverride)) portrait = true;
+  else if (/^(landscape|horizontal)$/.test(orientationOverride)) portrait = false;
   sendHTML(res, 200, generateTvBoardPage(location, board, data, { portrait }));
   return true;
 }

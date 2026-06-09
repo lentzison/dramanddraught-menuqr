@@ -128,6 +128,16 @@ function tvBoardEditor({ board, locations, user, flashMsg, defaultLocationSlug, 
             <div class="field-help">Default time each rotating module is shown. Individual modules can override this.</div>
           </div>
         </div>
+        <div class="form-row">
+          <div>
+            <label for="b-orientation">Screen orientation</label>
+            <select id="b-orientation" name="orientation">
+              <option value="portrait"${(!board || board.orientation !== 'landscape') ? ' selected' : ''}>Portrait — vertical sign (tall)</option>
+              <option value="landscape"${(board && board.orientation === 'landscape') ? ' selected' : ''}>Landscape — wide TV</option>
+            </select>
+            <div class="field-help">Match how the TV is physically mounted. Portrait stacks the layout for a tall, vertical screen; landscape uses the side-by-side layout. You can still override per-URL with <code>?orientation=</code>.</div>
+          </div>
+        </div>
         <div style="margin-top:14px">
           <label>Logo <span style="font-weight:400;color:var(--text-soft)">(optional)</span></label>
           <div class="field-help" style="margin-top:0;margin-bottom:8px">Shown at the top of the side rail in place of the text wordmark. Upload a transparent PNG for best results.</div>

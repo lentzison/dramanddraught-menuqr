@@ -12,11 +12,33 @@ const { SIGNUP_TYPES, effectiveSignupType, needsApproval } = require('../eventSi
 const { normalizeThemeKey } = require('../views/eventThemes');
 const { parseDateTimeLocal } = require('../dateEastern');
 const { normalizeRecurrenceRule } = require('../recurrence');
-const { rolloverEvent, materializeOccurrences } = require('../eventRollover');
+const { rolloverEvent, materializeOccurrences, syncManualOccurrences, announceToSeries } = require('../eventRollover');
 
-// Build {isRecurring, recurrenceRule} from the event form's Repeat fields.
+// Parse the "specific dates" list (a JSON array of datetime-local strings) into
+// de-duplicated UTC Dates.
+function parseRepeatDates(raw) {
+  let arr = [];
+  try { arr = JSON.parse(raw || '[]'); } catch { arr = []; }
+  if (!Array.isArray(arr)) return [];
+  const seen = new Set();
+  const out = [];
+  for (const s of arr) {
+    const d = parseDateTimeLocal(String(s));
+    if (d && !seen.has(d.getTime())) { seen.add(d.getTime()); out.push(d); }
+  }
+  return out;
+}
+
+// Build {isRecurring, recurrenceRule, mode, dates} from the event form's Repeat
+// fields. Two modes: "pattern" (weekly/monthly rule) or "dates" (an explicit,
+// possibly-irregular list the admin sets and edits over time).
 function parseRecurrenceFromBody(body) {
-  if (body.repeatEnabled !== 'on') return { isRecurring: false, recurrenceRule: null };
+  if (body.repeatEnabled !== 'on') return { isRecurring: false, recurrenceRule: null, mode: 'off', dates: [] };
+  const mode = body.repeatMode === 'dates' ? 'dates' : 'pattern';
+  if (mode === 'dates') {
+    // Repeats on specific dates with no pattern — recurring, but no rule.
+    return { isRecurring: true, recurrenceRule: null, mode: 'dates', dates: parseRepeatDates(body.repeatDates) };
+  }
   const rule = normalizeRecurrenceRule({
     frequency: body.repeatFrequency,
     interval: body.repeatInterval,
@@ -27,7 +49,9 @@ function parseRecurrenceFromBody(body) {
     until: body.repeatUntil ? `${body.repeatUntil}T00:00:00` : null,
     count: body.repeatCount,
   });
-  return rule ? { isRecurring: true, recurrenceRule: rule } : { isRecurring: false, recurrenceRule: null };
+  return rule
+    ? { isRecurring: true, recurrenceRule: rule, mode: 'pattern', dates: [] }
+    : { isRecurring: false, recurrenceRule: null, mode: 'off', dates: [] };
 }
 
 function normalizeText(value) {
@@ -532,6 +556,10 @@ async function handleAdminEvents(req, res, pathname, prisma) {
         // Create the first occurrence + (if recurring) the future buffer.
         await materializeOccurrences(prisma, created.id).catch((err) =>
           console.warn('[events] materialize after create failed:', err.message));
+        if (recurrence.mode === 'dates') {
+          await syncManualOccurrences(prisma, created.id, recurrence.dates).catch((err) =>
+            console.warn('[events] sync dates after create failed:', err.message));
+        }
         // Find slug for audit context
         const loc = locations.find(l => l.id === locationId);
         writeAudit(prisma, req, user, {
@@ -982,6 +1010,22 @@ async function handleAdminEvents(req, res, pathname, prisma) {
         return true;
       }
 
+      if (action === 'announce') {
+        // Manually email everyone who's signed up across the series about the
+        // current (live) date — e.g. after adding a newly-announced date.
+        const sent = await announceToSeries(prisma, eventId).catch((err) => {
+          console.warn('[events] announce failed:', err.message);
+          return 0;
+        });
+        writeAudit(prisma, req, user, {
+          action: 'announce', resourceType: 'event', resourceId: eventId,
+          resourceLabel: event.title, locationSlug: event.location?.slug || null,
+          details: { sent },
+        });
+        redirect(res, `/admin/events/${eventId}?msg=` + encodeURIComponent(`success|Emailed ${sent} past signup${sent === 1 ? '' : 's'} about this date.`) + '#repeat');
+        return true;
+      }
+
       if (action === 'addOccurrence') {
         const when = parseDateTimeLocal(body.occurrenceDate);
         if (!when) { redirect(res, `/admin/events/${eventId}?msg=error#repeat`); return true; }
@@ -1151,6 +1195,10 @@ async function handleAdminEvents(req, res, pathname, prisma) {
         // Reconcile occurrence rows with the saved dates + rule.
         await materializeOccurrences(prisma, eventId).catch((err) =>
           console.warn('[events] materialize after update failed:', err.message));
+        if (recurrence.mode === 'dates') {
+          await syncManualOccurrences(prisma, eventId, recurrence.dates).catch((err) =>
+            console.warn('[events] sync dates after update failed:', err.message));
+        }
         writeAudit(prisma, req, user, {
           action: 'update', resourceType: 'event', resourceId: eventId,
           resourceLabel: title, locationSlug: event.location?.slug || null,

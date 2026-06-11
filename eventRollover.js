@@ -292,7 +292,67 @@ async function materializeOccurrences(prisma, eventId) {
   }
 }
 
+// Reconcile an event's future MANUAL occurrences with an explicit list of dates
+// (the "specific dates" repeat mode). Creates missing dates, removes future
+// manual dates the admin dropped (only if they have no signups), and never
+// touches the current/past occurrences. Each new occurrence inherits the event's
+// start→end duration when one is set.
+async function syncManualOccurrences(prisma, eventId, dates) {
+  const event = await prisma.event.findUnique({ where: { id: eventId }, include: { currentOccurrence: true } });
+  if (!event) return;
+  const durationMs = event.startDate && event.endDate
+    ? Math.max(0, new Date(event.endDate).getTime() - new Date(event.startDate).getTime())
+    : null;
+  const currentStart = event.currentOccurrence ? new Date(event.currentOccurrence.startDate).getTime() : null;
+
+  const desired = (Array.isArray(dates) ? dates : [])
+    .filter((d) => d instanceof Date && !Number.isNaN(d.getTime()))
+    .filter((d) => currentStart == null || d.getTime() !== currentStart);
+  const desiredTimes = new Set(desired.map((d) => d.getTime()));
+
+  const existing = await prisma.eventOccurrence.findMany({
+    where: { eventId, origin: 'manual', rolledOverAt: null },
+    include: { _count: { select: { signups: true } } },
+  });
+  const existingFuture = existing.filter((o) => o.id !== event.currentOccurrenceId);
+  const existingTimes = new Set(existingFuture.map((o) => new Date(o.startDate).getTime()));
+
+  let seq = (await prisma.eventOccurrence.aggregate({ where: { eventId }, _max: { sequence: true } }))._max.sequence || 0;
+  for (const d of desired) {
+    if (existingTimes.has(d.getTime())) continue;
+    seq += 1;
+    await prisma.eventOccurrence.create({
+      data: {
+        eventId, startDate: d,
+        endDate: durationMs != null ? new Date(d.getTime() + durationMs) : null,
+        sequence: seq, origin: 'manual',
+      },
+    }).catch((err) => console.warn('[events] sync manual occurrence failed:', err.message));
+  }
+  for (const o of existingFuture) {
+    if (!desiredTimes.has(new Date(o.startDate).getTime()) && (o._count?.signups || 0) === 0) {
+      await prisma.eventOccurrence.delete({ where: { id: o.id } }).catch(() => {});
+    }
+  }
+}
+
+// Send the "sign up again" invite to the whole series on demand (a manual
+// "let past signups know" button), independent of a rollover. Targets the
+// event's current (live) occurrence. Returns the number of emails sent.
+async function announceToSeries(prisma, eventId) {
+  const event = await prisma.event.findUnique({
+    where: { id: eventId }, include: { currentOccurrence: true, location: true },
+  });
+  if (!event || !event.currentOccurrence) return 0;
+  const sent = await sendSeriesInvites(prisma, event, event.currentOccurrence);
+  await prisma.eventOccurrence.update({
+    where: { id: event.currentOccurrence.id }, data: { inviteSentAt: new Date() },
+  }).catch(() => {});
+  return sent;
+}
+
 module.exports = {
   rolloverEvent, runRollovers, scheduleEventRollovers,
   ensureNextOccurrence, seriesRecipients, materializeOccurrences,
+  syncManualOccurrences, announceToSeries,
 };

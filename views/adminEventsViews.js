@@ -31,56 +31,90 @@ function recurrenceRuleFields(event) {
   const wdOptions = WEEKDAY_OPTS.map((w, i) => `<option value="${i}"${i === weekday ? ' selected' : ''}>${w}</option>`).join('');
   const womOptions = WEEK_OF_MONTH_OPTS.map(([v, l]) => `<option value="${v}"${v === weekOfMonth ? ' selected' : ''}>${l}</option>`).join('');
 
+  // Repeat mode: "pattern" (rule) or "dates" (an explicit list). An event that's
+  // recurring but has no rule is on specific dates.
+  const hasRule = !!(event && event.recurrenceRule && normalizeRecurrenceRule(event.recurrenceRule));
+  const mode = !enabled ? 'pattern' : (hasRule ? 'pattern' : 'dates');
+  // Prefill the specific-dates editor from existing future manual occurrences.
+  const occs = Array.isArray(event?.occurrences) ? event.occurrences : [];
+  const currentId = event?.currentOccurrenceId;
+  const manualFuture = occs
+    .filter((o) => o.origin === 'manual' && !o.rolledOverAt && o.id !== currentId && new Date(o.startDate).getTime() >= Date.now())
+    .sort((a, b) => new Date(a.startDate) - new Date(b.startDate))
+    .map((o) => toDateTimeLocal(o.startDate));
+  const prefillDatesJson = escHTML(JSON.stringify(manualFuture));
+
   return `
     <div class="ev-section" id="event-repeat" style="margin-top:18px">
       <label class="ev-repeat-toggle" style="display:flex;align-items:center;gap:10px;font-weight:600;cursor:pointer">
         <input type="checkbox" id="ev-repeat-enabled" name="repeatEnabled" ${enabled ? 'checked' : ''} style="width:auto;margin:0" />
-        Repeat this event on a schedule
+        Repeat this event
       </label>
-      <p class="ev-section-hint">Set it up once. New dates are generated automatically; when a date passes, the signup sheet resets for the next one and past signups are kept on record.</p>
+      <p class="ev-section-hint">Set it up once. When a date passes, the signup sheet resets for the next one and past signups are kept on record. You can edit the dates anytime.</p>
 
       <div id="ev-repeat-fields" style="${enabled ? '' : 'display:none'}">
-        <div class="ev-field-grid">
-          <div>
-            <label>Frequency</label>
-            <select name="repeatFrequency" id="ev-repeat-freq">
-              <option value="weekly"${freq === 'weekly' ? ' selected' : ''}>Weekly</option>
-              <option value="monthly"${freq === 'monthly' ? ' selected' : ''}>Monthly</option>
-            </select>
-          </div>
-          <div>
-            <label>Every</label>
-            <div style="display:flex;align-items:center;gap:8px">
-              <input type="number" name="repeatInterval" min="1" max="52" value="${interval}" style="max-width:90px" />
-              <span class="ev-repeat-unit" data-week="weeks" data-month="months">${freq === 'monthly' ? 'months' : 'weeks'}</span>
+        <div class="ev-repeat-mode" style="display:flex;gap:18px;margin:6px 0 14px;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:500">
+            <input type="radio" name="repeatMode" value="dates" ${mode === 'dates' ? 'checked' : ''} style="width:auto;margin:0" /> On specific dates I pick
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:500">
+            <input type="radio" name="repeatMode" value="pattern" ${mode === 'pattern' ? 'checked' : ''} style="width:auto;margin:0" /> On a repeating pattern
+          </label>
+        </div>
+
+        <!-- Specific dates -->
+        <div class="ev-repeat-pane" data-pane="dates" style="${mode === 'dates' ? '' : 'display:none'}">
+          <label>Dates</label>
+          <p class="ev-section-hint" style="margin-top:2px">Add each date this event happens. The first/soonest date is the live one; the rest queue up. Don't know them yet? Leave it and add dates later.</p>
+          <div id="ev-date-rows"></div>
+          <button type="button" id="ev-add-date" class="btn btn-secondary btn-sm" style="margin-top:8px">+ Add a date</button>
+          <input type="hidden" name="repeatDates" id="ev-repeat-dates" value="" data-prefill="${prefillDatesJson}" />
+        </div>
+
+        <!-- Repeating pattern -->
+        <div class="ev-repeat-pane" data-pane="pattern" style="${mode === 'pattern' ? '' : 'display:none'}">
+          <div class="ev-field-grid">
+            <div>
+              <label>Frequency</label>
+              <select name="repeatFrequency" id="ev-repeat-freq">
+                <option value="weekly"${freq === 'weekly' ? ' selected' : ''}>Weekly</option>
+                <option value="monthly"${freq === 'monthly' ? ' selected' : ''}>Monthly</option>
+              </select>
+            </div>
+            <div>
+              <label>Every</label>
+              <div style="display:flex;align-items:center;gap:8px">
+                <input type="number" name="repeatInterval" min="1" max="52" value="${interval}" style="max-width:90px" />
+                <span class="ev-repeat-unit" data-week="weeks" data-month="months">${freq === 'monthly' ? 'months' : 'weeks'}</span>
+              </div>
             </div>
           </div>
-        </div>
-        <div class="ev-field-grid" style="margin-top:14px">
-          <div class="ev-repeat-monthly" style="${freq === 'monthly' ? '' : 'display:none'}">
-            <label>On the</label>
-            <select name="repeatWeekOfMonth">${womOptions}</select>
+          <div class="ev-field-grid" style="margin-top:14px">
+            <div class="ev-repeat-monthly" style="${freq === 'monthly' ? '' : 'display:none'}">
+              <label>On the</label>
+              <select name="repeatWeekOfMonth">${womOptions}</select>
+            </div>
+            <div>
+              <label>Day of week</label>
+              <select name="repeatWeekday">${wdOptions}</select>
+            </div>
+            <div>
+              <label>Time</label>
+              <input type="time" name="repeatTime" value="${escHTML(time)}" />
+            </div>
           </div>
-          <div>
-            <label>Day of week</label>
-            <select name="repeatWeekday">${wdOptions}</select>
-          </div>
-          <div>
-            <label>Time</label>
-            <input type="time" name="repeatTime" value="${escHTML(time)}" />
-          </div>
-        </div>
-        <div class="ev-field-grid" style="margin-top:14px">
-          <div>
-            <label>Duration <span style="color:#888;font-weight:400;font-size:0.8rem">(minutes, optional)</span></label>
-            <input type="number" name="repeatDurationMinutes" min="15" max="1440" value="${duration}" placeholder="e.g. 120" />
-          </div>
-          <div>
-            <label>End repeat <span style="color:#888;font-weight:400;font-size:0.8rem">(optional)</span></label>
-            <div style="display:flex;align-items:center;gap:8px">
-              <input type="date" name="repeatUntil" value="${escHTML(until)}" title="Stop repeating after this date" />
-              <span style="color:#888">or</span>
-              <input type="number" name="repeatCount" min="1" max="260" value="${count}" placeholder="# dates" style="max-width:110px" title="Stop after this many dates" />
+          <div class="ev-field-grid" style="margin-top:14px">
+            <div>
+              <label>Duration <span style="color:#888;font-weight:400;font-size:0.8rem">(minutes, optional)</span></label>
+              <input type="number" name="repeatDurationMinutes" min="15" max="1440" value="${duration}" placeholder="e.g. 120" />
+            </div>
+            <div>
+              <label>End repeat <span style="color:#888;font-weight:400;font-size:0.8rem">(optional)</span></label>
+              <div style="display:flex;align-items:center;gap:8px">
+                <input type="date" name="repeatUntil" value="${escHTML(until)}" title="Stop repeating after this date" />
+                <span style="color:#888">or</span>
+                <input type="number" name="repeatCount" min="1" max="260" value="${count}" placeholder="# dates" style="max-width:110px" title="Stop after this many dates" />
+              </div>
             </div>
           </div>
         </div>
@@ -90,13 +124,56 @@ function recurrenceRuleFields(event) {
       var cb = document.getElementById('ev-repeat-enabled');
       var fields = document.getElementById('ev-repeat-fields');
       var freq = document.getElementById('ev-repeat-freq');
+      var form = cb ? cb.closest('form') : null;
       if (cb && fields) cb.addEventListener('change', function(){ fields.style.display = cb.checked ? '' : 'none'; });
+
+      // Mode panes
+      function syncMode(){
+        var mode = (document.querySelector('input[name="repeatMode"]:checked') || {}).value || 'dates';
+        document.querySelectorAll('.ev-repeat-pane').forEach(function(p){ p.style.display = (p.getAttribute('data-pane') === mode) ? '' : 'none'; });
+      }
+      document.querySelectorAll('input[name="repeatMode"]').forEach(function(r){ r.addEventListener('change', syncMode); });
+      syncMode();
+
+      // Frequency unit + monthly row
       function syncFreq(){
         var monthly = freq && freq.value === 'monthly';
         document.querySelectorAll('.ev-repeat-monthly').forEach(function(el){ el.style.display = monthly ? '' : 'none'; });
         document.querySelectorAll('.ev-repeat-unit').forEach(function(el){ el.textContent = monthly ? el.getAttribute('data-month') : el.getAttribute('data-week'); });
       }
       if (freq) { freq.addEventListener('change', syncFreq); syncFreq(); }
+
+      // Specific-dates editor
+      var rowsEl = document.getElementById('ev-date-rows');
+      var hidden = document.getElementById('ev-repeat-dates');
+      var addBtn = document.getElementById('ev-add-date');
+      function addRow(val){
+        if (!rowsEl) return;
+        var row = document.createElement('div');
+        row.className = 'ev-date-row';
+        row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:8px';
+        var inp = document.createElement('input');
+        inp.type = 'datetime-local'; inp.className = 'ev-date-input'; if (val) inp.value = val;
+        inp.addEventListener('change', serialize);
+        var del = document.createElement('button');
+        del.type = 'button'; del.className = 'btn btn-secondary btn-sm'; del.textContent = 'Remove';
+        del.addEventListener('click', function(){ row.remove(); serialize(); });
+        row.appendChild(inp); row.appendChild(del); rowsEl.appendChild(row);
+      }
+      function serialize(){
+        if (!hidden) return;
+        var vals = [];
+        document.querySelectorAll('.ev-date-input').forEach(function(i){ if (i.value) vals.push(i.value); });
+        hidden.value = JSON.stringify(vals);
+      }
+      if (addBtn) addBtn.addEventListener('click', function(){ addRow(''); });
+      if (hidden) {
+        var pre = [];
+        try { pre = JSON.parse(hidden.getAttribute('data-prefill') || '[]'); } catch(e) { pre = []; }
+        pre.forEach(addRow);
+        serialize();
+      }
+      if (form) form.addEventListener('submit', serialize);
     })();</script>`;
 }
 
@@ -127,11 +204,13 @@ function recurrenceManageCard(event, actionUrl) {
       ${(o._count?.signups || 0) === 0 ? `<button type="submit" name="_action" value="deleteOccurrence" class="btn btn-secondary btn-sm" formaction="${escHTML(actionUrl)}" formmethod="POST" onclick="this.form.querySelector('#ev-del-occ').value='${escHTML(o.id)}'">Remove</button>` : ''}
     </li>`;
 
+  const isRecurring = !!event.isRecurring;
   return `
     <div class="ev-section" id="repeat" style="margin-top:18px">
       <h3>Repeat schedule</h3>
       ${rule ? `<p class="ev-section-hint">${escHTML(describeRecurrence(rule))}.</p>`
-             : `<p class="ev-section-hint">This event isn't repeating. Turn on “Repeat this event” above and save to schedule recurring dates, or add one-off dates below.</p>`}
+             : isRecurring ? `<p class="ev-section-hint">Repeats on specific dates you set. Add or edit dates above (in the When section) or below, then roll over or email past signups when you're ready.</p>`
+             : `<p class="ev-section-hint">This event isn't repeating. Turn on “Repeat this event” above and save to schedule dates, or add one-off dates below.</p>`}
 
       <div class="ev-occ-block">
         <strong>Live date</strong>
@@ -162,6 +241,14 @@ function recurrenceManageCard(event, actionUrl) {
           <div><label style="font-size:0.82rem">Roll over now <span style="color:#888;font-weight:400">(optional date)</span></label>
             <input type="datetime-local" name="rolloverDate" /></div>
           <button type="submit" class="btn btn-primary btn-sm">Roll over →</button>
+        </form>
+      </div>
+
+      <div class="ev-occ-announce" style="margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,0.08)">
+        <form method="POST" action="${escHTML(actionUrl)}" onsubmit="return confirm('Email everyone who has ever signed up for this event about the current date? (People who opted out are skipped.)')">
+          <input type="hidden" name="_action" value="announce" />
+          <button type="submit" class="btn btn-secondary btn-sm">✉ Email past signups about this date</button>
+          <span class="ev-section-hint" style="margin-left:8px">Lets people from past dates know — sends an invite to the live date${current ? ` (${escHTML(formatFriendlyDate(current.startDate))})` : ''}.</span>
         </form>
       </div>
     </div>`;

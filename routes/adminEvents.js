@@ -10,6 +10,25 @@ const { sanitizeImageSrc } = require('../views/imageUploadWidget');
 const { writeAudit } = require('../auditLog');
 const { SIGNUP_TYPES, effectiveSignupType, needsApproval } = require('../eventSignupTypes');
 const { normalizeThemeKey } = require('../views/eventThemes');
+const { parseDateTimeLocal } = require('../dateEastern');
+const { normalizeRecurrenceRule } = require('../recurrence');
+const { rolloverEvent, materializeOccurrences } = require('../eventRollover');
+
+// Build {isRecurring, recurrenceRule} from the event form's Repeat fields.
+function parseRecurrenceFromBody(body) {
+  if (body.repeatEnabled !== 'on') return { isRecurring: false, recurrenceRule: null };
+  const rule = normalizeRecurrenceRule({
+    frequency: body.repeatFrequency,
+    interval: body.repeatInterval,
+    weekday: body.repeatWeekday,
+    weekOfMonth: body.repeatWeekOfMonth,
+    time: body.repeatTime,
+    durationMinutes: body.repeatDurationMinutes,
+    until: body.repeatUntil ? `${body.repeatUntil}T00:00:00` : null,
+    count: body.repeatCount,
+  });
+  return rule ? { isRecurring: true, recurrenceRule: rule } : { isRecurring: false, recurrenceRule: null };
+}
 
 function normalizeText(value) {
   return String(value || '').trim();
@@ -123,42 +142,8 @@ function buildVendorDecisionEmail(event, signup, decision, rejectionReason = '')
   return { subject, body: bodyLines.join('\n') };
 }
 
-// Look up the Eastern Time UTC offset (in minutes) for a given calendar date.
-// Returns -240 (EDT) in summer, -300 (EST) in winter, automatically handling DST.
-function getEasternOffsetMinutes(year, month, day) {
-  // Make a UTC noon timestamp on that day, then format it in Eastern with timeZoneName.
-  // The short name is "EDT" or "EST" depending on DST status.
-  const probe = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
-  const formatted = probe.toLocaleString('en-US', {
-    timeZone: 'America/New_York',
-    timeZoneName: 'short',
-  });
-  // formatted ends with "EDT" or "EST"
-  return formatted.endsWith('EDT') ? -240 : -300;
-}
-
-function parseDateTimeLocal(value) {
-  if (!value) return null;
-  // `datetime-local` inputs return "YYYY-MM-DDTHH:MM" (no timezone).
-  // The admin enters the wall-clock time they want at the location, which
-  // for this business is Eastern. We must NOT use `new Date(value)` because
-  // that would interpret the input as the server's local timezone (UTC in
-  // production), shifting the time by 4 or 5 hours.
-  const m = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
-  if (!m) return null;
-  const year = parseInt(m[1], 10);
-  const month = parseInt(m[2], 10);
-  const day = parseInt(m[3], 10);
-  const hour = parseInt(m[4], 10);
-  const minute = parseInt(m[5], 10);
-  if ([year, month, day, hour, minute].some((n) => Number.isNaN(n))) return null;
-  const offsetMin = getEasternOffsetMinutes(year, month, day);
-  // Build the equivalent UTC timestamp: UTC = Eastern wall - offset
-  // (offset is negative for Eastern, so subtracting a negative adds)
-  const utcMs = Date.UTC(year, month - 1, day, hour, minute, 0) - offsetMin * 60 * 1000;
-  const d = new Date(utcMs);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
+// Eastern-timezone date helpers live in the shared dateEastern.js module so
+// recurring-event date generation stays in lockstep with manually-entered dates.
 
 function normalizeTicketUrl(value) {
   const v = normalizeText(value);
@@ -438,7 +423,8 @@ async function handleAdminEvents(req, res, pathname, prisma) {
       orderBy,
       include: {
         location: { select: { slug: true, name: true } },
-        _count: { select: { signups: true } },
+        // Live-date signups only (the current occurrence is the one not yet rolled over).
+        _count: { select: { signups: { where: { occurrence: { is: { rolledOverAt: null } } } } } },
       },
     }).catch(async (err) => {
       console.warn('Events list include failed, falling back:', err.message);
@@ -446,7 +432,7 @@ async function handleAdminEvents(req, res, pathname, prisma) {
       for (const ev of rows) {
         const loc = locations.find(l => l.id === ev.locationId);
         ev.location = loc ? { slug: loc.slug, name: loc.name } : { slug: '', name: '' };
-        ev._count = { signups: await prisma.eventSignup.count({ where: { eventId: ev.id } }).catch(() => 0) };
+        ev._count = { signups: await prisma.eventSignup.count({ where: { eventId: ev.id, occurrence: { is: { rolledOverAt: null } } } }).catch(() => 0) };
       }
       return rows;
     });
@@ -498,6 +484,7 @@ async function handleAdminEvents(req, res, pathname, prisma) {
 
       const customQuestions = parseCustomQuestions(body);
       const imageValue = await resolveEventImage(body.image, uniqueSlug);
+      const recurrence = parseRecurrenceFromBody(body);
 
       try {
         const created = await prisma.event.create({
@@ -508,6 +495,8 @@ async function handleAdminEvents(req, res, pathname, prisma) {
             description: normalizeText(body.description) || null,
             startDate,
             endDate: parseDateTimeLocal(body.endDate),
+            isRecurring: recurrence.isRecurring,
+            recurrenceRule: recurrence.recurrenceRule || undefined,
             image: imageValue,
             promoteFrom: parseDateTimeLocal(body.promoteFrom),
             promoteUntil: parseDateTimeLocal(body.promoteUntil),
@@ -540,6 +529,9 @@ async function handleAdminEvents(req, res, pathname, prisma) {
             })(),
           },
         });
+        // Create the first occurrence + (if recurring) the future buffer.
+        await materializeOccurrences(prisma, created.id).catch((err) =>
+          console.warn('[events] materialize after create failed:', err.message));
         // Find slug for audit context
         const loc = locations.find(l => l.id === locationId);
         writeAudit(prisma, req, user, {
@@ -659,7 +651,14 @@ async function handleAdminEvents(req, res, pathname, prisma) {
 
     const event = await prisma.event.findUnique({
       where: { id: eventId },
-      include: { location: { select: { slug: true, name: true } } },
+      include: {
+        location: { select: { slug: true, name: true } },
+        currentOccurrence: true,
+        occurrences: {
+          orderBy: { startDate: 'asc' },
+          include: { _count: { select: { signups: true } } },
+        },
+      },
     }).catch(() => null);
     if (!event) { sendHTML(res, 404, '<h1>Event not found</h1><p><a href="/admin/events">Back to events</a></p>'); return true; }
     if (!userIsCompanyWide && !canAccessLocation(user, event.location?.slug)) {
@@ -667,10 +666,19 @@ async function handleAdminEvents(req, res, pathname, prisma) {
       return true;
     }
 
-    // Signups CSV export
+    // Signups CSV export — current occurrence by default, ?scope=all for the
+    // full series history, ?occ=<id> for a specific past date.
     if (subpath === 'signups/export') {
+      const exportUrl = new URL(req.url, 'http://admin.local');
+      const scope = String(exportUrl.searchParams.get('scope') || '').toLowerCase();
+      const occParam = String(exportUrl.searchParams.get('occ') || '').trim();
+      const exportWhere = { eventId };
+      if (scope !== 'all') {
+        const occId = occParam || event.currentOccurrenceId;
+        if (occId) exportWhere.occurrenceId = occId;
+      }
       const signups = await prisma.eventSignup.findMany({
-        where: { eventId },
+        where: exportWhere,
         orderBy: { createdAt: 'asc' },
       });
       const customDefs = Array.isArray(event.customQuestions) ? event.customQuestions : [];
@@ -873,11 +881,21 @@ async function handleAdminEvents(req, res, pathname, prisma) {
         }
       }
 
+      // Scope to a chosen occurrence — default to the current (live) one.
+      // ?occ=<id> selects a past date; ?occ=all shows the full history.
+      const occParam = String(parsedDecisionUrl.searchParams.get('occ') || '').trim();
+      const selectedOcc = occParam || event.currentOccurrenceId || null;
+      const signupWhere = { eventId };
+      if (selectedOcc && occParam !== 'all') signupWhere.occurrenceId = selectedOcc;
       const signups = await prisma.eventSignup.findMany({
-        where: { eventId },
+        where: signupWhere,
         orderBy: { createdAt: 'desc' },
       });
-      sendHTML(res, 200, eventSignupsView(event, signups, user, flashMsg));
+      sendHTML(res, 200, eventSignupsView(event, signups, user, flashMsg, {
+        occurrences: event.occurrences || [],
+        currentOccurrenceId: event.currentOccurrenceId,
+        selectedOcc: occParam === 'all' ? 'all' : selectedOcc,
+      }));
       return true;
     }
 
@@ -939,6 +957,56 @@ async function handleAdminEvents(req, res, pathname, prisma) {
           redirect(res, `/admin/events/${eventId}?msg=` + encodeURIComponent('error|' + (err.message || 'Could not duplicate.')));
           return true;
         }
+      }
+
+      // ─── Recurring-event actions ───
+      if (action === 'rollover') {
+        // Manually advance to the next date now: archive current signups, open
+        // the next occurrence, email the series. Optional explicit date.
+        const manualDate = body.rolloverDate ? parseDateTimeLocal(body.rolloverDate) : null;
+        const result = await rolloverEvent(prisma, event, { trigger: 'manual', manualDate })
+          .catch((err) => ({ ok: false, reason: err.message }));
+        if (result.ok) {
+          writeAudit(prisma, req, user, {
+            action: 'rollover', resourceType: 'event', resourceId: eventId,
+            resourceLabel: event.title, locationSlug: event.location?.slug || null,
+            details: { invitesSent: result.invitesSent },
+          });
+          redirect(res, `/admin/events/${eventId}?msg=` + encodeURIComponent(`success|Rolled over to the next date. ${result.invitesSent || 0} invite${result.invitesSent === 1 ? '' : 's'} sent.`));
+        } else {
+          const why = result.reason === 'no-next-date'
+            ? 'No next date available — add a repeat rule or enter a date to roll over to.'
+            : 'Could not roll over.';
+          redirect(res, `/admin/events/${eventId}?msg=` + encodeURIComponent('error|' + why));
+        }
+        return true;
+      }
+
+      if (action === 'addOccurrence') {
+        const when = parseDateTimeLocal(body.occurrenceDate);
+        if (!when) { redirect(res, `/admin/events/${eventId}?msg=error#repeat`); return true; }
+        const maxSeq = await prisma.eventOccurrence.aggregate({ where: { eventId }, _max: { sequence: true } });
+        await prisma.eventOccurrence.create({
+          data: { eventId, startDate: when, endDate: parseDateTimeLocal(body.occurrenceEndDate), sequence: (maxSeq._max.sequence || 0) + 1, origin: 'manual' },
+        }).catch((err) => console.warn('[events] add occurrence failed:', err.message));
+        redirect(res, `/admin/events/${eventId}?msg=saved#repeat`);
+        return true;
+      }
+
+      if (action === 'deleteOccurrence') {
+        const occId = String(body.occurrenceId || '').trim();
+        // Never delete the current (live) occurrence; archived/past ones keep
+        // their signup history, so only remove future, un-attended dates.
+        if (occId && occId !== event.currentOccurrenceId) {
+          const occ = await prisma.eventOccurrence.findFirst({
+            where: { id: occId, eventId }, include: { _count: { select: { signups: true } } },
+          }).catch(() => null);
+          if (occ && (occ._count?.signups || 0) === 0 && !occ.rolledOverAt) {
+            await prisma.eventOccurrence.delete({ where: { id: occId } }).catch(() => {});
+          }
+        }
+        redirect(res, `/admin/events/${eventId}?msg=saved#repeat`);
+        return true;
       }
 
       // ─── Section actions ───
@@ -1042,6 +1110,7 @@ async function handleAdminEvents(req, res, pathname, prisma) {
         ? await ensureUniqueSlug(prisma, targetLocationId, desiredSlug || slugify(title), eventId)
         : event.slug;
       const imageValue = await resolveEventImage(body.image, slug);
+      const recurrence = parseRecurrenceFromBody(body);
 
       try {
         await prisma.event.update({
@@ -1067,6 +1136,8 @@ async function handleAdminEvents(req, res, pathname, prisma) {
             notifyEmail: normalizeText(body.notifyEmail) || null,
             isActive: body.isActive === 'on',
             isCancelled: body.isCancelled === 'on',
+            isRecurring: recurrence.isRecurring,
+            recurrenceRule: recurrence.recurrenceRule || null,
             signupType: SIGNUP_TYPES.includes(String(body.signupType)) ? String(body.signupType) : (event.signupType || 'guest'),
             isVendorEvent: String(body.signupType) === 'vendor',
             ticketUrl: normalizeTicketUrl(body.ticketUrl),
@@ -1077,6 +1148,9 @@ async function handleAdminEvents(req, res, pathname, prisma) {
             bannerStyle: normalizeBannerStyle(body.bannerStyle),
           },
         });
+        // Reconcile occurrence rows with the saved dates + rule.
+        await materializeOccurrences(prisma, eventId).catch((err) =>
+          console.warn('[events] materialize after update failed:', err.message));
         writeAudit(prisma, req, user, {
           action: 'update', resourceType: 'event', resourceId: eventId,
           resourceLabel: title, locationSlug: event.location?.slug || null,
@@ -1092,7 +1166,9 @@ async function handleAdminEvents(req, res, pathname, prisma) {
 
     // GET: show editor
     const flashMsg = getFlashMsg(req.url);
-    const signupCount = await prisma.eventSignup.count({ where: { eventId } }).catch(() => 0);
+    const signupCount = await prisma.eventSignup.count({
+      where: { eventId, ...(event.currentOccurrenceId ? { occurrenceId: event.currentOccurrenceId } : {}) },
+    }).catch(() => 0);
     sendHTML(res, 200, eventEditor(event, locations, user, flashMsg, signupCount));
     return true;
   }

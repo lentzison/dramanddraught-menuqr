@@ -15,6 +15,7 @@ const { handleAdminLtos } = require('./routes/adminLtos');
 const { handleAdminTv } = require('./routes/adminTv');
 const { scheduleInterviewReminders } = require('./interviewReminders');
 const { scheduleEventReminders } = require('./eventReminders');
+const { scheduleEventRollovers } = require('./eventRollover');
 const { scheduleScreeningRetry } = require('./screeningRetry');
 const { scheduleApplicantDailyRecap } = require('./applicantDailyRecap');
 const { scheduleQuestionnaireReminders } = require('./questionnaireReminders');
@@ -230,6 +231,7 @@ server.listen(PORT, '0.0.0.0', () => {
   scheduleGiftCardDrawing();
   scheduleInterviewReminders(prisma);
   scheduleEventReminders(prisma);
+  scheduleEventRollovers(prisma);
   scheduleApplicantDailyRecap(prisma);
   scheduleQuestionnaireReminders(prisma);
   scheduleScreeningRetry(prisma);

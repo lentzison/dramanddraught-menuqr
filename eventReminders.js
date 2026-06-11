@@ -140,7 +140,11 @@ async function runEventReminders(prisma) {
       },
       include: { event: { include: { location: true } } },
     });
-    for (const s of due24) await sendReminder(prisma, s, '24h');
+    // Only remind signups for the event's CURRENT occurrence — archived
+    // (past-occurrence) signups are kept on record but must not be reminded for
+    // a new date they never signed up for.
+    const current24 = due24.filter((s) => s.occurrenceId === s.event.currentOccurrenceId);
+    for (const s of current24) await sendReminder(prisma, s, '24h');
 
     const due1 = await prisma.eventSignup.findMany({
       where: {
@@ -156,10 +160,11 @@ async function runEventReminders(prisma) {
       },
       include: { event: { include: { location: true } } },
     });
-    for (const s of due1) await sendReminder(prisma, s, '1h');
+    const current1 = due1.filter((s) => s.occurrenceId === s.event.currentOccurrenceId);
+    for (const s of current1) await sendReminder(prisma, s, '1h');
 
-    if (due24.length || due1.length) {
-      console.log(`[event reminders] sent ${due24.length} 24h, ${due1.length} 1h`);
+    if (current24.length || current1.length) {
+      console.log(`[event reminders] sent ${current24.length} 24h, ${current1.length} 1h`);
     }
   } catch (err) {
     console.warn('[event reminders] run failed:', err.message);

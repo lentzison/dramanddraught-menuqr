@@ -349,6 +349,19 @@ model Event {
   // per event (e.g. info-only events that don't really need a T-24h ping).
   remindersEnabled Boolean   @default(true)
 
+  // ── Recurring events ──
+  // A recurring event is a single, stable row (same slug/QR forever) whose live
+  // date rolls forward through a list of EventOccurrence rows. The Event's
+  // startDate/endDate/promoteUntil always MIRROR the current occurrence so every
+  // existing reader (public page, TV, lists, reminders) keeps working unchanged.
+  isRecurring      Boolean   @default(false)
+  // { frequency: "weekly"|"biweekly"|"monthly", interval, weekday (0-6),
+  //   time ("18:00" Eastern), durationMinutes?, until? (ISO), count? }
+  recurrenceRule   Json?
+  // Which occurrence is "live" — the one accepting signups right now.
+  currentOccurrenceId String? @unique
+  currentOccurrence EventOccurrence? @relation("EventCurrentOccurrence", fields: [currentOccurrenceId], references: [id], onDelete: SetNull)
+
   // When this event was imported from the public Dram & Draught site, the id of
   // the originating public event. Sent in the /api/public/events feed so the
   // public side re-points (transfers ownership to) that original row instead of
@@ -357,6 +370,8 @@ model Event {
 
   location         Location       @relation(fields: [locationId], references: [id], onDelete: Cascade)
   signups          EventSignup[]
+  occurrences      EventOccurrence[] @relation("EventOccurrences")
+  seriesOptOuts    EventSeriesOptOut[]
 
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
@@ -364,6 +379,43 @@ model Event {
   @@unique([locationId, slug])
   @@index([locationId, startDate])
   @@index([slug])
+}
+
+// One scheduled date of an event. Non-recurring events have exactly one.
+// Recurring events accrue one per date; the Event points at the "current" one
+// and rolls forward as each ends. Past occurrences are kept for signup history.
+model EventOccurrence {
+  id           String    @id @default(uuid())
+  eventId      String
+  startDate    DateTime
+  endDate      DateTime?
+  sequence     Int       @default(1) // 1,2,3… for stable ordering & labels
+  rolledOverAt DateTime? // set when archived (no longer the live date)
+  origin       String    @default("manual") // "rule" | "manual"
+  inviteSentAt DateTime? // when the "sign up again" series invite went out for this date
+  createdAt    DateTime  @default(now())
+
+  event        Event     @relation("EventOccurrences", fields: [eventId], references: [id], onDelete: Cascade)
+  current      Event?    @relation("EventCurrentOccurrence")
+  signups      EventSignup[]
+
+  @@index([eventId, startDate])
+}
+
+// Series-level opt-out: an email that no longer wants the "we're doing it again"
+// re-invite for a given recurring event. Distinct from EventSignup.remindersOptOut
+// (which only silences the per-RSVP T-24h/T-1h reminders).
+model EventSeriesOptOut {
+  id        String   @id @default(uuid())
+  eventId   String
+  email     String
+  token     String   @unique
+  createdAt DateTime @default(now())
+
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, email])
+  @@index([eventId])
 }
 
 model EventSignup {
@@ -403,10 +455,17 @@ model EventSignup {
   remindersOptOut  Boolean   @default(false)
   unsubscribeToken String?
 
+  // Which occurrence (date) this signup belongs to. Nullable forever — a deleted
+  // occurrence orphans its signups (SetNull) rather than erasing attendance
+  // history. The "live sheet" = signups where occurrenceId == event.currentOccurrenceId.
+  occurrenceId  String?
+  occurrence    EventOccurrence? @relation(fields: [occurrenceId], references: [id], onDelete: SetNull)
+
   event         Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   @@index([eventId, createdAt])
   @@index([eventId, status])
+  @@index([occurrenceId])
   @@index([visitorId])
   @@index([source])
 }

@@ -1,6 +1,171 @@
 const { adminLayout } = require('./adminLayout');
 const { escHTML } = require('./escapeHtml');
 const { EVENT_THEMES, THEME_BY_KEY, themeLabel } = require('./eventThemes');
+const { normalizeRecurrenceRule, generateOccurrences, describeRecurrence } = require('../recurrence');
+const { easternParts } = require('../dateEastern');
+
+const WEEKDAY_OPTS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const WEEK_OF_MONTH_OPTS = [[1, 'first'], [2, 'second'], [3, 'third'], [4, 'fourth'], [-1, 'last']];
+
+// The Repeat rule inputs, shown inside the When section (saved with the event).
+function recurrenceRuleFields(event) {
+  const rule = normalizeRecurrenceRule(event?.recurrenceRule) || {};
+  const enabled = !!(event && event.isRecurring);
+  // Sensible defaults from the event's start when no rule yet.
+  let defWeekday = 5; let defTime = '18:00';
+  if (event?.startDate) {
+    const p = easternParts(event.startDate);
+    defWeekday = p.weekday;
+    const t = new Date(event.startDate).toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour12: false, hour: '2-digit', minute: '2-digit' });
+    if (/^\d{2}:\d{2}$/.test(t)) defTime = t;
+  }
+  const freq = rule.frequency || 'weekly';
+  const interval = rule.interval || 1;
+  const weekday = rule.weekday != null ? rule.weekday : defWeekday;
+  const weekOfMonth = rule.weekOfMonth || 1;
+  const time = rule.time || defTime;
+  const duration = rule.durationMinutes || '';
+  const until = rule.until ? new Date(rule.until).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) : '';
+  const count = rule.count || '';
+
+  const wdOptions = WEEKDAY_OPTS.map((w, i) => `<option value="${i}"${i === weekday ? ' selected' : ''}>${w}</option>`).join('');
+  const womOptions = WEEK_OF_MONTH_OPTS.map(([v, l]) => `<option value="${v}"${v === weekOfMonth ? ' selected' : ''}>${l}</option>`).join('');
+
+  return `
+    <div class="ev-section" id="event-repeat" style="margin-top:18px">
+      <label class="ev-repeat-toggle" style="display:flex;align-items:center;gap:10px;font-weight:600;cursor:pointer">
+        <input type="checkbox" id="ev-repeat-enabled" name="repeatEnabled" ${enabled ? 'checked' : ''} style="width:auto;margin:0" />
+        Repeat this event on a schedule
+      </label>
+      <p class="ev-section-hint">Set it up once. New dates are generated automatically; when a date passes, the signup sheet resets for the next one and past signups are kept on record.</p>
+
+      <div id="ev-repeat-fields" style="${enabled ? '' : 'display:none'}">
+        <div class="ev-field-grid">
+          <div>
+            <label>Frequency</label>
+            <select name="repeatFrequency" id="ev-repeat-freq">
+              <option value="weekly"${freq === 'weekly' ? ' selected' : ''}>Weekly</option>
+              <option value="monthly"${freq === 'monthly' ? ' selected' : ''}>Monthly</option>
+            </select>
+          </div>
+          <div>
+            <label>Every</label>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="number" name="repeatInterval" min="1" max="52" value="${interval}" style="max-width:90px" />
+              <span class="ev-repeat-unit" data-week="weeks" data-month="months">${freq === 'monthly' ? 'months' : 'weeks'}</span>
+            </div>
+          </div>
+        </div>
+        <div class="ev-field-grid" style="margin-top:14px">
+          <div class="ev-repeat-monthly" style="${freq === 'monthly' ? '' : 'display:none'}">
+            <label>On the</label>
+            <select name="repeatWeekOfMonth">${womOptions}</select>
+          </div>
+          <div>
+            <label>Day of week</label>
+            <select name="repeatWeekday">${wdOptions}</select>
+          </div>
+          <div>
+            <label>Time</label>
+            <input type="time" name="repeatTime" value="${escHTML(time)}" />
+          </div>
+        </div>
+        <div class="ev-field-grid" style="margin-top:14px">
+          <div>
+            <label>Duration <span style="color:#888;font-weight:400;font-size:0.8rem">(minutes, optional)</span></label>
+            <input type="number" name="repeatDurationMinutes" min="15" max="1440" value="${duration}" placeholder="e.g. 120" />
+          </div>
+          <div>
+            <label>End repeat <span style="color:#888;font-weight:400;font-size:0.8rem">(optional)</span></label>
+            <div style="display:flex;align-items:center;gap:8px">
+              <input type="date" name="repeatUntil" value="${escHTML(until)}" title="Stop repeating after this date" />
+              <span style="color:#888">or</span>
+              <input type="number" name="repeatCount" min="1" max="260" value="${count}" placeholder="# dates" style="max-width:110px" title="Stop after this many dates" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script>(function(){
+      var cb = document.getElementById('ev-repeat-enabled');
+      var fields = document.getElementById('ev-repeat-fields');
+      var freq = document.getElementById('ev-repeat-freq');
+      if (cb && fields) cb.addEventListener('change', function(){ fields.style.display = cb.checked ? '' : 'none'; });
+      function syncFreq(){
+        var monthly = freq && freq.value === 'monthly';
+        document.querySelectorAll('.ev-repeat-monthly').forEach(function(el){ el.style.display = monthly ? '' : 'none'; });
+        document.querySelectorAll('.ev-repeat-unit').forEach(function(el){ el.textContent = monthly ? el.getAttribute('data-month') : el.getAttribute('data-week'); });
+      }
+      if (freq) { freq.addEventListener('change', syncFreq); syncFreq(); }
+    })();</script>`;
+}
+
+// Upcoming dates + manual add/remove + "roll over now". Lives OUTSIDE the main
+// event form (its own _action POSTs), shown only for saved events.
+function recurrenceManageCard(event, actionUrl) {
+  if (!event || !event.id) return '';
+  const rule = normalizeRecurrenceRule(event.recurrenceRule);
+  const occs = Array.isArray(event.occurrences) ? event.occurrences : [];
+  const currentId = event.currentOccurrenceId;
+  const now = Date.now();
+
+  const current = occs.find((o) => o.id === currentId);
+  const upcoming = occs.filter((o) => !o.rolledOverAt && o.id !== currentId && new Date(o.startDate).getTime() >= now)
+    .sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+  const past = occs.filter((o) => o.rolledOverAt || (o.id !== currentId && new Date(o.startDate).getTime() < now)).length;
+
+  // A live preview from the rule (in case nothing is materialized past the buffer).
+  let preview = [];
+  if (rule) {
+    const from = current ? (current.endDate || current.startDate) : new Date();
+    preview = generateOccurrences(rule, from, 5);
+  }
+
+  const occRow = (o) => `
+    <li class="ev-occ-row">
+      <span>${escHTML(formatFriendlyDate(o.startDate))}${(o._count?.signups || 0) ? ` · <span style="color:#d2aa67">${o._count.signups} signup${o._count.signups === 1 ? '' : 's'}</span>` : ''}${o.origin === 'manual' ? ' · <span style="color:#888">added</span>' : ''}</span>
+      ${(o._count?.signups || 0) === 0 ? `<button type="submit" name="_action" value="deleteOccurrence" class="btn btn-secondary btn-sm" formaction="${escHTML(actionUrl)}" formmethod="POST" onclick="this.form.querySelector('#ev-del-occ').value='${escHTML(o.id)}'">Remove</button>` : ''}
+    </li>`;
+
+  return `
+    <div class="ev-section" id="repeat" style="margin-top:18px">
+      <h3>Repeat schedule</h3>
+      ${rule ? `<p class="ev-section-hint">${escHTML(describeRecurrence(rule))}.</p>`
+             : `<p class="ev-section-hint">This event isn't repeating. Turn on “Repeat this event” above and save to schedule recurring dates, or add one-off dates below.</p>`}
+
+      <div class="ev-occ-block">
+        <strong>Live date</strong>
+        <p style="margin:4px 0 10px">${current ? escHTML(formatFriendlyDate(current.startDate)) : '—'} <span style="color:#888">(accepting signups now)</span></p>
+
+        ${upcoming.length ? `<strong>Upcoming dates</strong>
+        <form method="POST" action="${escHTML(actionUrl)}"><input type="hidden" id="ev-del-occ" name="occurrenceId" value="" />
+          <ul class="ev-occ-list">${upcoming.map(occRow).join('')}</ul>
+        </form>` : ''}
+
+        ${preview.length ? `<details style="margin-top:8px"><summary style="cursor:pointer;color:#888">Preview next generated dates</summary>
+          <ul class="ev-occ-list" style="margin-top:8px">${preview.map((p) => `<li class="ev-occ-row"><span style="color:#aaa">${escHTML(formatFriendlyDate(p.startDate))}</span></li>`).join('')}</ul>
+        </details>` : ''}
+
+        ${past ? `<p style="margin-top:10px"><a href="/admin/events/${escHTML(event.id)}/signups?occ=all" style="color:#d2aa67">View past signups (${past} past date${past === 1 ? '' : 's'}) →</a></p>` : ''}
+      </div>
+
+      <div class="ev-occ-actions" style="display:flex;flex-wrap:wrap;gap:18px;margin-top:14px">
+        <form method="POST" action="${escHTML(actionUrl)}" class="ev-occ-add" style="display:flex;align-items:flex-end;gap:8px">
+          <input type="hidden" name="_action" value="addOccurrence" />
+          <div><label style="font-size:0.82rem">Add a one-off date</label>
+            <input type="datetime-local" name="occurrenceDate" required /></div>
+          <button type="submit" class="btn btn-secondary btn-sm">Add date</button>
+        </form>
+
+        <form method="POST" action="${escHTML(actionUrl)}" class="ev-occ-roll" style="display:flex;align-items:flex-end;gap:8px" onsubmit="return confirm('Roll over to the next date now? This resets the live signup sheet and emails everyone who has signed up before.')">
+          <input type="hidden" name="_action" value="rollover" />
+          <div><label style="font-size:0.82rem">Roll over now <span style="color:#888;font-weight:400">(optional date)</span></label>
+            <input type="datetime-local" name="rolloverDate" /></div>
+          <button type="submit" class="btn btn-primary btn-sm">Roll over →</button>
+        </form>
+      </div>
+    </div>`;
+}
 
 // Visual theme picker for the event editor's Appearance tab. Renders every
 // registered theme as a selectable card with a mini color preview. The radio
@@ -419,6 +584,7 @@ function eventsList(events, user, flashMsg, filter = 'upcoming', importable = []
           <div class="ev-card-head">
             <a class="ev-card-title" href="/admin/events/${escHTML(ev.id)}">${escHTML(ev.title)}</a>
             ${eventStatusBadge(ev)}
+            ${ev.isRecurring ? '<span class="ev-badge ev-badge-recurring" title="Repeats on a schedule">↻ Repeats</span>' : ''}
           </div>
           <div class="ev-card-meta">
             <span>${escHTML(locName) || 'No location'}</span>
@@ -573,6 +739,7 @@ function eventsList(events, user, flashMsg, filter = 'upcoming', importable = []
       .ev-badge-closed { background: rgba(242,166,90,0.18); color: var(--amber); }
       .ev-badge-past { background: rgba(255,255,255,0.06); color: var(--text-muted); }
       .ev-badge-cancelled { background: rgba(255,123,123,0.18); color: #ffb3b3; }
+      .ev-badge-recurring { background: rgba(210,170,103,0.18); color: #d2aa67; }
       .ev-badge-inactive { background: rgba(255,255,255,0.05); color: var(--text-soft); }
 
       @media (max-width: 760px) {
@@ -1663,6 +1830,7 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0, opts = {
           </div>
         </div>
       </div>
+      ${recurrenceRuleFields(event)}
       </div><!-- /basics panel -->
 
       <div class="ev-tab-panel" data-tab-panel="appearance">
@@ -1784,6 +1952,7 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0, opts = {
 
     ${!isNew ? `
       <div class="ev-tab-panel" data-tab-panel="page">
+        ${recurrenceManageCard(event, actionUrl)}
         ${renderSectionsCard(event, actionUrl)}
         <div class="ev-delete-section">
           <h3>Delete this event</h3>
@@ -2117,9 +2286,30 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0, opts = {
 }
 
 // ─── Signups viewer ───
-function eventSignupsView(event, signups, user, flashMsg) {
+function eventSignupsView(event, signups, user, flashMsg, occCtx = {}) {
   const customDefs = Array.isArray(event.customQuestions) ? event.customQuestions : [];
   const isVendor = event.isVendorEvent === true;
+
+  // Occurrence tabs (recurring events keep past dates on record). Only shown
+  // when there's more than one occurrence to switch between.
+  const occurrences = Array.isArray(occCtx.occurrences) ? occCtx.occurrences : [];
+  const currentId = occCtx.currentOccurrenceId;
+  const selected = occCtx.selectedOcc || currentId;
+  let occTabs = '';
+  if (occurrences.length > 1) {
+    const sorted = [...occurrences].sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
+    const base = `/admin/events/${escHTML(event.id)}/signups`;
+    const tab = (href, label, active) => `<a href="${href}" class="evs-occ-tab${active ? ' is-active' : ''}">${label}</a>`;
+    occTabs = `<div class="evs-occ-tabs" style="display:flex;flex-wrap:wrap;gap:8px;margin:14px 0">
+      ${sorted.map((o) => {
+        const isCur = o.id === currentId;
+        const label = `${escHTML(formatFriendlyDate(o.startDate))}${isCur ? ' · Live' : ''} (${o._count?.signups || 0})`;
+        return tab(`${base}?occ=${escHTML(o.id)}`, label, selected === o.id && selected !== 'all');
+      }).join('')}
+      ${tab(`${base}?occ=all`, 'All dates', selected === 'all')}
+    </div>
+    <style>.evs-occ-tab{padding:6px 12px;border:1px solid #2a2b30;border-radius:8px;color:#bbb;text-decoration:none;font-size:0.85rem}.evs-occ-tab.is-active{background:#d2aa67;color:#1a1b1f;border-color:#d2aa67;font-weight:700}</style>`;
+  }
 
   const statusBadge = (status) => {
     const s = String(status || 'approved');
@@ -2434,9 +2624,11 @@ function eventSignupsView(event, signups, user, flashMsg) {
       </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap">
         <a href="/admin/events/${escHTML(event.id)}" class="btn btn-secondary">Edit Event</a>
-        ${signups.length > 0 ? `<a href="/admin/events/${escHTML(event.id)}/signups/export" class="btn btn-primary">Export CSV</a>` : ''}
+        ${signups.length > 0 ? `<a href="/admin/events/${escHTML(event.id)}/signups/export${selected === 'all' ? '?scope=all' : (selected && selected !== currentId ? `?occ=${escHTML(selected)}` : '')}" class="btn btn-primary">Export CSV</a>` : ''}
       </div>
     </div>
+
+    ${occTabs}
 
     <div class="admin-stat-grid">
       <div class="admin-stat">

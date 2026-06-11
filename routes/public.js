@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const url = require('url');
+const crypto = require('crypto');
 const {
   sendHTML,
   sendJSON,
@@ -372,7 +373,8 @@ async function handlePublicEventsFeed(req, res, prisma) {
       orderBy: [{ startDate: 'asc' }],
       include: {
         location: { select: { slug: true, name: true, city: true, state: true } },
-        _count: { select: { signups: true } },
+        // Current-occurrence signups only (recurring events keep past dates on record).
+        _count: { select: { signups: { where: { occurrence: { is: { rolledOverAt: null } } } } } },
       },
       take: 500,
     });
@@ -478,6 +480,62 @@ async function handleEventReminderUnsubscribe(req, res, prisma) {
     console.warn('[event unsubscribe] failed:', err.message);
     res.writeHead(500);
     res.end(htmlPage('Error', '<h1>Something went wrong</h1><p>Please try again, or reply to the reminder email and we\'ll take care of it.</p>'));
+  }
+  return true;
+}
+
+// Series opt-out: stop the "we're doing it again" re-invites for a recurring
+// event. The token is the signup's unsubscribeToken; we resolve it to the
+// (event, email) and record a series-level opt-out so future rollovers skip it.
+async function handleEventSeriesUnsubscribe(req, res, prisma) {
+  const url = new URL(req.url, 'http://x');
+  const token = (url.searchParams.get('token') || '').trim();
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  const esc = (s) => String(s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  function htmlPage(title, body) {
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title><meta name="viewport" content="width=device-width, initial-scale=1">
+      <style>body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#0f1012;color:#eee;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px}
+      .card{max-width:480px;text-align:center;background:#1a1b1f;border:1px solid #2a2b30;border-radius:14px;padding:36px}
+      h1{margin:0 0 12px;font-size:1.4rem;color:#d2aa67}
+      p{color:#bbb;line-height:1.55;margin:8px 0}</style></head><body><div class="card">${body}</div></body></html>`;
+  }
+
+  if (!token) {
+    res.writeHead(400);
+    res.end(htmlPage('Invalid link', '<h1>Invalid link</h1><p>This opt-out link is missing its token.</p>'));
+    return true;
+  }
+
+  try {
+    const signup = await prisma.eventSignup.findFirst({
+      where: { unsubscribeToken: token },
+      include: { event: true },
+    });
+    if (!signup || !signup.email) {
+      res.writeHead(404);
+      res.end(htmlPage('Not found', '<h1>Not found</h1><p>This link is no longer valid.</p>'));
+      return true;
+    }
+    const email = signup.email.toLowerCase();
+    // Idempotent: a unique [eventId, email] keeps repeat clicks harmless.
+    await prisma.eventSeriesOptOut.upsert({
+      where: { eventId_email: { eventId: signup.eventId, email } },
+      update: {},
+      create: { eventId: signup.eventId, email, token: crypto.randomBytes(20).toString('hex') },
+    }).catch((err) => { if (!/Unique constraint/i.test(err.message || '')) throw err; });
+
+    res.writeHead(200);
+    res.end(htmlPage(
+      'Opted out',
+      `<h1>You're opted out</h1>
+       <p>We won't email you again about future dates of <strong>${esc(signup.event?.title || 'this event')}</strong>.</p>
+       <p>You can still sign up any time from the event page if you change your mind.</p>`
+    ));
+  } catch (err) {
+    console.warn('[event series unsubscribe] failed:', err.message);
+    res.writeHead(500);
+    res.end(htmlPage('Error', '<h1>Something went wrong</h1><p>Please try again later.</p>'));
   }
   return true;
 }
@@ -2119,17 +2177,21 @@ async function handleLubricationCupSignup(req, res) {
 
 async function loadEventRowsWithCounts(prisma, query) {
   if (!prisma) return [];
+  // Count only CURRENT-occurrence signups (the current occurrence is the one
+  // not yet rolled over) so a recurring event's "spots left" reflects the live
+  // date, not the whole history.
+  const currentOnly = { occurrence: { is: { rolledOverAt: null } } };
   return prisma.event.findMany({
     ...query,
     include: {
-      _count: { select: { signups: true } },
+      _count: { select: { signups: { where: currentOnly } } },
     },
   }).catch(async (err) => {
     console.warn('Public events include failed, falling back:', err.message);
     const rows = await prisma.event.findMany(query).catch(() => []);
     for (const ev of rows) {
       ev._count = {
-        signups: await prisma.eventSignup.count({ where: { eventId: ev.id } }).catch(() => 0),
+        signups: await prisma.eventSignup.count({ where: { eventId: ev.id, ...currentOnly } }).catch(() => 0),
       };
     }
     return rows;
@@ -2273,6 +2335,9 @@ async function handlePublic(req, res, pathname, prisma) {
   // recipient stop their own reminders.
   if (pathname === '/api/public/events/unsubscribe') {
     return handleEventReminderUnsubscribe(req, res, prisma);
+  }
+  if (pathname === '/api/public/events/series-unsubscribe') {
+    return handleEventSeriesUnsubscribe(req, res, prisma);
   }
 
   if (pathname === '/api/lubrication-cup-signup') {
@@ -2424,9 +2489,13 @@ async function handlePublic(req, res, pathname, prisma) {
       await send404(req, res, prisma);
       return true;
     }
+    // Scope every signup query to the event's CURRENT occurrence so a recurring
+    // event's new date starts with a fresh, empty sheet — past-date signups are
+    // kept on record but don't count toward capacity or block re-signup.
+    const occWhere = event.currentOccurrenceId ? { occurrenceId: event.currentOccurrenceId } : {};
     // Capacity is occupied only by confirmed/pending signups — waitlisted and
     // rejected signups don't count toward the cap.
-    const CAP_WHERE = { eventId: event.id, status: { notIn: ['waitlisted', 'rejected'] } };
+    const CAP_WHERE = { eventId: event.id, status: { notIn: ['waitlisted', 'rejected'] }, ...occWhere };
     const signupCount = await prisma.eventSignup.count({ where: CAP_WHERE }).catch(() => 0);
     const status = eventStatus(event, signupCount);
 
@@ -2545,6 +2614,7 @@ async function handlePublic(req, res, pathname, prisma) {
           eventId: event.id,
           email: { equals: email, mode: 'insensitive' },
           status: { not: 'rejected' },
+          ...occWhere,
         },
       }).catch(() => null);
       if (existing) {
@@ -2583,6 +2653,7 @@ async function handlePublic(req, res, pathname, prisma) {
       signup = await prisma.eventSignup.create({
         data: {
           eventId: event.id,
+          occurrenceId: event.currentOccurrenceId || null,
           name,
           email,
           phone,
@@ -2762,7 +2833,11 @@ async function handlePublic(req, res, pathname, prisma) {
       return true;
     }
     const signupCount = await prisma.eventSignup.count({
-      where: { eventId: event.id, status: { notIn: ['waitlisted', 'rejected'] } },
+      where: {
+        eventId: event.id,
+        status: { notIn: ['waitlisted', 'rejected'] },
+        ...(event.currentOccurrenceId ? { occurrenceId: event.currentOccurrenceId } : {}),
+      },
     }).catch(() => 0);
     const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/events/${event.slug}`, getQueryString(req));
     sendHTML(res, 200, injectTracking(generateEventPage(location, event, signupCount), sid));

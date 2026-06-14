@@ -197,7 +197,58 @@ function renderInlineRichText(value) {
   return out;
 }
 
-function renderRichText(value) {
+// Decode the handful of HTML entities that show up in imported descriptions.
+function decodeHtmlEntities(s) {
+  return String(s || '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0?39;|&apos;|&#x27;/gi, "'")
+    .replace(/&#(\d+);/g, (_, d) => { try { return String.fromCharCode(parseInt(d, 10)); } catch { return _; } });
+}
+
+// Convert HTML (e.g. an Eventbrite description pulled in via the import feed)
+// into the lightweight markdown-ish format renderRichText understands:
+// paragraphs separated by blank lines, "- " bullets, **bold**, *italic*, and
+// [label](url) links. We never emit the source HTML — it's downconverted to
+// text and re-rendered through the escaping path, so there's no XSS surface.
+function htmlToRichText(html) {
+  let s = String(html || '');
+  if (!s) return '';
+  // Links first, before tags are stripped: <a href="X">label</a> → [label](X).
+  s = s.replace(/<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, (_, href, label) => {
+    const text = label.replace(/<[^>]+>/g, '').trim();
+    return `[${text || href}](${href})`;
+  });
+  // Emphasis.
+  s = s.replace(/<\/?(strong|b)\b[^>]*>/gi, '**').replace(/<\/?(em|i)\b[^>]*>/gi, '*');
+  // List items → "- " bullets on their own line.
+  s = s.replace(/<li\b[^>]*>/gi, '\n- ').replace(/<\/li>/gi, '');
+  // Line breaks and block boundaries → newlines.
+  s = s.replace(/<br\s*\/?>/gi, '\n');
+  s = s.replace(/<\/(p|div|h[1-6]|ul|ol|tr|section|article|header|footer)>/gi, '\n\n');
+  s = s.replace(/<(p|div|h[1-6]|ul|ol|tr|section|article|header|footer)\b[^>]*>/gi, '');
+  // Strip anything left, decode entities, tidy whitespace.
+  s = s.replace(/<[^>]+>/g, '');
+  s = decodeHtmlEntities(s);
+  s = s.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').replace(/[ \t]{2,}/g, ' ');
+  return s.trim();
+}
+
+// Heuristic: does this string carry real HTML markup (vs. the markdown-ish
+// format we normally store)? Block/break/list/anchor tags are the tell.
+function looksLikeHtml(value) {
+  return /<\s*(p|div|br|ul|ol|li|h[1-6]|a|strong|em|b|i|span|table)\b[^>]*>/i.test(String(value || ''));
+}
+
+function renderRichText(rawValue) {
+  // Safety net for descriptions imported as HTML (e.g. from Eventbrite): if the
+  // stored value is HTML, downconvert it to our markdown-ish format first so it
+  // renders as formatted content instead of showing raw tags. Covers events
+  // already saved with HTML, not just future imports.
+  const value = looksLikeHtml(rawValue) ? htmlToRichText(rawValue) : rawValue;
   const lines = String(value || '').replace(/\r\n/g, '\n').split('\n');
   const chunks = [];
   let para = [];
@@ -3430,4 +3481,5 @@ module.exports = {
   formatEventDate,
   formatEventTime,
   buildEventIcs,
+  htmlToRichText,
 };

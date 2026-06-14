@@ -15,6 +15,7 @@ const { normalizeThemeKey } = require('../views/eventThemes');
 const { parseDateTimeLocal } = require('../dateEastern');
 const { normalizeRecurrenceRule } = require('../recurrence');
 const { rolloverEvent, materializeOccurrences, syncManualOccurrences, announceToSeries } = require('../eventRollover');
+const { htmlToRichText } = require('../views/eventPage');
 
 // Parse the "specific dates" list (a JSON array of datetime-local strings) into
 // de-duplicated UTC Dates.
@@ -90,15 +91,43 @@ async function fetchImportableDramEvents() {
   }
 }
 
-// Best-effort: match a public event's location (name/city) to a menuqr location.
+// Best-effort: match a public event's location to a menuqr location. The feed
+// is inconsistent — it may send the venue name ("Dram & Draught Winston-Salem"),
+// a city ("Winston-Salem" or "Winston Salem"), or a slug. We normalize both
+// sides (drop the brand prefix, reduce to alphanumeric tokens) and compare on
+// name, city, and slug, with a token-containment fallback. Returns '' when
+// there's no confident match so the importer leaves the location unset rather
+// than silently defaulting to the first venue.
 function matchLocationId(publicLoc, locations) {
-  if (!publicLoc || !Array.isArray(locations)) return '';
-  const name = String(publicLoc.name || '').trim().toLowerCase();
-  const city = String(publicLoc.city || '').trim().toLowerCase();
-  const byName = locations.find(l => String(l.name || '').trim().toLowerCase() === name && name);
-  if (byName) return byName.id;
-  const bySlug = locations.find(l => String(l.slug || '').trim().toLowerCase() === city && city);
-  return bySlug ? bySlug.id : '';
+  if (!publicLoc || !Array.isArray(locations) || locations.length === 0) return '';
+  const norm = (s) => String(s || '')
+    .toLowerCase()
+    .replace(/dram\s*(&|and)?\s*draught/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  const slugForm = (s) => norm(s).replace(/\s+/g, '-');
+
+  const candidates = [publicLoc.name, publicLoc.city, publicLoc.slug, publicLoc.address].map(norm).filter(Boolean);
+  const candidateSlugs = [publicLoc.name, publicLoc.city, publicLoc.slug].map(slugForm).filter(Boolean);
+
+  // Exact-ish match on any normalized signal.
+  for (const l of locations) {
+    const lName = norm(l.name);
+    const lCity = norm(l.city);
+    const lSlug = String(l.slug || '').trim().toLowerCase();
+    if (lName && candidates.includes(lName)) return l.id;
+    if (lCity && candidates.includes(lCity)) return l.id;
+    if (lSlug && (candidateSlugs.includes(lSlug) || candidates.includes(norm(lSlug)))) return l.id;
+    if (candidateSlugs.includes(slugForm(l.name))) return l.id;
+  }
+  // Containment fallback: every token of a location's name appears in the
+  // public location text (e.g. venue "...at Dram & Draught Winston-Salem").
+  const hay = candidates.join(' ');
+  for (const l of locations) {
+    const toks = norm(l.name).split(' ').filter(Boolean);
+    if (toks.length && toks.every((t) => hay.split(' ').includes(t))) return l.id;
+  }
+  return '';
 }
 
 // Validate the public "spots left" indicator mode.
@@ -623,9 +652,13 @@ async function handleAdminEvents(req, res, pathname, prisma) {
         redirect(res, '/admin/events?msg=' + encodeURIComponent('error|That Dram event could not be found — it may already be imported.'));
         return true;
       }
+      // Eventbrite descriptions arrive as HTML; convert to our markdown-ish
+      // format so the editor textarea and the public page show formatted text,
+      // not raw tags.
+      const rawDescription = src.description || src.summary || '';
       const draft = {
         title: src.title || '',
-        description: src.description || src.summary || '',
+        description: htmlToRichText(rawDescription),
         slug: '',
         startDate: src.startAt || null,
         endDate: src.endAt || null,

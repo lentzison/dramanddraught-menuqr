@@ -1290,11 +1290,17 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0, opts = {
   const title = isNew ? 'New Event' : 'Edit Event';
   const actionUrl = isNew ? '/admin/events/new' : `/admin/events/${escHTML(event.id)}`;
 
-  const locationOptions = locations.map(l => {
-    // Pre-select whenever we have a locationId to seed (real edit OR import).
-    const selected = event && event.locationId === l.id ? ' selected' : '';
-    return `<option value="${escHTML(l.id)}"${selected}>${escHTML(l.name)}</option>`;
-  }).join('');
+  // Pre-select whenever we have a locationId to seed (real edit OR a confident
+  // import match). When we don't, lead with a disabled placeholder so the
+  // browser can't auto-select the first venue — the `required` select then
+  // forces the admin to pick, instead of silently saving as (e.g.) Cary.
+  const hasSeededLocation = !!(event && event.locationId && locations.some(l => l.id === event.locationId));
+  const locationOptions =
+    `<option value="" disabled${hasSeededLocation ? '' : ' selected'}>— Select a location —</option>` +
+    locations.map(l => {
+      const selected = event && event.locationId === l.id ? ' selected' : '';
+      return `<option value="${escHTML(l.id)}"${selected}>${escHTML(l.name)}</option>`;
+    }).join('');
 
   const customQuestions = (!isNew && Array.isArray(event.customQuestions)) ? event.customQuestions : [];
   const customQuestionRows = customQuestions.map((q, i) => `

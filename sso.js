@@ -21,7 +21,7 @@ function b64urlDecode(str) {
 // Where each app accepts an incoming handoff.
 const APPS = {
   bartender: { accept: 'https://bartender.dramanddraught.com/sso' },
-  public:    { accept: 'https://public.dramanddraught.com/api/auth/sso' },
+  public:    { accept: 'https://public.apps.dramanddraught.com/admin' },
   menuqr:    { accept: 'https://menuqr.apps.dramanddraught.com/admin/sso' },
 };
 

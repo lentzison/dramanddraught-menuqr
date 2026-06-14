@@ -831,7 +831,10 @@ function adminLayout(title, content, user, options = {}) {
             <a href="/admin/analytics"${navClass('/admin/analytics')}>Analytics</a>
             ${isCompanyWide(user) ? `<a href="/admin/activity"${navClass('/admin/activity')}>Activity</a>` : ''}
           </div>
-          ${user ? `<div class="admin-nav-actions"><span class="nav-user" title="${escFlash(userName)}">${escFlash(userName)}</span><a href="/admin/logout">Logout</a></div>` : ''}
+          ${user ? `<div class="admin-nav-actions">
+            <a href="/admin/sso/launch?target=bartender" title="Open Bartender app" style="display:inline-flex;align-items:center;gap:4px;">🍸 Bartender</a>
+            ${(user.roles && Array.isArray(user.roles.supportRoles) && user.roles.supportRoles.length > 0) ? '<a href="/admin/sso/launch?target=public" title="Open Marketing & Web (Bar Support)">🌐 Marketing</a>' : ''}
+            <span class="nav-user" title="${escFlash(userName)}">${escFlash(userName)}</span><a href="/admin/logout">Logout</a></div>` : ''}
         </div>
       </nav>
       <main class="admin-content" id="admin-main" tabindex="-1">

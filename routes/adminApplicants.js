@@ -3,6 +3,7 @@ const { requireAuth, isCompanyWide, getUserLocationSlugs } = require('../auth');
 const { applicantsList, applicantDetail, STATUS_LABELS, CONTACT_KINDS, contactBadgeHtml, contactHistoryHtml } = require('../views/adminApplicantsViews');
 const { writeAudit } = require('../auditLog');
 const { runAiEvaluation } = require('../hiring/aiEvaluation');
+const { sendSms } = require('../sms');
 const { createAndSendInvite: createDashboardInvite, fetchInviteStatus, ROLE_OPTIONS: DASHBOARD_ROLE_OPTIONS } = require('../bartenderInvite');
 
 async function rerunAndPersistScreening(prisma, application, questionnaire) {
@@ -11,6 +12,7 @@ async function rerunAndPersistScreening(prisma, application, questionnaire) {
     where: { applicationId: application.id },
     update: {
       recommendation: evaluation.recommendation,
+      verdictBucket: evaluation.verdictBucket || null,
       weightedScore: evaluation.weightedScore,
       confidence: evaluation.confidence,
       humanReviewRequired: evaluation.humanReviewRequired,
@@ -31,6 +33,7 @@ async function rerunAndPersistScreening(prisma, application, questionnaire) {
     create: {
       applicationId: application.id,
       recommendation: evaluation.recommendation,
+      verdictBucket: evaluation.verdictBucket || null,
       weightedScore: evaluation.weightedScore,
       confidence: evaluation.confidence,
       humanReviewRequired: evaluation.humanReviewRequired,
@@ -138,7 +141,33 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
   // ─── Hiring config (read-only): /admin/applicants/hiring-config ───
   if (pathname === '/admin/applicants/hiring-config') {
     const { hiringConfigPage } = require('../views/adminApplicantsViews');
-    sendHTML(res, 200, hiringConfigPage({ user }));
+    // AI-vs-manager agreement data: every screening joined with the
+    // application's current pipeline status. The view groups by prompt
+    // version so threshold/rubric changes can be judged against what
+    // managers actually decided. Gated to the user's locations.
+    const evalRows = await prisma.jobApplicationAiEvaluation.findMany({
+      where: { application: applicationLocationGate },
+      select: {
+        verdictBucket: true,
+        recommendation: true,
+        humanReviewRequired: true,
+        promptVersion: true,
+        errorDetail: true,
+        application: { select: { status: true } },
+      },
+    }).catch(() => []);
+    // Pending applicants whose stored verdict predates the current prompt —
+    // powers the "re-screen pending" button.
+    const { PROMPT_VERSION } = require('../hiring/knowledgeBase');
+    const outdatedPendingCount = await prisma.jobApplication.count({
+      where: {
+        ...applicationLocationGate,
+        status: { in: ['new', 'reviewing', 'interview_scheduled'] },
+        questionnaire: { isNot: null },
+        aiEvaluation: { is: { promptVersion: { not: PROMPT_VERSION } } },
+      },
+    }).catch(() => 0);
+    sendHTML(res, 200, hiringConfigPage({ user, evalRows, outdatedPendingCount }));
     return true;
   }
 
@@ -219,6 +248,77 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
       ? 'No screenings needed a retry.'
       : `Re-screening ${queued.length} applicant${queued.length === 1 ? '' : 's'} in the background — refresh in a minute to see results.`;
     flashRedirect(res, '/admin/applicants', 'success', note);
+    return true;
+  }
+
+  // ─── Re-screen pending applicants on an outdated prompt version ───
+  // After a knowledgeBase.js bump, applicants still in the active pipeline
+  // keep verdicts from the old prompt. This re-runs them under the current
+  // one. (retry-failed-screenings only covers *errored* runs.)
+  if (pathname === '/admin/applicants/rescreen-pending' && req.method === 'POST') {
+    const { PROMPT_VERSION } = require('../hiring/knowledgeBase');
+    const eligible = await prisma.jobApplication.findMany({
+      where: {
+        ...applicationLocationGate,
+        status: { in: ['new', 'reviewing', 'interview_scheduled'] },
+        questionnaire: { isNot: null },
+        aiEvaluation: { is: { promptVersion: { not: PROMPT_VERSION } } },
+      },
+      include: { questionnaire: true },
+      orderBy: { createdAt: 'asc' },
+    }).catch(() => []);
+    (async () => {
+      let ok = 0;
+      let failed = 0;
+      for (const app of eligible) {
+        try {
+          const result = await rerunAndPersistScreening(prisma, app, app.questionnaire);
+          if (result.errorDetail) failed++; else ok++;
+        } catch (err) {
+          failed++;
+          console.warn('[rescreen-pending] error for', app.id, err.message);
+        }
+      }
+      console.log(`[rescreen-pending] done: ${ok} ok / ${failed} failed under ${PROMPT_VERSION}`);
+    })().catch((err) => console.warn('[rescreen-pending] batch error:', err.message));
+    writeAudit(prisma, req, user, {
+      action: 'retry',
+      resourceType: 'screening_batch',
+      resourceLabel: `rescreen-pending: ${eligible.length} queued`,
+      details: { queued: eligible.length, promptVersion: PROMPT_VERSION },
+    }).catch(() => {});
+    const note = eligible.length === 0
+      ? 'Every pending applicant is already screened under the current prompt.'
+      : `Re-screening ${eligible.length} pending applicant${eligible.length === 1 ? '' : 's'} under the current prompt — runs in the background.`;
+    flashRedirect(res, '/admin/applicants/hiring-config', 'success', note);
+    return true;
+  }
+
+  // ─── Funnel & source report: /admin/applicants/funnel ───
+  if (pathname === '/admin/applicants/funnel') {
+    const { funnelPage } = require('../views/adminApplicantsViews');
+    const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    const apps = await prisma.jobApplication.findMany({
+      where: { ...applicationLocationGate, createdAt: { gte: since } },
+      select: {
+        source: true,
+        status: true,
+        locationId: true,
+        questionnaire: { select: { id: true } },
+        _count: { select: { interviews: true } },
+      },
+    }).catch(() => []);
+    // Apply-page traffic for the same window, gated to the user's locations.
+    const allowedSlugs = locations.map((l) => l.slug);
+    const applyViews = await prisma.pageView.findMany({
+      where: {
+        pagePath: { endsWith: '/apply' },
+        viewedAt: { gte: since },
+        locationSlug: { in: allowedSlugs.length ? allowedSlugs : ['__none__'] },
+      },
+      select: { visitorId: true, locationSlug: true },
+    }).catch(() => []);
+    sendHTML(res, 200, funnelPage({ user, apps, applyViews, locations, sinceDays: 90 }));
     return true;
   }
 
@@ -783,6 +883,56 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
     return true;
   }
 
+  // ─── Interview scorecard: POST /admin/applicants/interviews/:id/scorecard ───
+  // Structured post-interview feedback on the same five categories the AI
+  // screener scores, plus an overall call. This is the ground truth the
+  // calibration reports compare the screener against.
+  const scorecardMatch = pathname.match(/^\/admin\/applicants\/interviews\/([0-9a-f-]{8,})\/scorecard$/i);
+  if (scorecardMatch && req.method === 'POST') {
+    const id = scorecardMatch[1];
+    const interview = await prisma.interview.findUnique({
+      where: { id },
+      include: { application: true },
+    }).catch(() => null);
+    if (!interview || (!userIsCompanyWide && !allowedLocationIds.has(interview.locationId))) {
+      sendHTML(res, 404, '<h1>Not found</h1>');
+      return true;
+    }
+    const body = await parseBody(req);
+    const { CATEGORIES } = require('../hiring/knowledgeBase');
+    const scores = {};
+    for (const cat of CATEGORIES) {
+      const raw = parseFloat(body[`score_${cat}`]);
+      if (Number.isFinite(raw) && raw >= 1 && raw <= 5) {
+        scores[cat] = Math.round(raw * 2) / 2;
+      }
+    }
+    const VALID_OVERALL = new Set(['strong_yes', 'yes', 'maybe', 'no']);
+    const overall = VALID_OVERALL.has(String(body.overall)) ? String(body.overall) : null;
+    const notes = String(body.notes || '').trim().slice(0, 4000) || null;
+    if (!overall && Object.keys(scores).length === 0 && !notes) {
+      flashRedirect(res, `/admin/applicants/${interview.applicationId}`, 'error', 'Scorecard was empty — pick an overall call or score at least one category.');
+      return true;
+    }
+    await prisma.interview.update({
+      where: { id },
+      data: {
+        scorecard: { scores, overall, notes },
+        scorecardBy: user.email || null,
+        scorecardAt: new Date(),
+      },
+    });
+    writeAudit(prisma, req, user, {
+      action: 'update',
+      resourceType: 'interview_scorecard',
+      resourceId: id,
+      resourceLabel: `${interview.application?.name || ''}`,
+      details: { overall, scoredCategories: Object.keys(scores).length },
+    }).catch(() => {});
+    flashRedirect(res, `/admin/applicants/${interview.applicationId}`, 'success', 'Interview scorecard saved.');
+    return true;
+  }
+
   // ─── Reschedule interview: POST /admin/applicants/interviews/:id/reschedule ───
   const rescheduleInterviewMatch = pathname.match(/^\/admin\/applicants\/interviews\/([0-9a-f-]{8,})\/reschedule$/i);
   if (rescheduleInterviewMatch && req.method === 'POST') {
@@ -1036,6 +1186,7 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
           aiEvaluation: {
             select: {
               recommendation: true,
+              verdictBucket: true,
               weightedScore: true,
               confidence: true,
               humanReviewRequired: true,
@@ -1134,6 +1285,19 @@ async function sendInterviewConfirmation(application, interview) {
     subject: `Interview confirmed — Dram & Draught (${dateStr})`,
     body: lines.join('\n'),
   });
+
+  // Companion SMS — hospitality candidates answer texts far more reliably
+  // than email. No-op unless TWILIO_* env vars are configured.
+  if (application.phone) {
+    const smsBits = [
+      `Dram & Draught: your ${typeLabel} for the ${application.position} role is confirmed for ${dateStr} (Eastern).`,
+      interview.locationDetail ? `Where: ${interview.locationDetail}` : null,
+      'Details are in your email. Reply there if anything changes.',
+    ].filter(Boolean);
+    sendSms({ to: application.phone, body: smsBits.join(' ') })
+      .then((r) => { if (!r.ok && !r.skipped) console.warn('[applicants] confirmation SMS failed:', r.reason); })
+      .catch((err) => console.warn('[applicants] confirmation SMS failed:', err.message));
+  }
 }
 
 async function sendRejectionEmail(application, reason) {

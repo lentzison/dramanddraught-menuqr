@@ -1,4 +1,5 @@
 const { sendEmailViaGoogle } = require('./helpers');
+const { sendSms } = require('./sms');
 
 function formatEastern(date) {
   if (!date) return '';
@@ -65,6 +66,21 @@ async function sendReminder(prisma, interview, kind) {
     });
   } catch (err) {
     console.warn(`[interview reminders] ${kind} send failed for ${interview.id}:`, err.message);
+  }
+  // Companion SMS to the candidate — interview no-shows are mostly missed
+  // emails. Covered by the same flag-first write; no-op unless TWILIO_* set.
+  if (application.phone) {
+    const when = formatEastern(interview.scheduledAt);
+    const typeLabel = interview.type === 'phone' ? 'phone interview' : interview.type === 'video' ? 'video interview' : 'interview';
+    const body = kind === '24h'
+      ? `Dram & Draught: reminder — your ${typeLabel} is tomorrow, ${when} (Eastern).${interview.locationDetail ? ` Where: ${interview.locationDetail}.` : ''}`
+      : `Dram & Draught: your ${typeLabel} is in about an hour (${when} Eastern).${interview.locationDetail ? ` Where: ${interview.locationDetail}.` : ''}`;
+    try {
+      const r = await sendSms({ to: application.phone, body });
+      if (!r.ok && !r.skipped) console.warn(`[interview reminders] ${kind} SMS failed for ${interview.id}: ${r.reason}`);
+    } catch (err) {
+      console.warn(`[interview reminders] ${kind} SMS failed for ${interview.id}: ${err.message}`);
+    }
   }
 }
 

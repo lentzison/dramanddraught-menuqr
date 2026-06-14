@@ -19,6 +19,7 @@ const { scheduleEventRollovers } = require('./eventRollover');
 const { scheduleScreeningRetry } = require('./screeningRetry');
 const { scheduleApplicantDailyRecap } = require('./applicantDailyRecap');
 const { scheduleQuestionnaireReminders } = require('./questionnaireReminders');
+const { scheduleDataRetention } = require('./dataRetention');
 const { generateNotFoundPage } = require('./views/notFoundPage');
 
 const PORT = parseInt(process.env.PORT || '80', 10);
@@ -235,4 +236,5 @@ server.listen(PORT, '0.0.0.0', () => {
   scheduleApplicantDailyRecap(prisma);
   scheduleQuestionnaireReminders(prisma);
   scheduleScreeningRetry(prisma);
+  scheduleDataRetention(prisma);
 });

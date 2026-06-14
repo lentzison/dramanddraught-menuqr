@@ -1313,6 +1313,7 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0, opts = {
             <option value="number"${q.type === 'number' ? ' selected' : ''}>Number</option>
             <option value="yesno"${q.type === 'yesno' ? ' selected' : ''}>Yes / No</option>
             <option value="image"${q.type === 'image' ? ' selected' : ''}>Image upload</option>
+            <option value="images-multi"${q.type === 'images-multi' ? ' selected' : ''}>Image gallery (multiple)</option>
           </select>
         </div>
         <div class="cq-required-col">
@@ -1326,6 +1327,27 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0, opts = {
       </div>
     </div>
   `).join('');
+
+  // ─── Competition judging config ───
+  const judgingCriteria = (!isNew && Array.isArray(event.judgingCriteria)) ? event.judgingCriteria : [];
+  const judgesList = (!isNew && Array.isArray(event.judges)) ? event.judges : [];
+  const criteriaRows = judgingCriteria.map((c) => `
+    <div class="jc-row">
+      <input type="hidden" name="jc_id" value="${escHTML(c.id || '')}" />
+      <div class="jc-row-grid">
+        <div><label>Criterion</label><input type="text" name="jc_label" value="${escHTML(c.label || '')}" placeholder="e.g. Taste &amp; Balance" /></div>
+        <div><label>Max</label><input type="number" name="jc_max" min="1" max="100" value="${escHTML(String(c.max || 10))}" /></div>
+        <div class="cq-del-col"><label>&nbsp;</label><button type="button" class="btn btn-danger btn-sm jc-remove">Remove</button></div>
+      </div>
+    </div>`).join('');
+  const judgeRows = judgesList.map((j) => `
+    <div class="judge-row">
+      <input type="hidden" name="judge_id" value="${escHTML(j.id || '')}" />
+      <div class="jc-row-grid">
+        <div><label>Judge name</label><input type="text" name="judge_name" value="${escHTML(j.name || '')}" placeholder="e.g. Carrie M." /></div>
+        <div class="cq-del-col"><label>&nbsp;</label><button type="button" class="btn btn-danger btn-sm judge-remove">Remove</button></div>
+      </div>
+    </div>`).join('');
 
   // Public URL preview (shown when editing) — with quick source-tag buttons
   // so each social post gets a properly tagged share link, plus per-event QR
@@ -1651,6 +1673,22 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0, opts = {
       .cq-required-col { display:flex; align-items:flex-end; }
       .cq-required-col .ev-check { padding:10px 4px; }
       .cq-del-col { display:flex; align-items:flex-end; }
+      .jc-row, .judge-row {
+        background:#121417;
+        border:1px solid rgba(255,255,255,0.07);
+        border-radius:8px;
+        padding:14px;
+        margin-bottom:10px;
+      }
+      .jc-row-grid {
+        display:grid;
+        grid-template-columns:2fr 1fr auto;
+        gap:10px;
+        align-items:flex-end;
+      }
+      .judge-row .jc-row-grid { grid-template-columns:1fr auto; }
+      .jc-row-grid label { margin-top:0; }
+      @media (max-width:640px) { .jc-row-grid { grid-template-columns:1fr; } }
 
       .ev-delete-section {
         background:rgba(239,68,68,0.05);
@@ -2025,6 +2063,30 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0, opts = {
         <div id="cq-list" class="cq-list">${customQuestionRows}</div>
         <button type="button" id="cq-add" class="btn btn-secondary btn-sm">+ Add Custom Question</button>
 
+        <div class="ev-judging-section" style="margin-top:22px; padding-top:18px; border-top:1px solid var(--line);">
+          <label style="margin-bottom:6px">Competition judging <span style="color:#888; font-weight:400; font-size:0.8rem">(optional)</span></label>
+          <p style="color:#888; font-size:0.8rem; margin-bottom:10px">
+            For cocktail comps, cook-offs, performances, etc. Collect applications, mark finalists on the signups page, then judges score the finalists on the criteria below via a private link. Leave empty for normal events.
+          </p>
+
+          <label style="margin-top:6px; font-size:0.85rem">How many finalists do you plan to select?</label>
+          <input type="number" name="finalistTarget" min="1" max="100" value="${event?.finalistTarget ? escHTML(String(event.finalistTarget)) : ''}" placeholder="e.g. 8" style="max-width:160px" />
+
+          <label style="margin-top:14px; margin-bottom:6px; font-size:0.85rem">Scoring criteria</label>
+          <p style="color:#888; font-size:0.78rem; margin-bottom:8px">What judges rate each finalist on, and the max points for each (e.g. Taste 10, Presentation 5).</p>
+          <div id="jc-list" class="cq-list">${criteriaRows}</div>
+          <button type="button" id="jc-add" class="btn btn-secondary btn-sm">+ Add criterion</button>
+
+          <label style="margin-top:14px; margin-bottom:6px; font-size:0.85rem">Judges</label>
+          <p style="color:#888; font-size:0.78rem; margin-bottom:8px">Who will score. Each judge picks their name when they open the judge link.</p>
+          <div id="judge-list" class="cq-list">${judgeRows}</div>
+          <button type="button" id="judge-add" class="btn btn-secondary btn-sm">+ Add judge</button>
+
+          ${!isNew && event.judgeToken ? `
+            <p style="color:#8d9299; font-size:0.78rem; margin-top:12px">A judge link is generated automatically once you have at least one criterion and one judge. Find it (and open/close scoring) on the event's <a href="/admin/events/${escHTML(event.id)}/signups" style="color:var(--gold)">signups page</a>.</p>
+          ` : `<p style="color:#8d9299; font-size:0.78rem; margin-top:12px">Save with at least one criterion and one judge to generate the shareable judge link.</p>`}
+        </div>
+
         <label for="ev-confirm" style="margin-top:18px">Confirmation Message <span style="color:#888; font-weight:400; font-size:0.8rem">(shown after signup)</span></label>
         ${richTextToolbar('ev-confirm')}
         <textarea id="ev-confirm" class="rich-textarea" name="confirmationMessage" rows="4" placeholder="Thanks for signing up! Use bullets, pasted links, or [link text](https://example.com).">${escHTML(event?.confirmationMessage || '')}</textarea>
@@ -2139,6 +2201,7 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0, opts = {
                 '<option value="number">Number</option>' +
                 '<option value="yesno">Yes / No</option>' +
                 '<option value="image">Image upload</option>' +
+                '<option value="images-multi">Image gallery (multiple)</option>' +
               '</select></div>' +
               '<div class="cq-required-col"><label>&nbsp;</label><label class="ev-check"><input type="checkbox" name="custom_required_' + i + '" /> Required</label></div>' +
               '<div class="cq-del-col"><label>&nbsp;</label><button type="button" class="btn btn-danger btn-sm cq-remove">Remove</button></div>' +
@@ -2156,6 +2219,45 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0, opts = {
             var row = e.target.closest('.cq-row');
             if (row) row.remove();
           }
+        });
+
+        // Judging criteria add/remove.
+        var jcList = document.getElementById('jc-list');
+        var jcAdd = document.getElementById('jc-add');
+        if (jcAdd && jcList) {
+          jcAdd.addEventListener('click', function() {
+            var row = document.createElement('div');
+            row.className = 'jc-row';
+            row.innerHTML =
+              '<input type="hidden" name="jc_id" value="" />' +
+              '<div class="jc-row-grid">' +
+                '<div><label>Criterion</label><input type="text" name="jc_label" placeholder="e.g. Presentation" /></div>' +
+                '<div><label>Max</label><input type="number" name="jc_max" min="1" max="100" value="10" /></div>' +
+                '<div class="cq-del-col"><label>&nbsp;</label><button type="button" class="btn btn-danger btn-sm jc-remove">Remove</button></div>' +
+              '</div>';
+            jcList.appendChild(row);
+          });
+        }
+        // Judge roster add/remove.
+        var judgeList = document.getElementById('judge-list');
+        var judgeAdd = document.getElementById('judge-add');
+        if (judgeAdd && judgeList) {
+          judgeAdd.addEventListener('click', function() {
+            var row = document.createElement('div');
+            row.className = 'judge-row';
+            row.innerHTML =
+              '<input type="hidden" name="judge_id" value="" />' +
+              '<div class="jc-row-grid">' +
+                '<div><label>Judge name</label><input type="text" name="judge_name" placeholder="e.g. Carrie M." /></div>' +
+                '<div class="cq-del-col"><label>&nbsp;</label><button type="button" class="btn btn-danger btn-sm judge-remove">Remove</button></div>' +
+              '</div>';
+            judgeList.appendChild(row);
+          });
+        }
+        document.addEventListener('click', function(e) {
+          if (!e.target || !e.target.classList) return;
+          if (e.target.classList.contains('jc-remove')) { var r1 = e.target.closest('.jc-row'); if (r1) r1.remove(); }
+          if (e.target.classList.contains('judge-remove')) { var r2 = e.target.closest('.judge-row'); if (r2) r2.remove(); }
         });
 
         // Rich text helper buttons for event descriptions and content sections.
@@ -2373,9 +2475,147 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0, opts = {
 }
 
 // ─── Signups viewer ───
+// Judging leaderboard: finalists ranked by average judge total, with a
+// per-judge breakdown and the original submission for context.
+function eventResultsView(event, finalists, user, flashMsg) {
+  const { aggregateResults } = require('../eventJudging');
+  const customDefs = Array.isArray(event.customQuestions) ? event.customQuestions : [];
+  const { criteria, judges, rows } = aggregateResults(event, finalists);
+  const maxTotal = criteria.reduce((s, c) => s + c.max, 0);
+
+  const flash = flashMsg ? `<div class="admin-flash">${escHTML(String(flashMsg).replace(/^[a-z]+\|/, ''))}</div>` : '';
+
+  if (criteria.length === 0 || judges.length === 0) {
+    return adminLayout(`${event.title} — Results`, `
+      ${flash}
+      <div class="page-header">
+        <div>
+          <a href="/admin/events/${escHTML(event.id)}/signups" class="evs-back">← Signups</a>
+          <h1 style="margin:4px 0 0">${escHTML(event.title)} — Results</h1>
+        </div>
+        <a href="/admin/events/${escHTML(event.id)}" class="btn btn-secondary">Edit Event</a>
+      </div>
+      <div class="card" style="padding:24px; text-align:center; color:var(--text-muted);">
+        Set at least one scoring criterion and one judge in <a href="/admin/events/${escHTML(event.id)}" style="color:var(--gold)">Edit Event</a> to start judging.
+      </div>
+    `, user);
+  }
+
+  // Compact submission summary for a finalist (text answers + image thumbs).
+  const submissionSummary = (signup) => {
+    const answers = signup.customAnswers || {};
+    const bits = customDefs.map((q) => {
+      const v = answers[q.id];
+      if (v == null || v === '') return '';
+      if (q.type === 'images-multi' && Array.isArray(v)) {
+        const imgs = v.filter(x => typeof x === 'string' && /^(data:image|https?:\/\/)/i.test(x));
+        if (!imgs.length) return '';
+        return `<div class="res-sub-field"><span>${escHTML(q.label)}</span><div class="evs-images">${imgs.map(src => `<a href="${escHTML(src)}" target="_blank" rel="noopener"><img src="${escHTML(src)}" alt="" /></a>`).join('')}</div></div>`;
+      }
+      if (q.type === 'image' && /^(data:image|https?:\/\/)/i.test(String(v))) {
+        return `<div class="res-sub-field"><span>${escHTML(q.label)}</span><div class="evs-images"><a href="${escHTML(String(v))}" target="_blank" rel="noopener"><img src="${escHTML(String(v))}" alt="" /></a></div></div>`;
+      }
+      return `<div class="res-sub-field"><span>${escHTML(q.label)}</span><div>${escHTML(String(v))}</div></div>`;
+    }).filter(Boolean).join('');
+    return bits;
+  };
+
+  const critHeader = criteria.map(c => `<th title="max ${c.max}">${escHTML(c.label)}<br><span style="font-weight:400;color:var(--text-soft)">/ ${c.max}</span></th>`).join('');
+
+  const rankRows = rows.map((row) => {
+    const medal = row.rank === 1 ? '🥇' : row.rank === 2 ? '🥈' : row.rank === 3 ? '🥉' : (row.rank ? `#${row.rank}` : '—');
+    const perCrit = criteria.map(c => {
+      const avg = row.perCriterionAvg[c.id];
+      return `<td style="text-align:center">${avg == null ? '<span class="evs-muted">—</span>' : avg.toFixed(1)}</td>`;
+    }).join('');
+    const judgeChips = row.judgeCards.map(jc =>
+      `<span class="res-judge-chip${jc.scored ? '' : ' is-pending'}" title="${escHTML(jc.notes || '')}">${escHTML(jc.judge.name)}: ${jc.scored ? jc.total.toFixed(1) : '—'}${jc.notes ? ' 💬' : ''}</span>`
+    ).join('');
+    const notes = row.judgeCards.filter(jc => jc.notes).map(jc =>
+      `<div class="res-note"><strong>${escHTML(jc.judge.name)}:</strong> ${escHTML(jc.notes)}</div>`
+    ).join('');
+    const sub = submissionSummary(row.signup);
+    return `
+      <tr class="res-main-row">
+        <td style="text-align:center; font-size:1.1rem; font-weight:800;">${medal}</td>
+        <td>
+          <div style="font-weight:800; color:var(--text);">${escHTML(row.signup.name || 'Unnamed')}</div>
+          <div class="evs-filter-note">${row.judgesScored} / ${judges.length} judges scored</div>
+        </td>
+        <td style="text-align:center; font-size:1.15rem; font-weight:800; color:var(--gold);">${row.judgesScored ? row.averageTotal.toFixed(1) : '—'}<span style="color:var(--text-soft); font-size:0.8rem; font-weight:500;"> / ${maxTotal}</span></td>
+        ${perCrit}
+      </tr>
+      <tr class="res-detail-row">
+        <td></td>
+        <td colspan="${2 + criteria.length}">
+          <div class="res-judges">${judgeChips}</div>
+          ${notes ? `<div class="res-notes">${notes}</div>` : ''}
+          ${sub ? `<details class="res-submission"><summary>View submission</summary><div class="res-sub-grid">${sub}</div></details>` : ''}
+        </td>
+      </tr>`;
+  }).join('');
+
+  return adminLayout(`${event.title} — Results`, `
+    <style>
+      .res-table { width:100%; border-collapse:collapse; }
+      .res-table th { text-align:center; color:var(--accent); font-size:0.8rem; padding:8px 10px; border-bottom:1px solid var(--line); }
+      .res-table th:nth-child(2) { text-align:left; }
+      .res-table td { padding:10px; vertical-align:top; }
+      .res-main-row { border-top:1px solid rgba(255,255,255,0.06); }
+      .res-detail-row td { padding-top:0; padding-bottom:16px; }
+      .res-judges { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px; }
+      .res-judge-chip { background:#121417; border:1px solid rgba(255,255,255,0.1); border-radius:999px; padding:3px 10px; font-size:0.8rem; color:#cbd5e1; }
+      .res-judge-chip.is-pending { color:#68717d; border-style:dashed; }
+      .res-note { font-size:0.84rem; color:var(--text-muted); margin:2px 0; }
+      .res-notes { margin:6px 0; padding:8px 10px; background:#121417; border-radius:8px; }
+      .res-submission { margin-top:8px; }
+      .res-submission summary { cursor:pointer; color:var(--gold); font-size:0.84rem; }
+      .res-sub-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:10px; margin-top:8px; }
+      .res-sub-field span { display:block; color:var(--text-soft); font-size:0.68rem; font-weight:800; letter-spacing:0.06em; text-transform:uppercase; margin-bottom:3px; }
+      .res-sub-field { background:#121417; border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:8px 10px; font-size:0.85rem; color:#ded6ca; }
+      .evs-images { display:flex; gap:6px; flex-wrap:wrap; }
+      .evs-images img { width:60px; height:60px; object-fit:cover; border-radius:6px; }
+      .evs-back { color:#888; font-size:0.85rem; text-decoration:none; }
+      .evs-back:hover { color:#d4af37; }
+      .evs-muted { color:#68717d; }
+      .evs-filter-note { color:#888; font-size:0.82rem; }
+    </style>
+    ${flash}
+    <div class="page-header">
+      <div>
+        <a href="/admin/events/${escHTML(event.id)}/signups" class="evs-back">← Signups</a>
+        <div class="admin-kicker" style="margin-top:8px">Judging results</div>
+        <h1 style="margin:4px 0 0">${escHTML(event.title)}</h1>
+        <p class="page-subtitle">${rows.length} finalist${rows.length === 1 ? '' : 's'} · ${judges.length} judge${judges.length === 1 ? '' : 's'} · scoring ${event.judgingOpen ? '<strong style="color:#6ee7b7">open</strong>' : '<strong style="color:#fca5a5">closed</strong>'}</p>
+      </div>
+      <a href="/admin/events/${escHTML(event.id)}/signups" class="btn btn-secondary">Back to signups</a>
+    </div>
+    ${rows.length === 0 ? `
+      <div class="card" style="padding:24px; text-align:center; color:var(--text-muted);">
+        No finalists selected yet. Mark finalists on the <a href="/admin/events/${escHTML(event.id)}/signups" style="color:var(--gold)">signups page</a>.
+      </div>
+    ` : `
+      <div class="card" style="padding:8px 16px; overflow-x:auto;">
+        <table class="res-table">
+          <thead><tr><th>Rank</th><th>Finalist</th><th>Avg total</th>${critHeader}</tr></thead>
+          <tbody>${rankRows}</tbody>
+        </table>
+      </div>
+    `}
+  `, user);
+}
+
 function eventSignupsView(event, signups, user, flashMsg, occCtx = {}) {
   const customDefs = Array.isArray(event.customQuestions) ? event.customQuestions : [];
-  const isVendor = event.isVendorEvent === true;
+  const { effectiveSignupType, needsApproval } = require('../eventSignupTypes');
+  const sType = effectiveSignupType(event);
+  const isVendor = sType === 'vendor' || event.isVendorEvent === true;
+  // Finalist selection + judging apply to application-style events (vendor /
+  // participant). A competition is the canonical participant case.
+  const supportsFinalists = needsApproval(event);
+  const criteria = Array.isArray(event.judgingCriteria) ? event.judgingCriteria : [];
+  const judges = Array.isArray(event.judges) ? event.judges : [];
+  const judgingConfigured = criteria.length > 0 && judges.length > 0;
 
   // Occurrence tabs (recurring events keep past dates on record). Only shown
   // when there's more than one occurrence to switch between.
@@ -2451,6 +2691,14 @@ function eventSignupsView(event, signups, user, flashMsg, occCtx = {}) {
 
     const sStatus = String(s.status || 'approved');
     const isWaitlisted = sStatus === 'waitlisted';
+    // Finalist toggle — selecting a finalist also confirms them (so they leave
+    // the pending queue). Hidden for rejected rows.
+    const finalistControl = (supportsFinalists && sStatus !== 'rejected') ? `
+      <form method="POST" action="/admin/events/${escHTML(event.id)}/signups" style="margin:0;">
+        <input type="hidden" name="_action" value="toggleFinalist" />
+        <input type="hidden" name="signupId" value="${escHTML(s.id)}" />
+        <button type="submit" class="btn btn-sm ${s.isFinalist ? 'btn-secondary' : 'btn-success'}">${s.isFinalist ? '★ Remove finalist' : '☆ Select as finalist'}</button>
+      </form>` : '';
     const checkedIn = !!s.checkedInAt;
     // Day-of check-in: available for confirmed attendees (guest + approved
     // vendor/participant). Not for pending, rejected, or waitlisted rows.
@@ -2490,6 +2738,7 @@ function eventSignupsView(event, signups, user, flashMsg, occCtx = {}) {
             <div class="evs-actions-title">Pending review</div>
             <a class="btn btn-success" href="/admin/events/${escHTML(event.id)}/signups?decision=approve&signupId=${encodeURIComponent(s.id)}">Approve</a>
             <a class="btn btn-danger" href="/admin/events/${escHTML(event.id)}/signups?decision=reject&signupId=${encodeURIComponent(s.id)}">Reject</a>
+            ${finalistControl}
           </div>
         `;
       } else {
@@ -2500,6 +2749,7 @@ function eventSignupsView(event, signups, user, flashMsg, occCtx = {}) {
           <div class="evs-actions">
             <div class="evs-actions-title">${status === 'approved' ? 'Approved' : 'Rejected'}</div>
             ${who}${when}${reason}
+            ${finalistControl}
             ${status === 'approved' ? checkinBtn : ''}
             ${removeForm}
           </div>
@@ -2509,6 +2759,7 @@ function eventSignupsView(event, signups, user, flashMsg, occCtx = {}) {
       actionPanel = `
         <div class="evs-actions">
           <div class="evs-actions-title">Manage signup</div>
+          ${finalistControl}
           ${checkinBtn}
           ${removeForm}
         </div>
@@ -2524,7 +2775,8 @@ function eventSignupsView(event, signups, user, flashMsg, occCtx = {}) {
               <div class="evs-sub">Signed up ${escHTML(formatFriendlyDate(s.createdAt))}</div>
             </div>
             <div class="evs-badges">
-              ${(isVendor || isWaitlisted) ? statusBadge(s.status) : ''}
+              ${(isVendor || sType === 'participant' || isWaitlisted) ? statusBadge(s.status) : ''}
+              ${s.isFinalist ? '<span class="evs-badge evs-badge-approved" title="Selected to compete in front of judges">★ Finalist</span>' : ''}
               ${checkedIn ? '<span class="evs-badge evs-badge-checkedin">✓ Checked in</span>' : ''}
             </div>
           </div>
@@ -2553,6 +2805,48 @@ function eventSignupsView(event, signups, user, flashMsg, occCtx = {}) {
   const capacityText = event.capacity ? ` / ${event.capacity}` : '';
   const remainingSpots = event.capacity ? Math.max(event.capacity - confirmedCount, 0) : null;
   const totalGuests = event.collectPartySize ? signups.reduce((sum, s) => sum + (s.partySize || 1), 0) : null;
+
+  const finalistCount = signups.filter(s => s.isFinalist).length;
+  const finalistTarget = Number.isFinite(event.finalistTarget) && event.finalistTarget > 0 ? event.finalistTarget : null;
+  const scoredFinalists = signups.filter(s => s.isFinalist && Array.isArray(s.scorecards) && s.scorecards.some(c => c && c.scores && Object.keys(c.scores).length)).length;
+
+  // Judging control strip — only for application-style events. Shows the
+  // finalist count, links to the results board, and (once criteria + judges
+  // are configured) the shareable judge link + an open/close toggle.
+  const judgeBase = process.env.MENUQR_BASE_URL || 'https://menuqr.apps.dramanddraught.com';
+  const judgeLink = event.judgeToken ? `${judgeBase}/events/judge/${event.judgeToken}` : null;
+  const judgingPanel = supportsFinalists ? `
+    <div class="card" style="margin:16px 0; padding:16px;">
+      <div style="display:flex; flex-wrap:wrap; gap:16px; align-items:center; justify-content:space-between;">
+        <div>
+          <div class="admin-kicker">Competition judging</div>
+          <div style="font-size:1.2rem; font-weight:800; color:var(--text); margin-top:4px;">
+            ${finalistCount}${finalistTarget ? ` / ${finalistTarget}` : ''} finalist${finalistCount === 1 ? '' : 's'} selected
+            ${finalistTarget && finalistCount >= finalistTarget ? ' ✓' : ''}
+          </div>
+          <div class="evs-filter-note" style="margin-top:2px;">
+            ${judgingConfigured ? `${scoredFinalists} of ${finalistCount} scored by at least one judge` : 'Set scoring criteria and judges in Edit Event to enable scoring.'}
+          </div>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <a href="/admin/events/${escHTML(event.id)}/results" class="btn btn-secondary">View results</a>
+          ${judgingConfigured ? `
+            <form method="POST" action="/admin/events/${escHTML(event.id)}/signups" style="margin:0;">
+              <input type="hidden" name="_action" value="toggleJudging" />
+              <button type="submit" class="btn ${event.judgingOpen ? 'btn-danger' : 'btn-success'}">${event.judgingOpen ? 'Close scoring' : 'Open scoring'}</button>
+            </form>` : ''}
+        </div>
+      </div>
+      ${judgingConfigured && judgeLink ? `
+        <div style="margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.08);">
+          <div class="evs-filter-note" style="margin-bottom:6px;">Judge link — share with your ${judges.length} judge${judges.length === 1 ? '' : 's'}. Scoring is <strong style="color:${event.judgingOpen ? '#6ee7b7' : '#fca5a5'};">${event.judgingOpen ? 'OPEN' : 'CLOSED'}</strong>.</div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+            <input type="text" readonly value="${escHTML(judgeLink)}" onclick="this.select()" style="flex:1; min-width:240px; background:#121417; border:1px solid var(--line); border-radius:8px; padding:10px 12px; color:#cbd5e1; font-family:monospace; font-size:0.82rem;" />
+            <button type="button" class="btn btn-secondary btn-sm" onclick="navigator.clipboard.writeText('${escHTML(judgeLink)}').then(()=>{this.textContent='Copied!';setTimeout(()=>{this.textContent='Copy';},1500);})">Copy</button>
+          </div>
+        </div>` : ''}
+    </div>
+  ` : '';
 
   return adminLayout(`${event.title} Signups`, `
     <style>
@@ -2716,6 +3010,8 @@ function eventSignupsView(event, signups, user, flashMsg, occCtx = {}) {
     </div>
 
     ${occTabs}
+
+    ${judgingPanel}
 
     <div class="admin-stat-grid">
       <div class="admin-stat">
@@ -2923,4 +3219,4 @@ function eventSignupDecisionView(event, signup, decision, email, user, flashMsg)
   `, user, { pathname: `/admin/events/${event.id}/signups`, flashMsg });
 }
 
-module.exports = { eventsList, eventEditor, eventSignupsView, eventSignupDecisionView };
+module.exports = { eventsList, eventEditor, eventSignupsView, eventSignupDecisionView, eventResultsView };

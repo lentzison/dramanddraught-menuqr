@@ -88,7 +88,40 @@ function renderLocationSection(location, applications) {
     </div>`;
 }
 
-function renderEmailHtml({ yesterdayHuman, totalApplicants, locationSections }) {
+// Speed-to-contact SLA: applicants sitting in the early pipeline with no
+// logged contact for 48+ hours. Bar staff get hired elsewhere in days — this
+// is the section a GM should act on first.
+function renderSlaSection(slaApps, locationsById) {
+  if (!slaApps.length) return '';
+  const rows = slaApps.map((app) => {
+    const days = Math.floor((Date.now() - new Date(app.createdAt).getTime()) / (24 * 60 * 60 * 1000));
+    const loc = locationsById.get(app.locationId);
+    const phone = app.phone ? ` &middot; ${escapeHtml(app.phone)}` : '';
+    return `
+    <tr>
+      <td style="padding:10px 0;border-bottom:1px solid #f0ece4;">
+        <div style="font-weight:600;font-size:14px;color:#1a1a1a;">
+          ${escapeHtml(app.name)}
+          <span style="color:#b3541e;font-size:12px;font-weight:700;margin-left:6px;">⏱ ${days} day${days === 1 ? '' : 's'}, not contacted</span>
+        </div>
+        <div style="color:#555;font-size:13px;margin-top:2px;">
+          ${escapeHtml(positionLabel(app))}${loc ? ` &middot; ${escapeHtml(loc.name)}` : ''}${phone}
+        </div>
+        <div style="margin-top:4px;">
+          <a href="${MENUQR_BASE_URL}/admin/applicants/${escapeHtml(app.id)}" style="color:#5b3a1a;font-size:12px;">Open applicant &rarr;</a>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+  return `
+    <div style="margin-bottom:28px;padding:14px 16px;background:#fdf3ec;border:1px solid #ecd2bd;border-radius:6px;">
+      <h2 style="font-size:15px;color:#b3541e;margin:0 0 8px 0;letter-spacing:0.02em;">⏱ Waiting on first contact (48h+)</h2>
+      <p style="color:#7a5c42;font-size:12px;margin:0 0 8px 0;">Good candidates take another job in days — a quick call or text keeps them warm.</p>
+      <table cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;">${rows}</table>
+    </div>`;
+}
+
+function renderEmailHtml({ yesterdayHuman, totalApplicants, locationSections, slaSection = '' }) {
   const summary = totalApplicants === 0
     ? 'No new applicants yesterday.'
     : `<strong>${totalApplicants}</strong> new applicant${totalApplicants === 1 ? '' : 's'} yesterday.`;
@@ -102,6 +135,8 @@ function renderEmailHtml({ yesterdayHuman, totalApplicants, locationSections }) 
   </div>
 
   <p style="font-size:15px;margin:0 0 28px 0;">${summary}</p>
+
+  ${slaSection}
 
   ${locationSections}
 
@@ -141,19 +176,35 @@ async function runApplicantDailyRecap(prisma) {
       byLocation.set(app.locationId, list);
     }
 
-    if (yesterdayApps.length === 0) {
-      console.log('[applicant recap] no applicants yesterday; skipping send');
+    // Speed-to-contact SLA breaches: early-pipeline applicants with no logged
+    // contact 48h+ after applying. Fetched regardless of yesterday's volume —
+    // a quiet day is exactly when the backlog should be called out.
+    const slaCutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    const slaCandidates = await prisma.jobApplication.findMany({
+      where: {
+        status: { in: ['new', 'reviewing'] },
+        createdAt: { lte: slaCutoff },
+      },
+      orderBy: { createdAt: 'asc' },
+      take: 200,
+    }).catch(() => []);
+    const slaApps = slaCandidates.filter((app) => !Array.isArray(app.contactLog) || app.contactLog.length === 0);
+
+    if (yesterdayApps.length === 0 && slaApps.length === 0) {
+      console.log('[applicant recap] no applicants yesterday and no SLA breaches; skipping send');
       return;
     }
 
     const locations = await getLocations(prisma);
-    const locationsWithApps = locations.filter((loc) => (byLocation.get(loc.id) || []).length > 0);
+    const locationsById = new Map(locations.map((l) => [l.id, l]));
+    const slaLocationIds = new Set(slaApps.map((a) => a.locationId));
+    const locationsWithApps = locations.filter((loc) => (byLocation.get(loc.id) || []).length > 0 || slaLocationIds.has(loc.id));
 
     const gmEmails = new Set();
     const locationSections = [];
     for (const location of locationsWithApps) {
       const apps = byLocation.get(location.id) || [];
-      locationSections.push(renderLocationSection(location, apps));
+      if (apps.length) locationSections.push(renderLocationSection(location, apps));
       try {
         const gms = await getGeneralManagerEmailsForLocation(location.slug);
         for (const email of gms) gmEmails.add(email);
@@ -168,12 +219,14 @@ async function runApplicantDailyRecap(prisma) {
       return;
     }
 
-    const subject = `Daily applicant recap — ${yesterdayHuman} — ${yesterdayApps.length} new`;
+    const slaSuffix = slaApps.length ? ` — ⏱ ${slaApps.length} awaiting first contact` : '';
+    const subject = `Daily applicant recap — ${yesterdayHuman} — ${yesterdayApps.length} new${slaSuffix}`;
 
     const html = renderEmailHtml({
       yesterdayHuman,
       totalApplicants: yesterdayApps.length,
       locationSections: locationSections.join(''),
+      slaSection: renderSlaSection(slaApps, locationsById),
     });
 
     try {

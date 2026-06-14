@@ -19,10 +19,12 @@ const {
   minimumsForRole,
   missingRequiredAvailability,
   requiredAvailabilityForRole,
+  availabilityGridIsEmpty,
   MIN_ANSWER_LENGTH,
 } = require('./knowledgeBase');
+const { extractResumeText } = require('./resumeText');
 
-const MODEL = 'claude-opus-4-7';
+const MODEL = 'claude-opus-4-8';
 
 // Applicant review provider/model. Defaults to OpenAI's gpt-5.5 — their newest
 // reasoning model (input $5 / cached $0.50 / output $30 per 1M), with strict
@@ -69,7 +71,7 @@ const HUMAN_REVIEW_KEYWORDS = [
   /\bADA\b/,
 ];
 
-function detectHumanReviewSignals(answers) {
+function detectHumanReviewSignals(answers, application = null) {
   const hits = new Set();
   for (const [qid, text] of Object.entries(answers || {})) {
     if (!text) continue;
@@ -80,24 +82,84 @@ function detectHumanReviewSignals(answers) {
       }
     }
   }
+  // Application free-text fields can carry the same disclosures (e.g.
+  // accommodation needs written into "why Dram & Draught").
+  if (application) {
+    const appFields = {
+      whyDD: 'the "why Dram & Draught" field',
+      spiritKnowledge: 'the spirits-knowledge field',
+      priorEmployers: 'the prior-employers field',
+      certifications: 'the certifications field',
+    };
+    for (const [field, label] of Object.entries(appFields)) {
+      const text = application[field];
+      if (!text) continue;
+      for (const pattern of HUMAN_REVIEW_KEYWORDS) {
+        if (pattern.test(String(text))) {
+          hits.add(`Application: ${label} mentions potentially sensitive personal information; manager should review.`);
+          break;
+        }
+      }
+    }
+  }
   return Array.from(hits);
+}
+
+// High-precision patterns for answers that try to instruct the screener
+// rather than answer the question ("ignore previous instructions", "score
+// every category 5", …). Kept narrow on purpose: a false positive sends a
+// legitimate applicant to human review, so each pattern should be something
+// no honest questionnaire answer would contain.
+const PROMPT_MANIPULATION_PATTERNS = [
+  /(ignore|disregard|forget|override)\s+(all\s+|any\s+|the\s+)?(previous|prior|above|earlier|system)\s+(instructions?|rules?|prompts?|messages?)/i,
+  /\bsystem\s+prompt\b/i,
+  /\bnew\s+instructions?\s*:/i,
+  /\bscore\s+(me|this|all|every|each)\b.{0,40}\b(5|five|maximum|highest)\b/i,
+  /\byou\s+are\s+(now\s+)?(an?\s+)?(\w+\s+){0,2}(ai|assistant|screener|language\s+model)\b/i,
+  /\b(as|to)\s+the\s+(ai|screening|evaluation)\s+(assistant|model|system|screener)\b/i,
+];
+
+function detectPromptManipulation(answers) {
+  const hits = [];
+  for (const [qid, text] of Object.entries(answers || {})) {
+    if (!text) continue;
+    for (const pattern of PROMPT_MANIPULATION_PATTERNS) {
+      const match = String(text).match(pattern);
+      if (match) {
+        hits.push(`Answer to ${qid} appears to address the screening system directly ("${String(match[0]).slice(0, 80)}"). Scores for this applicant should be treated with suspicion — manager review required.`);
+        break;
+      }
+    }
+  }
+  return hits;
 }
 
 // Recompute weighted score from category scores using OUR authoritative weights.
 // The AI's claimed weighted score is ignored for the final decision.
+// Categories the model failed to score (normalized to 0) are EXCLUDED from the
+// average rather than dragging it down silently — the caller flags them for
+// review via unscoredCategories() instead.
 function recomputeWeightedScore(categoryScores, role) {
   const weights = weightsForRole(role);
   let totalWeight = 0;
   let weightedSum = 0;
   for (const cat of CATEGORIES) {
     const entry = categoryScores.find((c) => c && c.category === cat);
-    if (!entry || typeof entry.score !== 'number') continue;
+    if (!entry || typeof entry.score !== 'number' || entry.score <= 0) continue;
     const w = weights[cat] || 0;
     weightedSum += entry.score * w;
     totalWeight += w;
   }
   if (totalWeight === 0) return 0;
   return Math.round((weightedSum / totalWeight) * 100) / 100;
+}
+
+// Categories the model did not produce a usable score for.
+function unscoredCategories(categoryScores) {
+  return CATEGORIES.filter((cat) => {
+    const entry = (categoryScores || []).find((c) => c && c.category === cat);
+    return !entry || typeof entry.score !== 'number' || entry.score <= 0;
+  });
 }
 
 // Code-enforced recommendation (v4 thresholds — three-state verdict).
@@ -189,10 +251,15 @@ function detectDealBreakers(application, role) {
     // "unsure" intentionally not a deal-breaker — routes to human review.
   }
 
-  // Structured availability grid must cover the role's required shifts.
-  const missing = missingRequiredAvailability(role, application.availability);
-  for (const slot of missing) {
-    reasons.push(`Availability gap: ${slot} (required for ${role}).`);
+  // Structured availability grid must cover the role's required shifts — but
+  // only when the applicant actually filled the grid in. An empty grid means
+  // availability is unknown (the form doesn't require it); that routes to
+  // human review in runAiEvaluation, never to a terminal verdict.
+  if (!availabilityGridIsEmpty(application.availability)) {
+    const missing = missingRequiredAvailability(role, application.availability);
+    for (const slot of missing) {
+      reasons.push(`Availability gap: ${slot} (required for ${role}).`);
+    }
   }
 
   return reasons;
@@ -222,7 +289,7 @@ function verdictBucketFromInternal({
   return 'needs_human_review';
 }
 
-function buildUserPrompt({ application, questionnaire, roleWeights }) {
+function buildUserPrompt({ application, questionnaire, roleWeights, resumeText = null }) {
   const role = application.position
     ? String(application.position).toLowerCase().replace(/[^a-z]+/g, '_')
     : 'other';
@@ -242,8 +309,13 @@ function buildUserPrompt({ application, questionnaire, roleWeights }) {
     : versionedQuestions;
   const exemptIds = new Set(['q20', 'q10']);
 
+  // Answers are wrapped in <applicant_answer> tags so the system prompt's
+  // untrusted-data rule has an unambiguous boundary: everything inside the
+  // tags is applicant-typed data, never instructions. Strip any tag-lookalike
+  // text the applicant typed so they can't close the wrapper themselves.
   const answerLines = activeQuestions.map((q) => {
-    const text = answers[q.id] || '(no answer)';
+    const raw = answers[q.id] || '(no answer)';
+    const text = String(raw).replace(/<\/?applicant_answer[^>]*>/gi, '');
     const isExempt = exemptIds.has(q.id);
     const lengthFlag = (!isExempt && text && text.trim().length < MIN_ANSWER_LENGTH)
       ? `\n  ⚠ SHORT ANSWER (${text.trim().length} chars) — cannot evidence a category above 2.`
@@ -254,7 +326,7 @@ function buildUserPrompt({ application, questionnaire, roleWeights }) {
     const notes = q.notes ? `\n  Note: ${q.notes}` : '';
     const signals = (q.scoringCategories || []).length ? q.scoringCategories.join(', ') : 'not scored';
     const typeTag = q.questionType ? ` [type: ${q.questionType}]` : '';
-    return `Q${q.order} (${q.id})${typeTag} [signals: ${signals}]: ${q.text}${anchors}${notes}\nA: ${text}${lengthFlag}`;
+    return `Q${q.order} (${q.id})${typeTag} [signals: ${signals}]: ${q.text}${anchors}${notes}\nA: <applicant_answer id="${q.id}">${text}</applicant_answer>${lengthFlag}`;
   }).join('\n\n');
 
   const weightLines = CATEGORIES
@@ -279,11 +351,19 @@ function buildUserPrompt({ application, questionnaire, roleWeights }) {
   // that the applicant's grid does not cover. The screener should treat these
   // as hard role-requirement gaps (route to "hold"); the code maps that to
   // "does_not_meet_role_requirements" in the manager-facing verdict.
-  const missingAvail = missingRequiredAvailability(role, application.availability);
-  if (missingAvail.length) {
-    contextLines.push(`⚠ DEAL-BREAKER: Structured availability does not cover required ${role} shifts — missing: ${missingAvail.join('; ')}.`);
-  } else if ((requiredAvailabilityForRole(role) || []).length > 0) {
-    contextLines.push(`Availability check: structured grid covers all required ${role} shifts.`);
+  // An EMPTY grid is different: availability is unknown, so it's a human-review
+  // flag, not a deal-breaker — the q10 free-text answer is the only signal.
+  if (availabilityGridIsEmpty(application.availability)) {
+    if ((requiredAvailabilityForRole(role) || []).length > 0) {
+      contextLines.push(`⚠ HUMAN REVIEW: applicant left the structured availability grid EMPTY — availability is unknown, NOT a deal-breaker. Read the q10 answer for self-reported availability and flag for the manager to confirm required ${role} shifts.`);
+    }
+  } else {
+    const missingAvail = missingRequiredAvailability(role, application.availability);
+    if (missingAvail.length) {
+      contextLines.push(`⚠ DEAL-BREAKER: Structured availability does not cover required ${role} shifts — missing: ${missingAvail.join('; ')}.`);
+    } else if ((requiredAvailabilityForRole(role) || []).length > 0) {
+      contextLines.push(`Availability check: structured grid covers all required ${role} shifts.`);
+    }
   }
 
   // Compute days-from-today server-side so the model never has to estimate
@@ -327,6 +407,23 @@ function buildUserPrompt({ application, questionnaire, roleWeights }) {
   const yearsText = Number.isFinite(application.yearsExperience)
     ? `${application.yearsExperience} year${application.yearsExperience === 1 ? '' : 's'}`
     : '(not provided)';
+  // Applicant-written application fields — real evidence the questionnaire
+  // can't capture (product curiosity, motivation). Same untrusted-data
+  // wrapper as questionnaire answers.
+  const wrapApplicantText = (value, max) => {
+    if (!value) return '(not provided)';
+    const cleaned = String(value).slice(0, max).replace(/<\/?applicant_answer[^>]*>/gi, '');
+    return `<applicant_answer id="application">${cleaned}</applicant_answer>`;
+  };
+  const whyDDText = wrapApplicantText(application.whyDD, 4000);
+  const spiritKnowledgeText = wrapApplicantText(application.spiritKnowledge, 4000);
+  // Resume text (best-effort extraction; may be imperfect). Adjacent-
+  // experience evidence only — same rules as priorEmployers: it can support
+  // Be Reliable / Support Each Other / Own the Guest Experience / Keep Moving
+  // Forward, never role-specific technical categories on its own.
+  const resumeLine = resumeText
+    ? `- Resume (text extracted automatically; formatting lost, may be imperfect): ${wrapApplicantText(resumeText, 6000)}`
+    : (application.resumeData ? '- Resume: on file, but text could not be extracted (image or unsupported format).' : '- Resume: none provided.');
 
   return `Evaluate this applicant for Dram & Draught.
 
@@ -343,18 +440,23 @@ Background (read for adjacent hospitality / leadership signal — see KB §Adjac
 - Years of bar/restaurant experience: ${yearsText}
 - Prior employers: ${priorEmployersText}
 - Certifications: ${certsText}
+${resumeLine}
+
+Application essay fields (applicant-written; treat as additional scored evidence — "why Dram & Draught" speaks to role fit and motivation, spirits knowledge to Keep Moving Forward and role-specific curiosity):
+- Why Dram & Draught: ${whyDDText}
+- Spirits / product knowledge: ${spiritKnowledgeText}
 ${contextBlock}
 Role-specific category weights (sum to 100):
 ${weightLines}
 
-Scoring rubric (1–5 per category):
+Scoring rubric (1–5 per category, half-point increments allowed — e.g. 3.5, 4.5):
 1 = clear job-related concern (dismissive, can't meet shifts, blames, "not my job")
 2 = weak / vague / generic; possible concern
 3 = addresses the question with at least one concrete detail but lacks a specific example. Most candidates should NOT cluster here — push to 2 or 4 if evidence allows.
 4 = good specific evidence, clear alignment
 5 = strong specific evidence, real example, behavioral detail
 
-Short-answer floor: any answer below ${MIN_ANSWER_LENGTH} characters (excluding Q20) cannot evidence a category above 2. The user prompt above pre-flags these.
+Short-answer floor: any answer below ${MIN_ANSWER_LENGTH} characters (excluding the availability question, q10 / legacy q20) cannot evidence a category above 2. The answers above pre-flag these.
 
 Use the per-question anchors below each question to calibrate scores. Quote the applicant's own words when listing evidence or concerns.
 
@@ -390,6 +492,101 @@ function parseModelJson(message) {
   throw new Error('No JSON object found in model response.');
 }
 
+// Clamp a model-reported score to the rubric's half-point scale (1–5 in 0.5
+// steps). Anything unusable normalizes to 0, which recomputeWeightedScore
+// excludes and unscoredCategories() reports for review.
+function clampScore(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  const snapped = Math.round(n * 2) / 2;
+  return Math.max(1, Math.min(5, snapped));
+}
+
+// Normalize the model's categoryScores into our canonical shape with OUR
+// weights. Shared by the main pass and the borderline second pass.
+function normalizeCategoryScores(parsed, roleWeights) {
+  return CATEGORIES.map((category) => {
+    const fromAi = ((parsed && parsed.categoryScores) || []).find((c) => c && c.category === category) || {};
+    return {
+      category,
+      score: clampScore(fromAi.score),
+      weight: roleWeights[category] || 0,
+      evidence: Array.isArray(fromAi.evidence) ? fromAi.evidence.slice(0, 8).map(String) : [],
+      rationale: typeof fromAi.rationale === 'string' ? fromAi.rationale : '',
+      concerns: Array.isArray(fromAi.concerns) ? fromAi.concerns.slice(0, 8).map(String) : [],
+      supportingAnswerIds: Array.isArray(fromAi.supportingAnswerIds)
+        ? fromAi.supportingAnswerIds.slice(0, 6).map((s) => String(s).slice(0, 16))
+        : [],
+      strongestEvidence: typeof fromAi.strongestEvidence === 'string'
+        ? fromAi.strongestEvidence.slice(0, 600)
+        : '',
+      concernEvidence: typeof fromAi.concernEvidence === 'string'
+        ? fromAi.concernEvidence.slice(0, 600)
+        : null,
+      perCategoryConfidence: ['high', 'medium', 'low'].includes(fromAi.confidence) ? fromAi.confidence : null,
+      followUpQuestion: typeof fromAi.followUpQuestion === 'string'
+        ? fromAi.followUpQuestion.slice(0, 400)
+        : '',
+    };
+  });
+}
+
+// ─── Citation verification ───
+// The screener must quote the applicant for every score (rule 18). Verify the
+// quotes actually appear in the applicant's text — a hallucinated or
+// mis-attributed quote is exactly how a plausible-but-wrong score slips past
+// a manager skimming "Why this score". Matching is deliberately lenient
+// (lowercase, collapsed whitespace, straightened quotes, ellipsis-split
+// fragments) and only scores ≥ 4 are checked — those drive Recommend verdicts.
+function normalizeForQuoteMatch(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function quoteFragments(quote) {
+  return normalizeForQuoteMatch(quote)
+    .split(/(?:\.\.\.|…|\[\s*\.\.\.\s*\])/)
+    .map((f) => f.replace(/^["'\s]+|["'\s]+$/g, ''))
+    .filter((f) => f.length >= 12);
+}
+
+function quoteAppearsIn(quote, haystack) {
+  const fragments = quoteFragments(quote);
+  if (fragments.length === 0) return true; // too short to verify either way
+  return fragments.some((f) => haystack.includes(f));
+}
+
+function applicantTextHaystack(answers, application, extraText = null) {
+  const parts = Object.values(answers || {});
+  if (application) {
+    for (const field of ['whyDD', 'spiritKnowledge', 'priorEmployers', 'certifications']) {
+      if (application[field]) parts.push(String(application[field]));
+    }
+  }
+  if (extraText) parts.push(String(extraText));
+  return normalizeForQuoteMatch(parts.join('\n'));
+}
+
+function verifyCitations(categoryScores, answers, application, extraText = null) {
+  const haystack = applicantTextHaystack(answers, application, extraText);
+  const notes = [];
+  for (const entry of categoryScores || []) {
+    if (!entry || typeof entry.score !== 'number' || entry.score < 4) continue;
+    if (!entry.strongestEvidence) {
+      notes.push(`${CATEGORY_LABELS[entry.category] || entry.category} scored ${entry.score} without a quoted evidence excerpt — verify the score manually.`);
+      continue;
+    }
+    if (!quoteAppearsIn(entry.strongestEvidence, haystack)) {
+      notes.push(`Evidence quote for ${CATEGORY_LABELS[entry.category] || entry.category} ("${String(entry.strongestEvidence).slice(0, 80)}") was not found in the applicant's text — possible fabricated citation; verify before trusting the score.`);
+    }
+  }
+  return notes;
+}
+
 function normalizeRoleKey(position) {
   if (!position) return 'other';
   const k = String(position).toLowerCase().replace(/[^a-z]+/g, '_').replace(/^_+|_+$/g, '');
@@ -403,7 +600,12 @@ async function callClaude({ apiKey, systemPrompt, userPrompt, responseSchema }) 
   const client = new Anthropic({ apiKey });
   const message = await client.messages.create({
     model: MODEL,
-    max_tokens: 8000,
+    // Thinking tokens spend from the same budget as output, so leave headroom
+    // beyond the JSON payload itself.
+    max_tokens: 16000,
+    // Adaptive thinking is off by default on Opus 4.7+ — enable it so the
+    // screener reasons before scoring borderline answers.
+    thinking: { type: 'adaptive' },
     system: [
       {
         type: 'text',
@@ -504,6 +706,7 @@ async function runAiEvaluation({ application, questionnaire }) {
     return {
       errorDetail: `${keyEnvName} not configured; AI evaluation skipped.`,
       recommendation: 'hold',
+      verdictBucket: 'needs_human_review',
       weightedScore: 0,
       confidence: 'low',
       humanReviewRequired: true,
@@ -525,8 +728,12 @@ async function runAiEvaluation({ application, questionnaire }) {
   const role = normalizeRoleKey(application.position);
   const roleWeights = weightsForRole(role);
 
+  // Best-effort resume text — extracted once, shared by the prompt and the
+  // citation-verification haystack.
+  const resumeText = extractResumeText(application);
+
   const systemPrompt = buildSystemPrompt();
-  const userPrompt = buildUserPrompt({ application, questionnaire, roleWeights });
+  const userPrompt = buildUserPrompt({ application, questionnaire, roleWeights, resumeText });
   const responseSchema = buildResponseSchema();
 
   let parsed = null;
@@ -556,6 +763,7 @@ async function runAiEvaluation({ application, questionnaire }) {
     return {
       errorDetail: errorDetail || 'AI returned no usable JSON.',
       recommendation: 'hold',
+      verdictBucket: 'needs_human_review',
       weightedScore: 0,
       confidence: 'low',
       humanReviewRequired: true,
@@ -575,34 +783,10 @@ async function runAiEvaluation({ application, questionnaire }) {
   }
 
   // Normalize and re-weight category scores using OUR weights, regardless of
-  // what the AI claimed. We now also persist citation fields (supporting
-  // answer ids, strongest evidence quote, concern evidence, confidence,
-  // suggested follow-up question) so the manager can audit per-category.
-  let normalizedCategoryScores = CATEGORIES.map((category) => {
-    const fromAi = (parsed.categoryScores || []).find((c) => c && c.category === category) || {};
-    const score = Number.isInteger(fromAi.score) ? Math.max(1, Math.min(5, fromAi.score)) : 0;
-    return {
-      category,
-      score,
-      weight: roleWeights[category] || 0,
-      evidence: Array.isArray(fromAi.evidence) ? fromAi.evidence.slice(0, 8).map(String) : [],
-      rationale: typeof fromAi.rationale === 'string' ? fromAi.rationale : '',
-      concerns: Array.isArray(fromAi.concerns) ? fromAi.concerns.slice(0, 8).map(String) : [],
-      supportingAnswerIds: Array.isArray(fromAi.supportingAnswerIds)
-        ? fromAi.supportingAnswerIds.slice(0, 6).map((s) => String(s).slice(0, 16))
-        : [],
-      strongestEvidence: typeof fromAi.strongestEvidence === 'string'
-        ? fromAi.strongestEvidence.slice(0, 600)
-        : '',
-      concernEvidence: typeof fromAi.concernEvidence === 'string'
-        ? fromAi.concernEvidence.slice(0, 600)
-        : null,
-      perCategoryConfidence: ['high', 'medium', 'low'].includes(fromAi.confidence) ? fromAi.confidence : null,
-      followUpQuestion: typeof fromAi.followUpQuestion === 'string'
-        ? fromAi.followUpQuestion.slice(0, 400)
-        : '',
-    };
-  });
+  // what the AI claimed. Citation fields (supporting answer ids, strongest
+  // evidence quote, concern evidence, confidence, suggested follow-up
+  // question) are persisted so the manager can audit per-category.
+  let normalizedCategoryScores = normalizeCategoryScores(parsed, roleWeights);
 
   // Apply the short-answer floor deterministically (in addition to the
   // prompt-level guidance to the screener). Use the same active question set
@@ -619,21 +803,91 @@ async function runAiEvaluation({ application, questionnaire }) {
   // Code-detected deal-breakers (hard role-requirement gaps).
   const codeDealBreakers = detectDealBreakers(application, role);
 
-  // AI may surface deal-breakers in concerns (e.g. "cannot work Fridays").
   const concerns = Array.isArray(parsed.jobRelatedConcerns) ? parsed.jobRelatedConcerns.map(String) : [];
-  const aiDealBreakers = concerns.filter((c) => /can(?:not|'t)\s+(work|meet|commit)|legal eligibility|underage|under 21|no friday|no saturday|cannot work (friday|saturday|weekends)/i.test(c));
+
+  // Structured AI deal-breakers (schema-enforced codes — replaces the old
+  // regex over free-text concerns, which could promote phrases like "cannot
+  // commit to 25 hours" into a terminal verdict). Only "explicit_cannot_work"
+  // is accepted as terminal from the model: it's the one gap code can't
+  // detect, and its evidence quote must verifiably appear in the applicant's
+  // own text. Legal eligibility and grid availability are detected
+  // authoritatively server-side; if the model reports one the code didn't
+  // confirm, that's a disagreement for a manager, not an auto-verdict.
+  const answerHaystack = applicantTextHaystack(questionnaire.answers, application, resumeText);
+  const aiDealBreakers = [];
+  const aiDealBreakerDisagreements = [];
+  for (const entry of Array.isArray(parsed.dealBreakers) ? parsed.dealBreakers : []) {
+    if (!entry || typeof entry !== 'object') continue;
+    const evidence = String(entry.evidence || '').slice(0, 300);
+    if (entry.code === 'explicit_cannot_work') {
+      if (evidence && quoteAppearsIn(evidence, answerHaystack)) {
+        aiDealBreakers.push(`Applicant explicitly states they cannot work the role's required shifts: "${evidence}"`);
+      } else {
+        aiDealBreakerDisagreements.push(`AI reported the applicant cannot work required shifts, but its quote ("${evidence.slice(0, 120)}") was not found in their answers — verify manually before treating as a role-requirement gap.`);
+      }
+    } else if ((entry.code === 'legal_eligibility' || entry.code === 'availability_required_shifts') && codeDealBreakers.length === 0) {
+      aiDealBreakerDisagreements.push(`AI reported a ${entry.code} deal-breaker ("${evidence.slice(0, 120)}") that the server-side check did not confirm — verify manually.`);
+    }
+  }
   const dealBreakers = Array.from(new Set([...codeDealBreakers, ...aiDealBreakers]));
+
+  // Borderline second pass — a single sample decides which side of the
+  // recommend threshold a candidate lands on, so when the first pass falls in
+  // the borderline band we run the screener once more (the big system prompt
+  // is cached, so the re-run costs cents) and tell the manager whether the
+  // two passes agree. The first pass stays canonical.
+  let secondPassNote = null;
+  const inBorderlineBand = weightedScore >= THRESHOLDS.recommend.weighted - THRESHOLDS.reviewBand
+    && weightedScore <= THRESHOLDS.recommend.weighted + THRESHOLDS.reviewBand;
+  if (inBorderlineBand && dealBreakers.length === 0) {
+    try {
+      const secondRaw = await callModel({ apiKey, systemPrompt, userPrompt, responseSchema });
+      const secondParsed = parseModelJson(secondRaw);
+      const secondScores = capCategoriesForShortAnswers(
+        normalizeCategoryScores(secondParsed, roleWeights),
+        questionnaire.answers,
+        activeQuestions
+      ).capped;
+      const secondWeighted = recomputeWeightedScore(secondScores, role);
+      const firstSide = weightedScore >= THRESHOLDS.recommend.weighted;
+      const secondSide = secondWeighted >= THRESHOLDS.recommend.weighted;
+      secondPassNote = `Borderline score double-checked: a second screening pass scored ${secondWeighted.toFixed(2)} (first pass ${weightedScore.toFixed(2)}) — the passes ${firstSide === secondSide ? 'agree' : 'DISAGREE'} on the recommend threshold.`;
+    } catch (err) {
+      secondPassNote = `Borderline score double-check could not run (${err.message}); verdict rests on a single screening pass.`;
+    }
+  }
 
   // Role-specific category minimums — don't ship a recommend if a role-critical
   // category is shy of its floor. Routes to needs_review with a clear reason.
   const roleMinimumViolations = evaluateRoleMinimums(role, normalizedCategoryScores);
 
-  // Merge human-review reasons: AI flags + code keyword scan + cap notes +
-  // borderline-band rule + role-minimum violations + legal-eligibility
-  // "Unsure".
-  const codeFlags = detectHumanReviewSignals(questionnaire.answers);
+  // Merge human-review reasons: AI flags + code keyword scan (questionnaire +
+  // application free text) + manipulation scan + cap notes + citation
+  // verification + AI deal-breaker disagreements + borderline-band rule +
+  // role-minimum violations + legal-eligibility "Unsure".
+  const codeFlags = detectHumanReviewSignals(questionnaire.answers, application);
+  const manipulationFlags = detectPromptManipulation(questionnaire.answers);
+  const citationFlags = verifyCitations(normalizedCategoryScores, questionnaire.answers, application, resumeText);
   const aiFlags = Array.isArray(parsed.humanReviewReasons) ? parsed.humanReviewReasons.map(String) : [];
-  const reviewFlags = [...aiFlags, ...codeFlags, ...capResult.notes];
+  const reviewFlags = [
+    ...aiFlags,
+    ...codeFlags,
+    ...manipulationFlags,
+    ...citationFlags,
+    ...aiDealBreakerDisagreements,
+    ...capResult.notes,
+  ];
+  if (secondPassNote) reviewFlags.push(secondPassNote);
+  // Empty availability grid — availability is unknown, manager confirms.
+  if (availabilityGridIsEmpty(application.availability) && (requiredAvailabilityForRole(role) || []).length > 0) {
+    reviewFlags.push(`Availability grid was left empty — availability unknown. Confirm the required ${role} shifts with the applicant (see their q10 answer).`);
+  }
+  // Categories the model failed to score are excluded from the weighted
+  // average; surface that instead of letting the gap pass silently.
+  const missingScores = unscoredCategories(normalizedCategoryScores);
+  if (missingScores.length) {
+    reviewFlags.push(`Model did not produce a usable score for: ${missingScores.map((c) => CATEGORY_LABELS[c] || c).join(', ')} — the weighted score covers the remaining categories only. Consider re-running the screening.`);
+  }
   // Any category < 2.0 triggers review.
   if (normalizedCategoryScores.some((c) => c.score > 0 && c.score < 2)) {
     reviewFlags.push('A category scored below 2 — needs manager review before any decision.');
@@ -726,10 +980,14 @@ module.exports = {
   runAiEvaluation,
   normalizeRoleKey,
   detectHumanReviewSignals,
+  detectPromptManipulation,
   detectDealBreakers,
   recomputeWeightedScore,
+  unscoredCategories,
   determineRecommendation,
   capCategoriesForShortAnswers,
+  clampScore,
+  verifyCitations,
   reviewModelInfo,
   MODEL,
 };

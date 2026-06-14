@@ -5,10 +5,12 @@ const {
   eventEditor,
   eventSignupsView,
   eventSignupDecisionView,
+  eventResultsView,
 } = require('../views/adminEventsViews');
 const { sanitizeImageSrc } = require('../views/imageUploadWidget');
 const { writeAudit } = require('../auditLog');
 const { SIGNUP_TYPES, effectiveSignupType, needsApproval } = require('../eventSignupTypes');
+const { normalizeCriteria, normalizeJudges, makeJudgeToken } = require('../eventJudging');
 const { normalizeThemeKey } = require('../views/eventThemes');
 const { parseDateTimeLocal } = require('../dateEastern');
 const { normalizeRecurrenceRule } = require('../recurrence');
@@ -375,7 +377,7 @@ function parseCustomQuestions(body) {
     const label = normalizeText(labels[i]);
     if (!label) continue;
     const type = (types[i] || 'text').toLowerCase();
-    const validType = ['text', 'textarea', 'number', 'yesno', 'image'].includes(type) ? type : 'text';
+    const validType = ['text', 'textarea', 'number', 'yesno', 'image', 'images-multi'].includes(type) ? type : 'text';
     const required = body[`custom_required_${i}`] === 'on';
     const existingId = String(ids[i] || '').trim();
     questions.push({
@@ -386,6 +388,34 @@ function parseCustomQuestions(body) {
     });
   }
   return questions;
+}
+
+// Parse the competition-judging config from the editor form. Mirrors
+// parseCustomQuestions: parallel arrays for criteria (jc_label/jc_max/jc_id)
+// and judges (judge_name/judge_id), with stable IDs preserved across edits so
+// already-recorded scorecards keep matching their criterion.
+function parseJudgingConfig(body) {
+  const cLabels = Array.isArray(body['jc_label']) ? body['jc_label'] : (body['jc_label'] ? [body['jc_label']] : []);
+  const cMaxes = Array.isArray(body['jc_max']) ? body['jc_max'] : (body['jc_max'] != null ? [body['jc_max']] : []);
+  const cIds = Array.isArray(body['jc_id']) ? body['jc_id'] : (body['jc_id'] != null ? [body['jc_id']] : []);
+  const criteria = normalizeCriteria(cLabels.map((label, i) => ({
+    id: String(cIds[i] || '').trim(),
+    label,
+    max: cMaxes[i],
+  })));
+
+  const jNames = Array.isArray(body['judge_name']) ? body['judge_name'] : (body['judge_name'] ? [body['judge_name']] : []);
+  const jIds = Array.isArray(body['judge_id']) ? body['judge_id'] : (body['judge_id'] != null ? [body['judge_id']] : []);
+  const judges = normalizeJudges(jNames.map((name, i) => ({
+    id: String(jIds[i] || '').trim(),
+    name,
+  })));
+
+  let finalistTarget = parseInt(body.finalistTarget, 10);
+  if (!Number.isFinite(finalistTarget) || finalistTarget <= 0) finalistTarget = null;
+  else finalistTarget = Math.min(100, finalistTarget);
+
+  return { criteria, judges, finalistTarget };
 }
 
 async function ensureUniqueSlug(prisma, locationId, baseSlug, excludeId = null) {
@@ -507,6 +537,8 @@ async function handleAdminEvents(req, res, pathname, prisma) {
       if (!startDate) { redirect(res, flashError('Event date and time are required.')); return true; }
 
       const customQuestions = parseCustomQuestions(body);
+      const judging = parseJudgingConfig(body);
+      const judgeToken = (judging.criteria.length > 0 && judging.judges.length > 0) ? makeJudgeToken() : null;
       const imageValue = await resolveEventImage(body.image, uniqueSlug);
       const recurrence = parseRecurrenceFromBody(body);
 
@@ -531,6 +563,10 @@ async function handleAdminEvents(req, res, pathname, prisma) {
             collectPartySize: body.collectPartySize === 'on',
             collectNotes: body.collectNotes === 'on',
             customQuestions: customQuestions.length > 0 ? customQuestions : null,
+            judgingCriteria: judging.criteria.length > 0 ? judging.criteria : null,
+            judges: judging.judges.length > 0 ? judging.judges : null,
+            finalistTarget: judging.finalistTarget,
+            judgeToken,
             confirmationMessage: normalizeText(body.confirmationMessage) || null,
             notifyEmail: normalizeText(body.notifyEmail) || null,
             isActive: body.isActive === 'on',
@@ -672,7 +708,7 @@ async function handleAdminEvents(req, res, pathname, prisma) {
   }
 
   // ─── Edit event / view signups ───
-  const editMatch = pathname.match(/^\/admin\/events\/([a-zA-Z0-9-]+)(?:\/(signups|signups\/export|delete))?$/);
+  const editMatch = pathname.match(/^\/admin\/events\/([a-zA-Z0-9-]+)(?:\/(signups|signups\/export|results|delete))?$/);
   if (editMatch) {
     const eventId = editMatch[1];
     const subpath = editMatch[2] || '';
@@ -744,6 +780,16 @@ async function handleAdminEvents(req, res, pathname, prisma) {
       return true;
     }
 
+    // Judging results / leaderboard.
+    if (subpath === 'results') {
+      const finalists = await prisma.eventSignup.findMany({
+        where: { eventId, isFinalist: true },
+        orderBy: { createdAt: 'asc' },
+      }).catch(() => []);
+      sendHTML(res, 200, eventResultsView(event, finalists, user, getFlashMsg(req.url)));
+      return true;
+    }
+
     // Signups view
     if (subpath === 'signups') {
       const flashMsg = getFlashMsg(req.url);
@@ -789,6 +835,50 @@ async function handleAdminEvents(req, res, pathname, prisma) {
             data: { checkedInAt: target.checkedInAt ? null : new Date() },
           }).catch((err) => console.warn('Check-in toggle failed:', err.message));
           redirect(res, `/admin/events/${eventId}/signups?msg=` + (target.checkedInAt ? 'checkin-undone' : 'checked-in') + `#signup-${signupId}`);
+          return true;
+        }
+
+        // Toggle finalist selection for a competition. Selecting a finalist
+        // also confirms them (status → approved) so they leave the pending
+        // queue; removing finalist leaves the status as-is.
+        if (action === 'toggleFinalist' && signupId) {
+          const target = await prisma.eventSignup.findFirst({ where: { id: signupId, eventId } }).catch(() => null);
+          if (!target) {
+            redirect(res, `/admin/events/${eventId}/signups?msg=` + encodeURIComponent('error|Signup not found.'));
+            return true;
+          }
+          const makeFinalist = !target.isFinalist;
+          await prisma.eventSignup.update({
+            where: { id: signupId },
+            data: {
+              isFinalist: makeFinalist,
+              ...(makeFinalist && target.status === 'pending'
+                ? { status: 'approved', approvedBy: user.email, approvedAt: new Date() }
+                : {}),
+            },
+          }).catch((err) => console.warn('Toggle finalist failed:', err.message));
+          writeAudit(prisma, req, user, {
+            action: 'update', resourceType: 'eventSignup', resourceId: signupId,
+            resourceLabel: `${target.name || ''} — ${event.title}`,
+            locationSlug: event.location?.slug || null,
+            details: { isFinalist: makeFinalist },
+          });
+          redirect(res, `/admin/events/${eventId}/signups?msg=` + encodeURIComponent(makeFinalist ? 'success|Selected as finalist.' : 'success|Removed from finalists.') + `#signup-${signupId}`);
+          return true;
+        }
+
+        // Open / close judge scoring for the event.
+        if (action === 'toggleJudging') {
+          await prisma.event.update({
+            where: { id: eventId },
+            data: { judgingOpen: !event.judgingOpen },
+          }).catch((err) => console.warn('Toggle judging failed:', err.message));
+          writeAudit(prisma, req, user, {
+            action: 'update', resourceType: 'event', resourceId: eventId,
+            resourceLabel: `${event.title} — judging ${event.judgingOpen ? 'closed' : 'opened'}`,
+            locationSlug: event.location?.slug || null,
+          });
+          redirect(res, `/admin/events/${eventId}/signups?msg=` + encodeURIComponent(event.judgingOpen ? 'success|Scoring closed.' : 'success|Scoring opened — judges can now submit.'));
           return true;
         }
 
@@ -1131,6 +1221,11 @@ async function handleAdminEvents(req, res, pathname, prisma) {
       if (!title) { redirect(res, editFlashError('Event name is required.')); return true; }
 
       const customQuestions = parseCustomQuestions(body);
+      const judging = parseJudgingConfig(body);
+      // Generate a judge link the first time a comp is fully configured.
+      const judgeToken = (judging.criteria.length > 0 && judging.judges.length > 0)
+        ? (event.judgeToken || makeJudgeToken())
+        : (event.judgeToken || null);
 
       // Allow moving the event to a different location (e.g. saved to the wrong
       // one). Validate it's a real location the user can manage.
@@ -1184,6 +1279,10 @@ async function handleAdminEvents(req, res, pathname, prisma) {
             recurrenceRule: recurrence.recurrenceRule || null,
             signupType: SIGNUP_TYPES.includes(String(body.signupType)) ? String(body.signupType) : (event.signupType || 'guest'),
             isVendorEvent: String(body.signupType) === 'vendor',
+            judgingCriteria: judging.criteria.length > 0 ? judging.criteria : null,
+            judges: judging.judges.length > 0 ? judging.judges : null,
+            finalistTarget: judging.finalistTarget,
+            judgeToken,
             ticketUrl: normalizeTicketUrl(body.ticketUrl),
             ticketProvider: detectTicketProvider(body.ticketUrl),
             remindersEnabled: body.remindersEnabled === 'on',

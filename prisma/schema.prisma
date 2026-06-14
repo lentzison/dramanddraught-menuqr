@@ -11,54 +11,54 @@ datasource db {
 }
 
 model Location {
-  id          String   @id @default(uuid())
-  name        String   // Greensboro, Raleigh, Durham, etc.
-  slug        String   @unique // URL slug: greensboro, raleigh, etc.
+  id          String  @id @default(uuid())
+  name        String // Greensboro, Raleigh, Durham, etc.
+  slug        String  @unique // URL slug: greensboro, raleigh, etc.
   address     String?
   city        String
-  state       String   @default("NC")
+  state       String  @default("NC")
   zipCode     String?
   phone       String?
   email       String?
-  hours       Json?    // Store hours as JSON object
-  links       Json?    // Linktree-style buttons: [{label, url}]
+  hours       Json? // Store hours as JSON object
+  links       Json? // Linktree-style buttons: [{label, url}]
   description String?
-  image       String?  // URL to location image
-  qrCode      String?  // URL to QR code image
+  image       String? // URL to location image
+  qrCode      String? // URL to QR code image
 
   // Location-specific content
-  menuUrl     String?  // Link to menu
-  specialText String?  // Special announcements
+  menuUrl     String? // Link to menu
+  specialText String? // Special announcements
   features    String[] // Array of features: ["outdoor seating", "delivery", etc.]
 
   // Social media links
-  facebook    String?
-  instagram   String?
-  twitter     String?
+  facebook  String?
+  instagram String?
+  twitter   String?
 
   // Status
-  isActive    Boolean  @default(true)
+  isActive Boolean @default(true)
 
   // Hiring flag — controls the public "We're Hiring" badge on /{slug} and
   // whether /{slug}/apply accepts new applications. Default off.
-  isHiring    Boolean  @default(false)
+  isHiring Boolean @default(false)
 
   // Timestamps
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  menuCategories   MenuCategory[]
-  events           Event[]
-  dayThemes        DayTheme[]
-  flights          Flight[]
-  featuredBottles  FeaturedBottle[]
-  guestFeedbacks   GuestFeedback[]
-  visitorSessions  VisitorSession[]
-  jobApplications  JobApplication[]
-  interviews       Interview[]
-  ltos             LimitedTimeOffer[]
-  tvBoards         TvBoard[]
+  menuCategories  MenuCategory[]
+  events          Event[]
+  dayThemes       DayTheme[]
+  flights         Flight[]
+  featuredBottles FeaturedBottle[]
+  guestFeedbacks  GuestFeedback[]
+  visitorSessions VisitorSession[]
+  jobApplications JobApplication[]
+  interviews      Interview[]
+  ltos            LimitedTimeOffer[]
+  tvBoards        TvBoard[]
 
   @@index([slug])
 }
@@ -69,20 +69,20 @@ model Location {
 // display page (/{slug}/tv/{boardSlug}) renders a persistent rail plus the
 // rotating modules; staff compose boards in /admin/tv.
 model TvBoard {
-  id            String   @id @default(uuid())
+  id            String  @id @default(uuid())
   locationId    String
-  name          String   // e.g. "Main Bar TV"
-  slug          String   // URL slug, unique per location: "main-bar"
-  isActive      Boolean  @default(true)
-  logo          String?  // Optional logo image (media URL) shown in the TV rail
-  orientation   String   @default("portrait") // "portrait" (vertical sign) | "landscape"
-  rotateSeconds Int      @default(15) // default per-slide duration
-  modules       Json     @default("[]") // ordered [{ id, type, title?, seconds?, pinned?, image?, ... }]
+  name          String // e.g. "Main Bar TV"
+  slug          String // URL slug, unique per location: "main-bar"
+  isActive      Boolean @default(true)
+  logo          String? // Optional logo image (media URL) shown in the TV rail
+  orientation   String  @default("portrait") // "portrait" (vertical sign) | "landscape"
+  rotateSeconds Int     @default(15) // default per-slide duration
+  modules       Json    @default("[]") // ordered [{ id, type, title?, seconds?, pinned?, image?, ... }]
 
-  location      Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([locationId, slug])
   @@index([locationId])
@@ -99,70 +99,70 @@ enum DayOfWeek {
 }
 
 model DayTheme {
-  id          String     @id @default(uuid())
+  id          String    @id @default(uuid())
   dayOfWeek   DayOfWeek
   locationId  String?
-  name        String     // e.g. "Industry Night", "Classic Tuesday"
+  name        String // e.g. "Industry Night", "Classic Tuesday"
   tagline     String?
   description String?
   // Optional hex color (e.g. "#d4af37") that themes the public specials
   // page header for this day. Falls back to the brand gold if null.
   themeColor  String?
-  isActive    Boolean    @default(true)
+  isActive    Boolean   @default(true)
 
-  halfPriceConfig Json?    // Selection rules for half-price spirits (Wed/Thu)
+  halfPriceConfig Json? // Selection rules for half-price spirits (Wed/Thu)
 
-  location    Location?  @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  specials    DailySpecial[]
+  location Location?      @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  specials DailySpecial[]
 
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([dayOfWeek, locationId])
   @@index([dayOfWeek])
 }
 
 model DailySpecial {
-  id           String   @id @default(uuid())
+  id           String  @id @default(uuid())
   dayThemeId   String
   name         String
   description  String?
-  price        String?  // Flexible: "$8", "50% off", "2-for-1"
+  price        String? // Flexible: "$8", "50% off", "2-for-1"
   imageUrl     String?
-  category     String?  // e.g. "cocktail", "beer", "food"
-  displayOrder Int      @default(0)
-  isActive     Boolean  @default(true)
+  category     String? // e.g. "cocktail", "beer", "food"
+  displayOrder Int     @default(0)
+  isActive     Boolean @default(true)
 
   // Rich content fields
-  section      String?  // Groups specials under a header: "$8 Cocktails", "$5 Shots & More"
-  detailText   String?  // Longer sell copy / tasting notes paragraph
-  badges       String?  // Comma-separated tags: "New", "Staff Pick", "LTO"
-  timeWindow   String?  // Time constraint: "Until 7 PM", "All night"
-  isFeatured   Boolean  @default(false) // Gold border / visual emphasis
+  section    String? // Groups specials under a header: "$8 Cocktails", "$5 Shots & More"
+  detailText String? // Longer sell copy / tasting notes paragraph
+  badges     String? // Comma-separated tags: "New", "Staff Pick", "LTO"
+  timeWindow String? // Time constraint: "Until 7 PM", "All night"
+  isFeatured Boolean @default(false) // Gold border / visual emphasis
 
-  dayTheme     DayTheme @relation(fields: [dayThemeId], references: [id], onDelete: Cascade)
+  dayTheme DayTheme @relation(fields: [dayThemeId], references: [id], onDelete: Cascade)
 
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([dayThemeId])
 }
 
 model Flight {
-  id          String      @id @default(uuid())
+  id          String  @id @default(uuid())
   locationId  String?
-  month       Int         // 1-12
+  month       Int // 1-12
   year        Int
-  theme       String      // e.g. "American Single Malts"
+  theme       String // e.g. "American Single Malts"
   description String?
-  price       String?     // e.g. "$15"
-  isActive    Boolean     @default(true)
+  price       String? // e.g. "$15"
+  isActive    Boolean @default(true)
 
-  location    Location?   @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  pours       FlightPour[]
+  location Location?    @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  pours    FlightPour[]
 
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([month, year, locationId])
   @@index([month, year])
@@ -177,7 +177,7 @@ model FlightPour {
   tastingNotes String?
   displayOrder Int     @default(0)
 
-  flight       Flight  @relation(fields: [flightId], references: [id], onDelete: Cascade)
+  flight Flight @relation(fields: [flightId], references: [id], onDelete: Cascade)
 
   @@index([flightId])
 }
@@ -187,143 +187,143 @@ model FlightPour {
 // allowed; each runs on a chosen set of weekdays and optionally within a
 // start/end date window.
 model LimitedTimeOffer {
-  id          String     @id @default(uuid())
+  id          String      @id @default(uuid())
   locationId  String
   title       String
   description String?
   // Base64 data URL or external https URL (handled the same way as event
   // images by sanitizeImageSrc). Capped client-side at ~750 KB.
-  image       String?    @db.Text
+  image       String?     @db.Text
   // Drinks: [{name, description?, price?, displayOrder?}]
   drinks      Json?
   daysOfWeek  DayOfWeek[]
   startDate   DateTime?
   endDate     DateTime?
-  isActive    Boolean    @default(true)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
 
-  location    Location   @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
 
   @@index([locationId, isActive])
 }
 
 model FeaturedBottle {
-  id           String   @id @default(uuid())
+  id           String  @id @default(uuid())
   locationId   String?
-  month        Int      // 1-12
+  month        Int // 1-12
   year         Int
   name         String
   description  String?
-  regularPrice String?  // What it normally costs
-  costPrice    String   // Break-even price
-  category     String?  // e.g. "bourbon", "scotch"
-  displayOrder Int      @default(0)
-  isActive     Boolean  @default(true)
+  regularPrice String? // What it normally costs
+  costPrice    String // Break-even price
+  category     String? // e.g. "bourbon", "scotch"
+  displayOrder Int     @default(0)
+  isActive     Boolean @default(true)
 
-  location     Location? @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  location Location? @relation(fields: [locationId], references: [id], onDelete: Cascade)
 
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([month, year])
 }
 
 model MenuCategory {
-  id          String   @id @default(uuid())
-  locationId  String
-  name        String
-  description String?
+  id           String  @id @default(uuid())
+  locationId   String
+  name         String
+  description  String?
   displayOrder Int     @default(0)
-  isActive    Boolean  @default(true)
+  isActive     Boolean @default(true)
 
-  location    Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  items       MenuItem[]
+  location Location   @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  items    MenuItem[]
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([locationId])
 }
 
 model MenuItem {
-  id          String   @id @default(uuid())
-  categoryId  String
-  name        String
-  description String?
-  price       Decimal? @db.Decimal(10, 2)
-  image       String?
-  isAvailable Boolean  @default(true)
-  isFeatured  Boolean  @default(false)
-  displayOrder Int     @default(0)
+  id           String   @id @default(uuid())
+  categoryId   String
+  name         String
+  description  String?
+  price        Decimal? @db.Decimal(10, 2)
+  image        String?
+  isAvailable  Boolean  @default(true)
+  isFeatured   Boolean  @default(false)
+  displayOrder Int      @default(0)
 
-  category    MenuCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  category MenuCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([categoryId])
 }
 
 model Event {
-  id               String    @id @default(uuid())
-  locationId       String
-  slug             String    // URL slug, unique per location
-  title            String
-  description      String?
-  startDate        DateTime  // When the event happens
-  endDate          DateTime?
-  image            String?   // Banner image URL
+  id          String    @id @default(uuid())
+  locationId  String
+  slug        String // URL slug, unique per location
+  title       String
+  description String?
+  startDate   DateTime // When the event happens
+  endDate     DateTime?
+  image       String? // Banner image URL
 
   // How the banner image is used on the public page when one is set:
   //   "hero"     → image fills the header as a full-bleed background with the
   //                themed title overlaid on a dark scrim (default)
   //   "featured" → keep the themed text hero, show the image below it
-  bannerStyle      String    @default("hero")
+  bannerStyle String @default("hero")
 
   // Promotion window — when the event is visible / accepting signups
-  promoteFrom      DateTime? // Defaults to createdAt if null
-  promoteUntil     DateTime? // Defaults to startDate if null
+  promoteFrom  DateTime? // Defaults to createdAt if null
+  promoteUntil DateTime? // Defaults to startDate if null
 
   // Capacity
-  capacity         Int?      // null = unlimited
+  capacity Int? // null = unlimited
 
   // Controls the public "X spots left" urgency indicator.
   //   "always"    → show whenever capacity is set
   //   "near-full" → only show once the event is ≥75% full
   //   "hidden"    → never show
-  spotsLeftMode    String    @default("always")
+  spotsLeftMode String @default("always")
 
   // Whether the signup form is shown at all on the public page.
   // Some events (e.g. info-only announcements) don't collect signups.
-  signupsEnabled   Boolean   @default(true)
+  signupsEnabled Boolean @default(true)
 
   // Standard signup field toggles (name is always required)
-  collectEmail     Boolean   @default(true)
-  collectPhone     Boolean   @default(true)
-  collectPartySize Boolean   @default(false)
-  collectNotes     Boolean   @default(false)
+  collectEmail     Boolean @default(true)
+  collectPhone     Boolean @default(true)
+  collectPartySize Boolean @default(false)
+  collectNotes     Boolean @default(false)
 
   // Custom questions as JSON: [{id, label, type, required}]
-  customQuestions  Json?
+  customQuestions Json?
 
   // Page content sections (rich event page builder).
   // JSON array of {id, type, ...content} entries rendered in order.
   // Types: text, image, details, button, video, divider
-  sections         Json?
+  sections Json?
 
   // Post-signup
   confirmationMessage String?
-  notifyEmail      String?   // Email to notify when someone signs up
+  notifyEmail         String? // Email to notify when someone signs up
 
   // State
-  isActive         Boolean   @default(true)
-  isCancelled      Boolean   @default(false)
+  isActive    Boolean @default(true)
+  isCancelled Boolean @default(false)
 
   // Vendor events route signups through a GM approval queue instead of
   // confirming instantly. Re-labels the signup form as a vendor application.
   // Kept for backward compatibility; new code should read `signupType`.
-  isVendorEvent    Boolean   @default(false)
+  isVendorEvent Boolean @default(false)
 
   // Signup mode. "guest" (default) = standard RSVP that confirms instantly.
   // "vendor" = outside business / artist applying for a slot, gated by
@@ -331,36 +331,54 @@ model Event {
   // "participant" = anyone signing up to *take part* in the event (e.g.
   //   bartenders entering a cocktail competition, performers, contestants).
   //   Also gated by an approval queue. Form copy adapts based on this value.
-  signupType       String    @default("guest")
+  signupType String @default("guest")
+
+  // ─── Competition judging (cocktail comps, cook-offs, performances) ───
+  // Opt-in layer on top of participant/vendor signups: applicants submit, an
+  // admin marks a subset as finalists, then judges score those finalists on
+  // per-event criteria via a token link. All nullable/defaulted so non-comp
+  // events are unaffected.
+  //
+  // judgingCriteria: [{ id, label, max }] — what each finalist is scored on.
+  // judges:          [{ id, name }]       — the roster who can score.
+  // judgeToken:      unguessable secret in the judge link (/events/judge/:token).
+  // judgingOpen:     gate — judges can only submit while this is true.
+  // finalistTarget:  how many finalists you intend to select (e.g. 8); drives
+  //                  the "N / target" counter. Advisory, not enforced.
+  judgingCriteria Json?
+  judges          Json?
+  judgeToken      String? @unique
+  judgingOpen     Boolean @default(false)
+  finalistTarget  Int?
 
   // Optional visual theme override for the public event page.
   // Known values: "spring-market" (soft green/peach garden party),
   //               "art-gallery" (purple damask, paint drips, gallery vibe).
   // null/unknown falls back to the default dark vintage theme.
-  themeKey         String?
+  themeKey String?
 
   // Ticketing. ticketUrl is the customer-facing buy-tickets link (currently
   // always Eventbrite; future providers possible). ticketProvider is the
   // canonical source so we can render provider-specific UI (logo, copy).
-  ticketUrl        String?
-  ticketProvider   String?   // "eventbrite" | null
+  ticketUrl      String?
+  ticketProvider String? // "eventbrite" | null
 
   // Reminder emails for confirmed signups. Defaults to on; can be disabled
   // per event (e.g. info-only events that don't really need a T-24h ping).
-  remindersEnabled Boolean   @default(true)
+  remindersEnabled Boolean @default(true)
 
   // ── Recurring events ──
   // A recurring event is a single, stable row (same slug/QR forever) whose live
   // date rolls forward through a list of EventOccurrence rows. The Event's
   // startDate/endDate/promoteUntil always MIRROR the current occurrence so every
   // existing reader (public page, TV, lists, reminders) keeps working unchanged.
-  isRecurring      Boolean   @default(false)
+  isRecurring         Boolean          @default(false)
   // { frequency: "weekly"|"biweekly"|"monthly", interval, weekday (0-6),
   //   time ("18:00" Eastern), durationMinutes?, until? (ISO), count? }
-  recurrenceRule   Json?
+  recurrenceRule      Json?
   // Which occurrence is "live" — the one accepting signups right now.
-  currentOccurrenceId String? @unique
-  currentOccurrence EventOccurrence? @relation("EventCurrentOccurrence", fields: [currentOccurrenceId], references: [id], onDelete: SetNull)
+  currentOccurrenceId String?          @unique
+  currentOccurrence   EventOccurrence? @relation("EventCurrentOccurrence", fields: [currentOccurrenceId], references: [id], onDelete: SetNull)
 
   // When this event was imported from the public Dram & Draught site, the id of
   // the originating public event. Sent in the /api/public/events feed so the
@@ -368,13 +386,13 @@ model Event {
   // creating a duplicate. Null for events authored directly in menuqr.
   importedFromPublicId Int?
 
-  location         Location       @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  signups          EventSignup[]
-  occurrences      EventOccurrence[] @relation("EventOccurrences")
-  seriesOptOuts    EventSeriesOptOut[]
+  location      Location            @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  signups       EventSignup[]
+  occurrences   EventOccurrence[]   @relation("EventOccurrences")
+  seriesOptOuts EventSeriesOptOut[]
 
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([locationId, slug])
   @@index([locationId, startDate])
@@ -395,9 +413,9 @@ model EventOccurrence {
   inviteSentAt DateTime? // when the "sign up again" series invite went out for this date
   createdAt    DateTime  @default(now())
 
-  event        Event     @relation("EventOccurrences", fields: [eventId], references: [id], onDelete: Cascade)
-  current      Event?    @relation("EventCurrentOccurrence")
-  signups      EventSignup[]
+  event   Event         @relation("EventOccurrences", fields: [eventId], references: [id], onDelete: Cascade)
+  current Event?        @relation("EventCurrentOccurrence")
+  signups EventSignup[]
 
   @@index([eventId, startDate])
 }
@@ -412,7 +430,7 @@ model EventSeriesOptOut {
   token     String   @unique
   createdAt DateTime @default(now())
 
-  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   @@unique([eventId, email])
   @@index([eventId])
@@ -437,31 +455,38 @@ model EventSignup {
   // "waitlisted" is used when an event is at capacity but still collecting
   // interest; waitlisted signups don't count toward capacity and can be
   // promoted to "approved" by an admin when a spot frees up.
-  status           String    @default("approved") // "approved" | "pending" | "rejected" | "waitlisted"
-  approvedBy       String?   // Email of GM who approved/rejected
-  approvedAt       DateTime?
-  rejectionReason  String?
+  status          String    @default("approved") // "approved" | "pending" | "rejected" | "waitlisted"
+  approvedBy      String? // Email of GM who approved/rejected
+  approvedAt      DateTime?
+  rejectionReason String?
+
+  // Competition judging (see Event.judgingCriteria). isFinalist marks the
+  // entrants selected to compete in front of judges. scorecards holds one
+  // entry per judge who has scored this finalist:
+  //   [{ judgeId, scores: { <criterionId>: number }, notes, at }]
+  isFinalist Boolean @default(false)
+  scorecards Json?
 
   // Day-of check-in. Set when an admin marks the guest as arrived; null = not
   // yet checked in. Enables attendance / no-show reporting after the event.
-  checkedInAt      DateTime?
+  checkedInAt DateTime?
 
   // Reminder email tracking. Flag-then-send pattern (see eventReminders.js):
   // we set the flag BEFORE attempting send so a crash mid-send can't fire a
   // duplicate. unsubscribeToken is a random per-signup secret used to honor
   // one-click opt-out without exposing signup IDs.
-  reminderSent24h  Boolean   @default(false)
-  reminderSent1h   Boolean   @default(false)
-  remindersOptOut  Boolean   @default(false)
+  reminderSent24h  Boolean @default(false)
+  reminderSent1h   Boolean @default(false)
+  remindersOptOut  Boolean @default(false)
   unsubscribeToken String?
 
   // Which occurrence (date) this signup belongs to. Nullable forever — a deleted
   // occurrence orphans its signups (SetNull) rather than erasing attendance
   // history. The "live sheet" = signups where occurrenceId == event.currentOccurrenceId.
-  occurrenceId  String?
-  occurrence    EventOccurrence? @relation(fields: [occurrenceId], references: [id], onDelete: SetNull)
+  occurrenceId String?
+  occurrence   EventOccurrence? @relation(fields: [occurrenceId], references: [id], onDelete: SetNull)
 
-  event         Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   @@index([eventId, createdAt])
   @@index([eventId, status])
@@ -471,82 +496,82 @@ model EventSignup {
 }
 
 model JobApplication {
-  id              String   @id @default(uuid())
-  locationId      String
+  id         String @id @default(uuid())
+  locationId String
 
   // Applicant identity
-  name            String
-  email           String
-  phone           String?
+  name  String
+  email String
+  phone String?
 
   // Position + eligibility
-  position        String   // "Bartender" | "Barback" | "Server" | "Host" | "Floor Manager" | "Other"
-  positionOther   String?  // free text when position == "Other"
-  age21           Boolean  @default(false)
+  position           String // "Bartender" | "Barback" | "Server" | "Host" | "Floor Manager" | "Other"
+  positionOther      String? // free text when position == "Other"
+  age21              Boolean   @default(false)
   // Bartender-only: "yes" / "no" / "unsure" — legal eligibility to perform
   // alcohol-service duties for the role at the location. Replaces age21 as
   // the deal-breaker signal (age21 stays for backwards-compat with older
   // applications).
   alcoholEligibility String?
-  earliestStart   DateTime?
+  earliestStart      DateTime?
 
   // Availability stored as JSON: { mon: ["day","evening","late"], tue: [...], ... }
-  availability    Json?
+  availability Json?
   // How many hours per week the applicant says they're available to work.
-  hoursPerWeek    Int?
+  hoursPerWeek Int?
 
   // Experience + narrative
   yearsExperience Int?
   priorEmployers  String?
-  certifications  String?  // TIPS, ServSafe, ABC, etc. (free text)
+  certifications  String? // TIPS, ServSafe, ABC, etc. (free text)
   spiritKnowledge String?
   whyDD           String?
   referredBy      String?
 
   // Resume: base64 data URL (PDF/DOC/DOCX/JPG/PNG, capped 5MB) + filename for the
   // download link in the admin view. We never include this in notification emails.
-  resumeData      String?  @db.Text
-  resumeFileName  String?
-  resumeMimeType  String?
+  resumeData     String? @db.Text
+  resumeFileName String?
+  resumeMimeType String?
 
   // Pipeline
-  status          String   @default("new")
-                  // "new" | "reviewing" | "interview_scheduled" | "interviewed"
-                  // | "offer_extended" | "hired" | "rejected" | "withdrawn"
-  decisionBy      String?
-  decisionAt      DateTime?
-  decisionNote    String?
-  internalNotes   String?  // GM-only
+  status        String    @default("new")
+  // "new" | "reviewing" | "interview_scheduled" | "interviewed"
+  // | "offer_extended" | "hired" | "rejected" | "withdrawn"
+  decisionBy    String?
+  decisionAt    DateTime?
+  decisionNote  String?
+  internalNotes String? // GM-only
   // Outreach tracking, separate from the pipeline status: an ordered log of
   // call attempts so the team can see who's been called / left a voicemail /
   // reached, and avoid calling the same person repeatedly.
   // Entries: { at: ISO string, by: email, kind: "called"|"voicemail"|"reached" }
-  contactLog      Json     @default("[]")
+  contactLog    Json      @default("[]")
 
   // Tracking
-  ipAddress       String?
-  visitorId       String?
-  sessionId       String?
-  source          String?
+  ipAddress                    String?
+  visitorId                    String?
+  sessionId                    String?
+  source                       String?
   // Last time we emailed this applicant the questionnaire link (backfill script
   // sets this; null means we have not yet invited them via that flow).
-  questionnaireInviteSentAt DateTime?
+  questionnaireInviteSentAt    DateTime?
   // Auto-reminder bookkeeping. 24h fires before 72h; flags prevent re-sends.
-  questionnaireReminder24hSent Boolean @default(false)
-  questionnaireReminder72hSent Boolean @default(false)
+  questionnaireReminder24hSent Boolean   @default(false)
+  questionnaireReminder72hSent Boolean   @default(false)
 
   // Bartender Dashboard onboarding invite (set once we POST to bartender DB's
   // EmployeeInvite table after hiring). Token lets us deep-link / re-fetch
   // status from the bartender side.
-  dashboardInviteId         String?
-  dashboardInviteToken      String?
-  dashboardInviteSentAt     DateTime?
-  dashboardInviteRole       String?  // bartender Role enum value: BARTENDER, SERVER_BARBACK, HOST, ...
+  dashboardInviteId     String?
+  dashboardInviteToken  String?
+  dashboardInviteSentAt DateTime?
+  dashboardInviteRole   String? // bartender Role enum value: BARTENDER, SERVER_BARBACK, HOST, ...
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  location      Location                       @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  location      Location                     @relation(fields: [locationId], references: [id], onDelete: Cascade)
   interviews    Interview[]
   questionnaire JobApplicationQuestionnaire?
   aiEvaluation  JobApplicationAiEvaluation?
@@ -563,81 +588,94 @@ model JobApplicationQuestionnaire {
   applicationId String   @unique
   // Schema for `answers`: { "q1": "answer text", "q2": "...", ... }
   answers       Json
-  version       String   // questionnaire version stamp from hiring/knowledgeBase.js
+  version       String // questionnaire version stamp from hiring/knowledgeBase.js
   submittedAt   DateTime @default(now())
 
-  application   JobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  application JobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
 }
 
 // AI evaluation produced by Claude against the Dram & Draught hiring rubric.
 // One row per application. Code recomputes weightedScore + recommendation; AI's
 // claimed values are stored for audit but not trusted for decisions.
 model JobApplicationAiEvaluation {
-  id                      String   @id @default(uuid())
-  applicationId           String   @unique
+  id            String @id @default(uuid())
+  applicationId String @unique
 
   // Result fields (code-enforced after AI returns)
-  recommendation          String   // "strong_callback" | "callback" | "maybe" | "hold"
-  weightedScore           Float
-  confidence              String   // "high" | "medium" | "low"
-  humanReviewRequired     Boolean  @default(false)
-  humanReviewReasons      Json     // string[]
+  recommendation      String // "strong_callback" | "callback" | "maybe" | "hold"
+  // Manager-facing verdict bucket, precomputed in code:
+  // "recommend_interview" | "needs_human_review" | "does_not_meet_role_requirements".
+  // Nullable for rows persisted before this column existed (views fall back to
+  // deriving a bucket from recommendation + humanReviewRequired).
+  verdictBucket       String?
+  weightedScore       Float
+  confidence          String // "high" | "medium" | "low"
+  humanReviewRequired Boolean @default(false)
+  humanReviewReasons  Json // string[]
 
   // Narrative
-  candidateSummary        String
+  candidateSummary            String
   // "Why a manager might like this candidate" — required by v6 of the rubric
   // so every evaluation surfaces job-related upside before listing watch-outs.
   // Nullable for backfill compatibility with older rows.
-  positiveSignalSummary   String?
-  overallRationale        String
-  jobRelatedConcerns      Json     // string[]
+  positiveSignalSummary       String?
+  overallRationale            String
+  jobRelatedConcerns          Json // string[]
   suggestedInterviewQuestions Json // string[]
-  possibleBetterRoleFit   String?
+  possibleBetterRoleFit       String?
 
   // Category scores: [{ category, score, weight, evidence: string[], rationale, concerns: string[] }]
-  categoryScores          Json
+  categoryScores Json
 
   // Provenance + audit
-  modelName               String   // e.g. "claude-opus-4-7"
-  promptVersion           String   // from hiring/knowledgeBase.js
-  knowledgeBaseVersion    String
-  rawAiPayload            Json?    // verbatim parsed AI response, for debugging
-  errorDetail             String?  // populated if eval failed
+  modelName            String // e.g. "claude-opus-4-7"
+  promptVersion        String // from hiring/knowledgeBase.js
+  knowledgeBaseVersion String
+  rawAiPayload         Json? // verbatim parsed AI response, for debugging
+  errorDetail          String? // populated if eval failed
 
-  createdAt               DateTime @default(now())
+  createdAt DateTime @default(now())
 
-  application             JobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  application JobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
 }
 
 model Interview {
-  id                  String   @id @default(uuid())
-  applicationId       String
-  locationId          String
+  id            String @id @default(uuid())
+  applicationId String
+  locationId    String
 
-  scheduledAt         DateTime
-  durationMinutes     Int      @default(30)
-  type                String   @default("in_person") // "in_person" | "phone" | "video"
-  locationDetail      String?  // address, phone number, or meeting URL
-  interviewerEmail    String?
-  candidateNote       String?  // shown to applicant in confirmation email
-  internalNotes       String?
+  scheduledAt      DateTime
+  durationMinutes  Int      @default(30)
+  type             String   @default("in_person") // "in_person" | "phone" | "video"
+  locationDetail   String? // address, phone number, or meeting URL
+  interviewerEmail String?
+  candidateNote    String? // shown to applicant in confirmation email
+  internalNotes    String?
 
-  status              String   @default("scheduled")
-                      // "scheduled" | "completed" | "cancelled" | "no_show"
-  cancelledAt         DateTime?
-  cancellationReason  String?
+  status             String    @default("scheduled")
+  // "scheduled" | "completed" | "cancelled" | "no_show"
+  cancelledAt        DateTime?
+  cancellationReason String?
 
   // How the candidate was reached, if the admin contacted them outside email.
-  contactMethod       String?  // "phone" | "text" | "in_person" | "email_manual" | "other"
-  contactNote         String?  // free-text detail (who, when, what was said)
+  contactMethod String? // "phone" | "text" | "in_person" | "email_manual" | "other"
+  contactNote   String? // free-text detail (who, when, what was said)
 
   // Reminder bookkeeping (separate flags so 24h fires before 1h)
-  reminderSent24h     Boolean  @default(false)
-  reminderSent1h      Boolean  @default(false)
-  confirmationSentAt  DateTime?
+  reminderSent24h    Boolean   @default(false)
+  reminderSent1h     Boolean   @default(false)
+  confirmationSentAt DateTime?
 
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  // Post-interview scorecard — the manager's structured read on the same five
+  // core-value categories the AI screener scores, plus an overall call. Shape:
+  // { scores: { speak_up: 4, ... }, overall: "strong_yes"|"yes"|"maybe"|"no", notes: "..." }
+  // This is the ground truth the screening-calibration reports compare against.
+  scorecard   Json?
+  scorecardBy String?
+  scorecardAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   application JobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   location    Location       @relation(fields: [locationId], references: [id], onDelete: Cascade)
@@ -668,13 +706,13 @@ model GuestFeedback {
   feedbackText    String
   newsletterOptIn Boolean  @default(false)
   giftCardOptIn   Boolean  @default(false)
-  visitorId        String?
-  sessionId        String?
-  source           String?
+  visitorId       String?
+  sessionId       String?
+  source          String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  location        Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  location Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
 
   @@index([locationId])
   @@index([createdAt])
@@ -683,34 +721,34 @@ model GuestFeedback {
 }
 
 model VisitorSession {
-  id            String   @id @default(uuid())
-  visitorId     String
-  locationId    String?
-  locationSlug  String
-  ipAddress     String?
-  userAgent     String?
-  deviceType    String?
-  browser       String?
-  os            String?
-  screenWidth   Int?
-  screenHeight  Int?
-  language      String?
-  referrer      String?
-  isQrScan      Boolean  @default(true)
-  source        String?  // Traffic source from ?src= or ?utm_source= (e.g. "instagram", "event", "qr")
-  medium        String?  // Traffic medium from ?utm_medium= (e.g. "social", "email", "print")
-  campaign      String?  // Campaign from ?campaign= or ?utm_campaign=
-  qrId          String?  // Specific QR placement/code from ?qr= or ?qrid=
-  entryPage     String
-  pageCount     Int      @default(1)
-  durationSecs  Int?
-  startedAt     DateTime @default(now())
-  endedAt       DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id           String    @id @default(uuid())
+  visitorId    String
+  locationId   String?
+  locationSlug String
+  ipAddress    String?
+  userAgent    String?
+  deviceType   String?
+  browser      String?
+  os           String?
+  screenWidth  Int?
+  screenHeight Int?
+  language     String?
+  referrer     String?
+  isQrScan     Boolean   @default(true)
+  source       String? // Traffic source from ?src= or ?utm_source= (e.g. "instagram", "event", "qr")
+  medium       String? // Traffic medium from ?utm_medium= (e.g. "social", "email", "print")
+  campaign     String? // Campaign from ?campaign= or ?utm_campaign=
+  qrId         String? // Specific QR placement/code from ?qr= or ?qrid=
+  entryPage    String
+  pageCount    Int       @default(1)
+  durationSecs Int?
+  startedAt    DateTime  @default(now())
+  endedAt      DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  location      Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
-  pageViews     PageView[]
+  location  Location?  @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  pageViews PageView[]
 
   @@index([visitorId])
   @@index([locationSlug])
@@ -722,16 +760,16 @@ model VisitorSession {
 }
 
 model PageView {
-  id            String   @id @default(uuid())
-  sessionId     String
-  visitorId     String
-  locationSlug  String
-  pagePath      String
-  pageType      String
-  queryString   String?
-  viewedAt      DateTime @default(now())
+  id           String   @id @default(uuid())
+  sessionId    String
+  visitorId    String
+  locationSlug String
+  pagePath     String
+  pageType     String
+  queryString  String?
+  viewedAt     DateTime @default(now())
 
-  session       VisitorSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session VisitorSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId])
   @@index([locationSlug, viewedAt])
@@ -763,24 +801,24 @@ model GuestVisitorLink {
 }
 
 model AnalyticsEvent {
-  id            String   @id @default(uuid())
-  eventType     String
-  visitorId     String?
-  sessionId     String?
-  emailHash     String?
-  emailMasked   String?
-  locationId    String?
-  locationSlug  String?
-  source        String?
-  medium        String?
-  campaign      String?
-  qrId          String?
-  pagePath      String?
-  entityType    String?
-  entityId      String?
-  entityName    String?
-  metadata      Json?
-  createdAt     DateTime @default(now())
+  id           String   @id @default(uuid())
+  eventType    String
+  visitorId    String?
+  sessionId    String?
+  emailHash    String?
+  emailMasked  String?
+  locationId   String?
+  locationSlug String?
+  source       String?
+  medium       String?
+  campaign     String?
+  qrId         String?
+  pagePath     String?
+  entityType   String?
+  entityId     String?
+  entityName   String?
+  metadata     Json?
+  createdAt    DateTime @default(now())
 
   @@index([eventType, createdAt])
   @@index([visitorId])
@@ -793,16 +831,16 @@ model AnalyticsEvent {
 }
 
 model GiftCardDrawing {
-  id            String   @id @default(uuid())
-  month         Int
-  year          Int
-  winnerId      String?
-  winnerName    String?
-  winnerEmail   String
-  locationName  String?
-  confirmed     Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id           String   @id @default(uuid())
+  month        Int
+  year         Int
+  winnerId     String?
+  winnerName   String?
+  winnerEmail  String
+  locationName String?
+  confirmed    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@unique([month, year])
 }
@@ -817,11 +855,11 @@ model AuditLog {
   userEmail     String?
   userName      String?
   // What
-  action        String   // e.g. "create", "update", "delete", "duplicate"
-  resourceType  String   // e.g. "event", "menu_item", "daily_special"
-  resourceId    String?  // entity id, when applicable
-  resourceLabel String?  // human-readable name at the time, e.g. "Lubrication Cup"
-  locationSlug  String?  // optional location scope
+  action        String // e.g. "create", "update", "delete", "duplicate"
+  resourceType  String // e.g. "event", "menu_item", "daily_special"
+  resourceId    String? // entity id, when applicable
+  resourceLabel String? // human-readable name at the time, e.g. "Lubrication Cup"
+  locationSlug  String? // optional location scope
   // Optional structured details (changed fields, before/after, etc.)
   details       Json?
   ipAddress     String?

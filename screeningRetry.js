@@ -18,6 +18,7 @@ async function persistRetry(prisma, application, evaluation) {
     where: { applicationId: application.id },
     update: {
       recommendation: evaluation.recommendation,
+      verdictBucket: evaluation.verdictBucket || null,
       weightedScore: evaluation.weightedScore,
       confidence: evaluation.confidence,
       humanReviewRequired: evaluation.humanReviewRequired,
@@ -38,6 +39,7 @@ async function persistRetry(prisma, application, evaluation) {
     create: {
       applicationId: application.id,
       recommendation: evaluation.recommendation,
+      verdictBucket: evaluation.verdictBucket || null,
       weightedScore: evaluation.weightedScore,
       confidence: evaluation.confidence,
       humanReviewRequired: evaluation.humanReviewRequired,

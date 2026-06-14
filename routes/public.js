@@ -51,6 +51,14 @@ const { generateTvBoardPage, renderBoardPayload } = require('../views/tvBoardPag
 // that would otherwise flood capacity and notification emails. Not a WAF
 // replacement — just stops trivial flooding. Generous limit so a real person
 // fixing form errors is never blocked.
+// Max length of an image data-URL STRING accepted for custom questions.
+// Images are stored as base64 data URLs, which run ~1.37x the underlying
+// image bytes, so a 750KB cap on the *string* silently rejected any photo
+// over ~560KB — they never persisted and rendered blank for viewers. The
+// browser uploader downscales to a ~1MB image, whose data URL lands well
+// under this 1.5MB string ceiling.
+const MAX_IMAGE_DATAURL_CHARS = 1.5 * 1024 * 1024;
+
 const signupAttemptLog = new Map(); // ip -> [timestamps]
 function signupRateLimited(ip, limit = 12, windowMs = 10 * 60 * 1000) {
   if (!ip) return false;
@@ -74,7 +82,10 @@ const {
   generateQuestionnaireLinkExpiredPage,
 } = require('../views/questionnairePage');
 const { QUESTIONS: HIRING_QUESTIONS, QUESTIONNAIRE_VERSION, effectiveQuestionsForApplicant } = require('../hiring/knowledgeBase');
-const { runAiEvaluation } = require('../hiring/aiEvaluation');
+const { runAiEvaluation, MODEL: AI_MODEL } = require('../hiring/aiEvaluation');
+const { sendSms } = require('../sms');
+const { normalizeCriteria, normalizeJudges, clampScore } = require('../eventJudging');
+const judgeViews = require('../views/eventJudgePage');
 const { generateNotFoundPage } = require('../views/notFoundPage');
 const {
   trackPageView,
@@ -537,6 +548,82 @@ async function handleEventSeriesUnsubscribe(req, res, prisma) {
     res.writeHead(500);
     res.end(htmlPage('Error', '<h1>Something went wrong</h1><p>Please try again later.</p>'));
   }
+  return true;
+}
+
+// Token-gated competition judging. GET renders the judge picker or the
+// scoring sheet; POST saves a judge's scorecard for every finalist. The token
+// is unguessable and per-event; possession of the link is the auth.
+async function handleJudge(req, res, prisma, token) {
+  if (!prisma) { sendHTML(res, 503, judgeViews.notFoundPage()); return true; }
+  const event = await prisma.event.findUnique({
+    where: { judgeToken: token },
+    include: { location: { select: { name: true, slug: true } } },
+  }).catch(() => null);
+  const criteria = event ? normalizeCriteria(event.judgingCriteria) : [];
+  const judges = event ? normalizeJudges(event.judges) : [];
+  if (!event || criteria.length === 0 || judges.length === 0) {
+    sendHTML(res, 404, judgeViews.notFoundPage());
+    return true;
+  }
+
+  const url = new URL(req.url, 'http://x');
+
+  if (req.method === 'POST') {
+    let body;
+    try { body = await parseBody(req, { maxBytes: 1 * 1024 * 1024 }); }
+    catch (err) { body = {}; }
+    const judge = judges.find((j) => j.id === String(body.judgeId || ''));
+    if (!judge) {
+      sendHTML(res, 400, judgeViews.judgePickerPage(event, { error: 'Please pick your name first.' }));
+      return true;
+    }
+    if (!event.judgingOpen) {
+      // Scoring closed between load and submit — show read-only with a note.
+      const finalists = await prisma.eventSignup.findMany({ where: { eventId: event.id, isFinalist: true }, orderBy: { createdAt: 'asc' } }).catch(() => []);
+      sendHTML(res, 200, judgeViews.judgeScoringPage(event, finalists, judge, {}));
+      return true;
+    }
+    const finalists = await prisma.eventSignup.findMany({
+      where: { eventId: event.id, isFinalist: true },
+    }).catch(() => []);
+
+    for (const s of finalists) {
+      const scores = {};
+      for (const c of criteria) {
+        const v = clampScore(body[`score_${s.id}_${c.id}`], c.max);
+        if (v != null) scores[c.id] = v;
+      }
+      const notes = String(body[`notes_${s.id}`] || '').trim().slice(0, 2000);
+      const existing = Array.isArray(s.scorecards) ? s.scorecards.filter((card) => card && card.judgeId !== judge.id) : [];
+      // Only record a card for this judge if they actually scored or noted
+      // something; otherwise leave/remove it so "judges scored" stays honest.
+      if (Object.keys(scores).length > 0 || notes) {
+        existing.push({ judgeId: judge.id, scores, notes: notes || undefined, at: new Date().toISOString() });
+      }
+      await prisma.eventSignup.update({
+        where: { id: s.id },
+        data: { scorecards: existing },
+      }).catch((err) => console.warn('[judge] save scorecard failed:', err.message));
+    }
+    redirect(res, `/events/judge/${token}?j=${encodeURIComponent(judge.id)}&saved=1`);
+    return true;
+  }
+
+  // GET — picker until a judge is chosen, then the scoring sheet.
+  const judgeId = String(url.searchParams.get('j') || '');
+  const judge = judges.find((j) => j.id === judgeId);
+  if (!judge) {
+    sendHTML(res, 200, judgeViews.judgePickerPage(event));
+    return true;
+  }
+  const finalists = await prisma.eventSignup.findMany({
+    where: { eventId: event.id, isFinalist: true },
+    orderBy: { createdAt: 'asc' },
+  }).catch(() => []);
+  sendHTML(res, 200, judgeViews.judgeScoringPage(event, finalists, judge, {
+    saved: url.searchParams.get('saved') === '1',
+  }));
   return true;
 }
 
@@ -1721,6 +1808,18 @@ async function handleApply(req, res, prisma, locationSlug) {
     return true;
   }
 
+  // Same in-memory IP throttle as event signups — each submission parses up
+  // to 10 MB and stores a base64 resume, so unthrottled POSTs are a cheap
+  // spam/disk-fill vector. Checked before the body is read.
+  const fwd = req.headers['x-forwarded-for'];
+  const ip = fwd ? String(fwd).split(',')[0].trim() : (req.socket?.remoteAddress || null);
+  if (signupRateLimited(ip)) {
+    sendHTML(res, 429, injectTracking(generateApplyPage(location, {
+      errorMessage: 'Too many submissions from this connection. Please wait a few minutes and try again.',
+    }), sid));
+    return true;
+  }
+
   let body;
   try {
     body = await parseBody(req, { maxBytes: 10 * 1024 * 1024 });
@@ -1762,6 +1861,11 @@ async function handleApply(req, res, prisma, locationSlug) {
   if (position === 'Other' && !positionOther) errors.push('Please tell us which "Other" role.');
   if (!age21Raw) errors.push('Please tell us if you are 21 or older.');
   if (hoursPerWeek == null) errors.push('Please tell us how many hours per week you are available to work.');
+  // Availability grid is required — an empty grid used to flow through as
+  // "unknown availability" and burn a manager-review cycle downstream.
+  if (!Object.keys(availability).length) {
+    errors.push('Please check at least one availability slot (or use the "I have open availability" button).');
+  }
   // Required for any role that pours or serves alcohol. Host is the only
   // applied position that doesn't, so they're exempt.
   const ALCOHOL_ROLES = new Set(['Bartender', 'Barback', 'Server', 'Floor Manager']);
@@ -1791,8 +1895,25 @@ async function handleApply(req, res, prisma, locationSlug) {
     return true;
   }
 
-  const fwd = req.headers['x-forwarded-for'];
-  const ip = fwd ? String(fwd).split(',')[0].trim() : (req.socket?.remoteAddress || null);
+  // Duplicate guard: one live application per email per location. Re-submits
+  // inside the 30-day questionnaire window are almost always impatience (or a
+  // bot), and a second row would split the manager's view of the candidate —
+  // send them back into their existing questionnaire flow instead. The done
+  // page renders if they already finished it.
+  const existing = await prisma.jobApplication.findFirst({
+    where: {
+      locationId: location.id,
+      email,
+      createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true },
+  }).catch(() => null);
+  if (existing) {
+    redirect(res, `/apply/q/${existing.id}`);
+    return true;
+  }
+
   const visitorId = getVisitorId(req);
   const currentSession = visitorId && prisma?.visitorSession
     ? await prisma.visitorSession.findFirst({ where: { visitorId }, orderBy: { updatedAt: 'desc' } }).catch(() => null)
@@ -1983,7 +2104,8 @@ async function runAndPersistEvaluation(prisma, application, questionnaire) {
       suggestedInterviewQuestions: [],
       possibleBetterRoleFit: null,
       categoryScores: [],
-      modelName: 'claude-opus-4-7',
+      verdictBucket: 'needs_human_review',
+      modelName: AI_MODEL,
       promptVersion: 'error',
       knowledgeBaseVersion: 'error',
       rawAiPayload: null,
@@ -1995,6 +2117,7 @@ async function runAndPersistEvaluation(prisma, application, questionnaire) {
       data: {
         applicationId: application.id,
         recommendation: evaluation.recommendation,
+        verdictBucket: evaluation.verdictBucket || null,
         weightedScore: evaluation.weightedScore,
         confidence: evaluation.confidence,
         humanReviewRequired: evaluation.humanReviewRequired,
@@ -2048,6 +2171,16 @@ async function notifyApplicationSubmitted(location, application) {
       }).catch((err) => console.warn('[apply] applicant email failed:', err.message))
     : Promise.resolve();
 
+  // Companion SMS with the questionnaire link — the single biggest funnel
+  // drop is applicants who never open the email. No-op unless TWILIO_* set.
+  const applicantSms = application.phone
+    ? sendSms({
+        to: application.phone,
+        body: `Dram & Draught (${location.name}): we got your ${positionLabel} application! One more step — a short questionnaire (~10 min): ${quizUrl}`,
+      }).then((r) => { if (!r.ok && !r.skipped) console.warn('[apply] applicant SMS failed:', r.reason); })
+      .catch((err) => console.warn('[apply] applicant SMS failed:', err.message))
+    : Promise.resolve();
+
   // Email GMs / HR for this location so it lands in someone's inbox.
   const gmEmails = await getBarSupportEmailsForLocation(location.slug).catch(() => []);
   const recipients = Array.from(new Set(gmEmails.filter(Boolean)));
@@ -2081,7 +2214,7 @@ async function notifyApplicationSubmitted(location, application) {
     }).catch((err) => console.warn('[apply] team email failed:', err.message));
   }
 
-  await Promise.all([applicantEmail, teamEmail]);
+  await Promise.all([applicantEmail, applicantSms, teamEmail]);
 }
 
 const LUBRICATION_CUP_RECIPIENTS = [
@@ -2336,6 +2469,13 @@ async function handlePublic(req, res, pathname, prisma) {
   if (pathname === '/api/public/events/unsubscribe') {
     return handleEventReminderUnsubscribe(req, res, prisma);
   }
+
+  // Token-gated competition judging link (no location slug; the token is the
+  // auth). Matched before the generic /:slug routes below.
+  const judgeMatch = pathname.match(/^\/events\/judge\/([A-Za-z0-9_-]+)$/);
+  if (judgeMatch) {
+    return handleJudge(req, res, prisma, judgeMatch[1]);
+  }
   if (pathname === '/api/public/events/series-unsubscribe') {
     return handleEventSeriesUnsubscribe(req, res, prisma);
   }
@@ -2499,7 +2639,22 @@ async function handlePublic(req, res, pathname, prisma) {
     const signupCount = await prisma.eventSignup.count({ where: CAP_WHERE }).catch(() => 0);
     const status = eventStatus(event, signupCount);
 
-    const body = await parseBody(req);
+    // Signups can carry several base64 images (each up to ~1.5MB as a data
+    // URL), so the 4MB default body cap is too small — raise it and surface a
+    // friendly message instead of failing hard if it's still exceeded.
+    let body;
+    try {
+      body = await parseBody(req, { maxBytes: 12 * 1024 * 1024 });
+    } catch (err) {
+      const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/events/${event.slug}`, getQueryString(req));
+      sendHTML(res, 413, injectTracking(
+        generateEventPage(location, event, signupCount, {
+          errorMessage: 'Your photos were too large to upload all at once. Please add fewer or smaller images and try again.',
+        }),
+        sid,
+      ));
+      return true;
+    }
     // A full event can still collect waitlist signups when the form opts in.
     const waitlistAllowed = status.key === 'full' && event.signupsEnabled !== false && !!event.capacity;
     const isWaitlisting = waitlistAllowed && body.joinWaitlist === '1';
@@ -2540,7 +2695,7 @@ async function handlePublic(req, res, pathname, prisma) {
         arr = arr
           .filter((x) => typeof x === 'string')
           .filter((x) => /^(data:image\/(jpeg|jpg|png|gif|webp);base64,|https?:\/\/)/i.test(x))
-          .filter((x) => x.length <= 750 * 1024)
+          .filter((x) => x.length <= MAX_IMAGE_DATAURL_CHARS)
           .slice(0, max);
         if (q.required && arr.length === 0) errors.push(`${q.label} is required.`);
         if (arr.length > 0) customAnswers[q.id] = arr;
@@ -2548,11 +2703,13 @@ async function handlePublic(req, res, pathname, prisma) {
       }
       let val = String(raw == null ? '' : raw).trim();
       if (q.type === 'image') {
-        // Accept either a data URL or http(s) URL; cap at ~750KB
+        // Accept either a data URL or http(s) URL. Cap on the data-URL STRING
+        // length, which is ~1.37x the underlying image bytes after base64 —
+        // see MAX_IMAGE_DATAURL_CHARS.
         if (val && !/^(data:image\/(jpeg|jpg|png|gif|webp);base64,|https?:\/\/)/i.test(val)) {
           val = '';
         }
-        if (val.length > 750 * 1024) val = '';
+        if (val.length > MAX_IMAGE_DATAURL_CHARS) val = '';
       } else {
         val = val.slice(0, 500);
       }

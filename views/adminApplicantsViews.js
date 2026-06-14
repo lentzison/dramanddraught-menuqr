@@ -1315,6 +1315,16 @@ function renderApplicantCard(a) {
   // The advance-to-next status, if any (mirrors NEXT_STEP on the detail page).
   const next = NEXT_STEP[a.status];
 
+  // Speed-to-contact: bar staff get hired elsewhere in days. Flag anyone in
+  // the early pipeline who hasn't been contacted within 48 hours.
+  const ageMs = Date.now() - new Date(a.createdAt).getTime();
+  const ageDays = Math.floor(ageMs / (24 * 60 * 60 * 1000));
+  const neverContacted = !Array.isArray(a.contactLog) || a.contactLog.length === 0;
+  const slaBreach = ['new', 'reviewing'].includes(a.status) && neverContacted && ageMs > 48 * 60 * 60 * 1000;
+  const slaBadge = slaBreach
+    ? `<span style="display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:999px; background:rgba(255,140,80,0.14); border:1px solid rgba(255,140,80,0.4); color:#ffb38a; font-size:0.72rem; font-weight:700;" title="No contact logged since they applied — call or text before they take another job">⏱ ${ageDays}d, not contacted</span>`
+    : '';
+
   return `
     <div class="al-card" data-ribbon="${escAttr(ribbon)}" data-applicant-id="${escAttr(a.id)}" data-applicant-name="${escAttr(a.name)}" data-status="${escAttr(a.status)}" tabindex="-1">
       <label class="al-card-cb" title="Select" onclick="event.stopPropagation();">
@@ -1326,6 +1336,7 @@ function renderApplicantCard(a) {
           ${statusBadge(a.status)}
           ${aiRecBadge(a)}
           ${ev && ev.humanReviewRequired ? '<span class="ai-review-badge">Needs review</span>' : ''}
+          ${slaBadge}
           <span data-contact-badge="${escAttr(a.id)}">${contactBadgeHtml(a)}</span>
         </div>
         <div class="al-card-meta">
@@ -1730,6 +1741,7 @@ function applicantsList({ applications, locations, filters, counts, user, flashM
               <button type="submit" class="btn btn-secondary">Retry ${failedScreeningCount} failed</button>
             </form>` : ''}
           <a href="/admin/applicants/hiring-config" class="btn btn-secondary">Screening config</a>
+          <a href="/admin/applicants/funnel" class="btn btn-secondary">Funnel report</a>
         </div>
         ${pendingInviteCount === 0 && failedScreeningCount === 0 ? '<span class="app-meta" style="font-size:0.78rem;">All caught up.</span>' : ''}
       </div>
@@ -2203,6 +2215,8 @@ function renderInterview(interview) {
           </div>
         </div>` : ''}
 
+        ${renderScorecard(interview)}
+
         ${interview.status === 'scheduled' ? `
         <details class="ap-tl-cancel-toggle">
           <summary>Cancel this interview</summary>
@@ -2245,6 +2259,70 @@ function renderInterview(interview) {
         </details>` : ''}
       </div>
     </div>`;
+}
+
+// Post-interview scorecard: filled-in view for saved cards, a collapsed form
+// for completed interviews that don't have one yet. Same five categories the
+// AI screener scores — this is the ground truth for calibration.
+const SCORECARD_OVERALL_LABELS = {
+  strong_yes: 'Strong yes — hire',
+  yes: 'Yes — lean hire',
+  maybe: 'Maybe — unsure',
+  no: 'No — pass',
+};
+
+function renderScorecard(interview) {
+  const kb = require('../hiring/knowledgeBase');
+  const sc = interview.scorecard;
+  if (sc && (sc.overall || (sc.scores && Object.keys(sc.scores).length) || sc.notes)) {
+    const scoreChips = kb.CATEGORIES
+      .filter((c) => sc.scores && typeof sc.scores[c] === 'number')
+      .map((c) => `<span class="pill" title="${escAttr(kb.CATEGORY_LABELS[c] || c)}">${escHTML(kb.CATEGORY_LABELS[c] || c)}: <strong>${sc.scores[c]}</strong></span>`)
+      .join(' ');
+    return `
+      <div class="ap-tl-meta" style="margin-top:10px; padding:10px 12px; background:rgba(164,244,194,0.05); border:1px solid rgba(164,244,194,0.2); border-radius:8px;">
+        <div style="margin-bottom:6px;"><strong style="color:#a4f4c2;">Interview scorecard:</strong> ${escHTML(SCORECARD_OVERALL_LABELS[sc.overall] || sc.overall || '—')}</div>
+        ${scoreChips ? `<div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px;">${scoreChips}</div>` : ''}
+        ${sc.notes ? `<div style="color:var(--muted); white-space:pre-wrap;">${escHTML(sc.notes)}</div>` : ''}
+        ${interview.scorecardBy ? `<div style="color:var(--text-soft); font-size:0.76rem; margin-top:6px;">By ${escHTML(interview.scorecardBy)}${interview.scorecardAt ? ` · ${escHTML(formatFriendly(interview.scorecardAt))}` : ''}</div>` : ''}
+      </div>`;
+  }
+  if (interview.status !== 'completed') return '';
+  const rows = kb.CATEGORIES.map((c) => `
+    <div class="ap-form-block" style="display:flex; align-items:center; gap:10px;">
+      <label style="flex:1; margin:0;">${escHTML(kb.CATEGORY_LABELS[c] || c)}</label>
+      <select name="score_${escAttr(c)}" style="width:90px;">
+        <option value="">—</option>
+        ${[5, 4.5, 4, 3.5, 3, 2.5, 2, 1.5, 1].map((v) => `<option value="${v}">${v}</option>`).join('')}
+      </select>
+    </div>`).join('');
+  return `
+    <details class="ap-tl-cancel-toggle" style="margin-top:10px;">
+      <summary>Fill in interview scorecard</summary>
+      <div class="body">
+        <form method="POST" action="/admin/applicants/interviews/${escHTML(interview.id)}/scorecard">
+          <div class="ap-form-block">
+            <label>Overall call</label>
+            <select name="overall">
+              <option value="">—</option>
+              <option value="strong_yes">Strong yes — hire</option>
+              <option value="yes">Yes — lean hire</option>
+              <option value="maybe">Maybe — unsure</option>
+              <option value="no">No — pass</option>
+            </select>
+          </div>
+          <div style="margin:8px 0 4px; color:var(--text-soft); font-size:0.78rem;">Core values (1–5, half points OK — same scale as the AI screening):</div>
+          ${rows}
+          <div class="ap-form-block">
+            <label>Notes (internal)</label>
+            <textarea name="notes" rows="3" placeholder="What stood out, concerns, follow-ups."></textarea>
+          </div>
+          <div style="margin-top:10px; text-align:right;">
+            <button type="submit" class="btn btn-primary btn-sm">Save scorecard</button>
+          </div>
+        </form>
+      </div>
+    </details>`;
 }
 
 function wordCount(s) {
@@ -2960,7 +3038,202 @@ function applicantDetail({ application, interviews, user, flashMsg, dashboardInv
   `, user);
 }
 
-function hiringConfigPage({ user }) {
+// AI verdict vs. manager outcome, grouped by prompt version. This is the
+// calibration loop: if "Recommend interview" candidates rarely get
+// interviewed, or "Needs human review" candidates routinely get hired, the
+// thresholds or rubric need adjusting — and the per-version grouping shows
+// whether a prompt change moved the needle.
+function agreementSectionHtml(evalRows) {
+  const rows = (evalRows || []).filter((r) => r && r.application);
+  if (!rows.length) {
+    return '<p class="app-meta" style="margin:0;">No screenings recorded yet — this fills in as questionnaires come through.</p>';
+  }
+  const ADVANCED = new Set(['interview_scheduled', 'interviewed', 'offer_extended', 'hired']);
+  const PENDING = new Set(['new', 'reviewing']);
+  const bucketOf = (r) => {
+    if (r.errorDetail) return 'screening_error';
+    if (r.verdictBucket && VERDICT_LABELS[r.verdictBucket]) return r.verdictBucket;
+    // Legacy rows (before verdictBucket was persisted) — same fallback the
+    // detail page uses.
+    if (r.humanReviewRequired) return 'needs_human_review';
+    if (r.recommendation === 'strong_callback' || r.recommendation === 'callback') return 'recommend_interview';
+    return 'needs_human_review';
+  };
+  const BUCKET_ORDER = ['recommend_interview', 'needs_human_review', 'does_not_meet_role_requirements', 'screening_error'];
+  const BUCKET_NAMES = { ...VERDICT_LABELS, screening_error: 'Screening error' };
+
+  const byVersion = new Map();
+  for (const r of rows) {
+    const version = r.promptVersion || '(unknown)';
+    if (!byVersion.has(version)) byVersion.set(version, new Map());
+    const buckets = byVersion.get(version);
+    const bucket = bucketOf(r);
+    if (!buckets.has(bucket)) buckets.set(bucket, { total: 0, advanced: 0, hired: 0, rejected: 0, pending: 0, other: 0 });
+    const t = buckets.get(bucket);
+    t.total++;
+    const status = r.application.status;
+    if (status === 'hired') { t.hired++; t.advanced++; }
+    else if (ADVANCED.has(status)) t.advanced++;
+    else if (status === 'rejected') t.rejected++;
+    else if (PENDING.has(status)) t.pending++;
+    else t.other++; // keep_on_file, withdrawn
+  }
+
+  // Newest version first (version strings embed dates, so sort desc works).
+  const versions = Array.from(byVersion.keys()).sort().reverse();
+  const tables = versions.map((version) => {
+    const buckets = byVersion.get(version);
+    const trs = BUCKET_ORDER.filter((b) => buckets.has(b)).map((b) => {
+      const t = buckets.get(b);
+      const decided = t.total - t.pending;
+      const advRate = decided > 0 ? Math.round((t.advanced / decided) * 100) + '%' : '—';
+      return `<tr>
+        <td style="padding:8px 12px; color:var(--text);">${escHTML(BUCKET_NAMES[b] || b)}</td>
+        <td style="padding:8px 12px; text-align:center; color:var(--text);">${t.total}</td>
+        <td style="padding:8px 12px; text-align:center; color:var(--text);">${t.advanced}</td>
+        <td style="padding:8px 12px; text-align:center; color:var(--text);">${t.hired}</td>
+        <td style="padding:8px 12px; text-align:center; color:var(--text);">${t.rejected}</td>
+        <td style="padding:8px 12px; text-align:center; color:var(--muted);">${t.pending}</td>
+        <td style="padding:8px 12px; text-align:center; color:var(--text);">${advRate}</td>
+      </tr>`;
+    }).join('');
+    return `
+      <h3 style="margin:16px 0 6px; font-size:0.95rem; color:var(--accent);">${escHTML(version)}</h3>
+      <div style="overflow-x:auto;">
+        <table style="width:100%; border-collapse:collapse; font-size:0.88rem;">
+          <thead><tr>
+            <th style="padding:8px 12px; text-align:left; color:var(--accent);">AI verdict</th>
+            <th style="padding:8px 12px; text-align:center; color:var(--accent);">Total</th>
+            <th style="padding:8px 12px; text-align:center; color:var(--accent);">Interviewed+</th>
+            <th style="padding:8px 12px; text-align:center; color:var(--accent);">Hired</th>
+            <th style="padding:8px 12px; text-align:center; color:var(--accent);">Rejected</th>
+            <th style="padding:8px 12px; text-align:center; color:var(--accent);">Still pending</th>
+            <th style="padding:8px 12px; text-align:center; color:var(--accent);">Advance rate*</th>
+          </tr></thead>
+          <tbody>${trs}</tbody>
+        </table>
+      </div>`;
+  }).join('');
+
+  return `${tables}
+    <p class="app-meta" style="margin:10px 0 0;">*Advance rate = share of decided applications (pending excluded) that reached interview or beyond. Healthy calibration: "Recommend interview" advances at a high rate; if "Needs human review" candidates are regularly hired, the recommend threshold is too strict — if "Recommend interview" candidates are mostly rejected, it's too loose.</p>`;
+}
+
+// Funnel & source report — where applicants come from and where they drop.
+// "Advanced" = reached interview_scheduled or beyond (or has an interview row).
+function funnelPage({ user, apps = [], applyViews = [], locations = [], sinceDays = 90 }) {
+  const ADVANCED = new Set(['interview_scheduled', 'interviewed', 'offer_extended', 'hired']);
+  const bySource = new Map();
+  for (const a of apps) {
+    const source = (a.source || '').trim().toLowerCase() || '(direct / unknown)';
+    if (!bySource.has(source)) bySource.set(source, { total: 0, quiz: 0, advanced: 0, hired: 0, rejected: 0 });
+    const t = bySource.get(source);
+    t.total++;
+    if (a.questionnaire) t.quiz++;
+    if (ADVANCED.has(a.status) || (a._count && a._count.interviews > 0)) t.advanced++;
+    if (a.status === 'hired') t.hired++;
+    if (a.status === 'rejected') t.rejected++;
+  }
+  const sources = Array.from(bySource.entries()).sort((x, y) => y[1].total - x[1].total);
+  const pct = (n, d) => (d > 0 ? Math.round((n / d) * 100) + '%' : '—');
+  const sourceRows = sources.map(([source, t]) => `
+    <tr>
+      <td style="padding:8px 12px; color:var(--text);">${escHTML(source)}</td>
+      <td style="padding:8px 12px; text-align:center; color:var(--text);">${t.total}</td>
+      <td style="padding:8px 12px; text-align:center; color:var(--text);">${t.quiz} <span style="color:var(--text-soft);">(${pct(t.quiz, t.total)})</span></td>
+      <td style="padding:8px 12px; text-align:center; color:var(--text);">${t.advanced} <span style="color:var(--text-soft);">(${pct(t.advanced, t.total)})</span></td>
+      <td style="padding:8px 12px; text-align:center; color:var(--text);">${t.hired}</td>
+      <td style="padding:8px 12px; text-align:center; color:var(--muted);">${t.rejected}</td>
+    </tr>`).join('');
+
+  // Apply-page traffic per location: views + unique visitors → conversion.
+  const viewsBySlug = new Map();
+  for (const v of applyViews) {
+    if (!viewsBySlug.has(v.locationSlug)) viewsBySlug.set(v.locationSlug, { views: 0, visitors: new Set() });
+    const t = viewsBySlug.get(v.locationSlug);
+    t.views++;
+    if (v.visitorId) t.visitors.add(v.visitorId);
+  }
+  const appsByLocation = new Map();
+  for (const a of apps) {
+    appsByLocation.set(a.locationId, (appsByLocation.get(a.locationId) || 0) + 1);
+  }
+  const trafficRows = locations.map((loc) => {
+    const t = viewsBySlug.get(loc.slug) || { views: 0, visitors: new Set() };
+    const submitted = appsByLocation.get(loc.id) || 0;
+    const visitors = t.visitors.size;
+    return `
+    <tr>
+      <td style="padding:8px 12px; color:var(--text);">${escHTML(loc.name)}</td>
+      <td style="padding:8px 12px; text-align:center; color:var(--text);">${t.views}</td>
+      <td style="padding:8px 12px; text-align:center; color:var(--text);">${visitors}</td>
+      <td style="padding:8px 12px; text-align:center; color:var(--text);">${submitted}</td>
+      <td style="padding:8px 12px; text-align:center; color:var(--text);">${pct(submitted, visitors)}</td>
+    </tr>`;
+  }).join('');
+
+  const totals = sources.reduce((acc, [, t]) => ({
+    total: acc.total + t.total, quiz: acc.quiz + t.quiz, advanced: acc.advanced + t.advanced, hired: acc.hired + t.hired,
+  }), { total: 0, quiz: 0, advanced: 0, hired: 0 });
+
+  return adminLayout('Hiring funnel', `
+    <div class="page-header">
+      <div>
+        <div class="admin-kicker">Hiring</div>
+        <h1>Funnel &amp; sources</h1>
+        <p class="page-subtitle">Last ${sinceDays} days. Where applicants come from, how far they get, and where the funnel leaks.</p>
+      </div>
+      <a href="/admin/applicants" class="btn btn-secondary">&larr; Back to applicants</a>
+    </div>
+
+    <div class="app-section">
+      <h2>Pipeline (${totals.total} applications)</h2>
+      <p style="margin:0; color:var(--text); line-height:1.8;">
+        <strong>${totals.total}</strong> applied →
+        <strong>${totals.quiz}</strong> completed the questionnaire (${pct(totals.quiz, totals.total)}) →
+        <strong>${totals.advanced}</strong> reached interview (${pct(totals.advanced, totals.total)}) →
+        <strong>${totals.hired}</strong> hired (${pct(totals.hired, totals.total)})
+      </p>
+      <p class="app-meta" style="margin:8px 0 0;">The questionnaire step is usually the biggest leak — if completion is low, lean on the SMS/email reminders and shorter follow-up windows.</p>
+    </div>
+
+    <div class="app-section">
+      <h2>By source</h2>
+      <div style="overflow-x:auto;">
+        <table style="width:100%; border-collapse:collapse; font-size:0.88rem;">
+          <thead><tr>
+            <th style="padding:8px 12px; text-align:left; color:var(--accent);">Source</th>
+            <th style="padding:8px 12px; text-align:center; color:var(--accent);">Applied</th>
+            <th style="padding:8px 12px; text-align:center; color:var(--accent);">Quiz done</th>
+            <th style="padding:8px 12px; text-align:center; color:var(--accent);">Interviewed+</th>
+            <th style="padding:8px 12px; text-align:center; color:var(--accent);">Hired</th>
+            <th style="padding:8px 12px; text-align:center; color:var(--accent);">Rejected</th>
+          </tr></thead>
+          <tbody>${sourceRows || '<tr><td colspan="6" style="padding:12px; color:var(--text-soft);">No applications in this window.</td></tr>'}</tbody>
+        </table>
+      </div>
+      <p class="app-meta" style="margin:8px 0 0;">Source comes from ?src= / ?utm_source= on the visitor's session when they applied. A source that produces applications but no hires is reach without fit; weight spend accordingly.</p>
+    </div>
+
+    <div class="app-section">
+      <h2>Apply-page traffic → applications</h2>
+      <div style="overflow-x:auto;">
+        <table style="width:100%; border-collapse:collapse; font-size:0.88rem;">
+          <thead><tr>
+            <th style="padding:8px 12px; text-align:left; color:var(--accent);">Location</th>
+            <th style="padding:8px 12px; text-align:center; color:var(--accent);">Apply-page views</th>
+            <th style="padding:8px 12px; text-align:center; color:var(--accent);">Unique visitors</th>
+            <th style="padding:8px 12px; text-align:center; color:var(--accent);">Applications</th>
+            <th style="padding:8px 12px; text-align:center; color:var(--accent);">Visitor → applied</th>
+          </tr></thead>
+          <tbody>${trafficRows || '<tr><td colspan="5" style="padding:12px; color:var(--text-soft);">No locations.</td></tr>'}</tbody>
+        </table>
+      </div>
+    </div>
+  `, user);
+}
+
+function hiringConfigPage({ user, evalRows = [], outdatedPendingCount = 0 }) {
   const kb = require('../hiring/knowledgeBase');
   const ai = require('../hiring/aiEvaluation');
 
@@ -3028,6 +3301,17 @@ function hiringConfigPage({ user }) {
     <div class="app-section">
       <h2>Versions</h2>
       <table style="width:100%; border-collapse:collapse;">${versionRows}</table>
+      ${outdatedPendingCount > 0 ? `
+      <form method="POST" action="/admin/applicants/rescreen-pending" style="margin-top:12px;" onsubmit="return confirm('Re-screen ${outdatedPendingCount} pending applicant${outdatedPendingCount === 1 ? '' : 's'} under the current prompt? Their stored verdicts will be replaced.');">
+        <button type="submit" class="btn btn-secondary">Re-screen ${outdatedPendingCount} pending applicant${outdatedPendingCount === 1 ? '' : 's'} on an older prompt</button>
+        <span class="app-meta" style="margin-left:8px;">Active-pipeline applicants whose verdict predates the current prompt version. Runs in the background.</span>
+      </form>` : '<p class="app-meta" style="margin:12px 0 0;">Every pending applicant is screened under the current prompt version.</p>'}
+    </div>
+
+    <div class="app-section">
+      <h2>AI verdicts vs. manager outcomes</h2>
+      <p class="app-meta" style="margin-bottom:4px;">How the screener's verdicts line up with what managers actually decided, per prompt version. Use this before and after changing the rubric or thresholds.</p>
+      ${agreementSectionHtml(evalRows)}
     </div>
 
     <div class="app-section">
@@ -3062,6 +3346,9 @@ function hiringConfigPage({ user }) {
         <li>A role-specific category minimum is missed (e.g. bartender Own-Guest-Experience below 3.25).</li>
         <li>Earliest start date is more than 60 days out (computed server-side; the screener no longer estimates dates).</li>
         <li>Availability free-text is ambiguous ("depends", "flexible" with no specifics).</li>
+        <li>The structured availability grid was left empty — availability is unknown, so the manager confirms it (an empty grid is never treated as a role-requirement gap).</li>
+        <li>An answer attempts to manipulate the screening process, or a quoted evidence excerpt can't be verified against the applicant's own text.</li>
+        <li>The screening landed in the borderline band — a second screening pass runs automatically and the manager sees whether the two passes agree.</li>
         <li>Two or more answers contradict each other.</li>
         <li>Applicant mentions a current or former employee by name.</li>
         <li>Applicant discloses protected or sensitive information.</li>
@@ -3112,6 +3399,7 @@ module.exports = {
   applicantsList,
   applicantDetail,
   hiringConfigPage,
+  funnelPage,
   CONTACT_KINDS,
   contactBadgeHtml,
   contactHistoryHtml,

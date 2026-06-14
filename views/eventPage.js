@@ -2687,6 +2687,53 @@ function generateEventPage(location, event, signupCount, options = {}) {
         // Track which image inputs are still loading so submit can wait.
         var pendingImageReads = 0;
 
+        // Downscale a chosen photo in the browser BEFORE base64-encoding it.
+        // Phone photos are routinely 2-5 MB; the server stores base64 data
+        // URLs and caps their length, so full-size photos used to be rejected
+        // (or silently dropped) and showed blank to viewers. We render the
+        // image onto a canvas (longest edge 1600px), re-encode as JPEG, and
+        // hand back a compact data URL. Falls back to the raw file for things
+        // we shouldn't re-encode (animated GIFs) or if anything goes wrong.
+        var IMG_MAX_DIM = 1600;
+        var IMG_MAX_DATAURL = Math.floor(1.4 * 1024 * 1024); // keep under the server's 1.5MB string cap
+        function ddDownscaleImage(file, cb) {
+          function readOriginal() {
+            var r = new FileReader();
+            r.onload = function () { cb(r.result); };
+            r.onerror = function () { cb(null); };
+            r.readAsDataURL(file);
+          }
+          var canCanvas = !!(window.FileReader && document.createElement('canvas').getContext && window.URL && URL.createObjectURL);
+          // String checks rather than regex: this script is emitted inside a
+          // template literal, where a backslash like \\/ would be eaten.
+          var ftype = (file.type || '').toLowerCase();
+          if (!canCanvas || ftype.indexOf('image/') !== 0 || ftype.indexOf('gif') !== -1) {
+            return readOriginal();
+          }
+          var url = URL.createObjectURL(file);
+          var img = new Image();
+          img.onload = function () {
+            try {
+              var w = img.naturalWidth, h = img.naturalHeight;
+              var scale = Math.min(1, IMG_MAX_DIM / Math.max(w, h || 1));
+              var cw = Math.max(1, Math.round(w * scale));
+              var ch = Math.max(1, Math.round(h * scale));
+              var canvas = document.createElement('canvas');
+              canvas.width = cw; canvas.height = ch;
+              canvas.getContext('2d').drawImage(img, 0, 0, cw, ch);
+              URL.revokeObjectURL(url);
+              var out = canvas.toDataURL('image/jpeg', 0.82);
+              if (out.length > IMG_MAX_DATAURL) out = canvas.toDataURL('image/jpeg', 0.6);
+              cb(out);
+            } catch (e) {
+              URL.revokeObjectURL(url);
+              readOriginal();
+            }
+          };
+          img.onerror = function () { URL.revokeObjectURL(url); readOriginal(); };
+          img.src = url;
+        }
+
         // Modal-based multi-image uploader. The form shows just a trigger
         // button + compact thumbnail summary; the drop zone + full grid live
         // in a single shared modal bound to whichever question opened it.
@@ -2798,31 +2845,24 @@ function generateEventPage(location, event, signupCount, options = {}) {
               var max = getMax(activeTarget);
               var current = getArr(activeTarget);
               var files = Array.from(modalFile.files || []);
-              var hitLimit = false;
-              for (var i = 0; i < files.length; i++) {
-                if (current.length + (i - (hitLimit ? 1 : 0)) >= max) { hitLimit = true; break; }
-                var file = files[i];
-                if (file.size > 750 * 1024) {
-                  alert('"' + file.name + '" is too large. Max ~500 KB per image.');
-                  continue;
-                }
+              // Reserve slots up front so a multi-file pick doesn't overshoot
+              // the max while the async downscales are still running.
+              var slots = Math.max(0, getMax(activeTarget) - current.length);
+              if (files.length > slots) alert('You can upload up to ' + max + ' images.');
+              files.slice(0, slots).forEach(function(file) {
                 pendingImageReads++;
-                (function(f) {
-                  var reader = new FileReader();
-                  reader.onload = function() {
-                    var a = getArr(activeTarget);
-                    if (a.length < getMax(activeTarget)) {
-                      a.push(reader.result);
-                      setArr(activeTarget, a);
-                      renderModalGrid();
-                    }
-                    pendingImageReads--;
-                  };
-                  reader.onerror = function() { pendingImageReads--; };
-                  reader.readAsDataURL(f);
-                })(file);
-              }
-              if (hitLimit) alert('You can upload up to ' + max + ' images.');
+                ddDownscaleImage(file, function(dataUrl) {
+                  pendingImageReads--;
+                  if (!dataUrl) { alert('Could not read "' + file.name + '". Try a different photo.'); return; }
+                  if (dataUrl.length > IMG_MAX_DATAURL) { alert('"' + file.name + '" is too large even after resizing. Try a different photo.'); return; }
+                  var a = getArr(activeTarget);
+                  if (a.length < getMax(activeTarget)) {
+                    a.push(dataUrl);
+                    setArr(activeTarget, a);
+                    renderModalGrid();
+                  }
+                });
+              });
               modalFile.value = '';
             });
           }
@@ -2856,24 +2896,22 @@ function generateEventPage(location, event, signupCount, options = {}) {
           var preview = document.getElementById(targetId + '-preview');
           var file = input.files && input.files[0];
           if (!file) return;
-          if (file.size > 750 * 1024) {
-            alert('Image is too large. Max ~500 KB. Try a smaller photo, or leave it blank.');
-            input.value = '';
-            return;
-          }
           pendingImageReads++;
-          var reader = new FileReader();
-          reader.onload = function() {
-            if (hidden) hidden.value = reader.result;
-            if (preview) { preview.src = reader.result; preview.style.display = ''; }
+          ddDownscaleImage(file, function(dataUrl) {
             pendingImageReads--;
-          };
-          reader.onerror = function() {
-            pendingImageReads--;
-            alert('Could not read that image. Try a different file.');
-            input.value = '';
-          };
-          reader.readAsDataURL(file);
+            if (!dataUrl) {
+              alert('Could not read that image. Try a different file.');
+              input.value = '';
+              return;
+            }
+            if (dataUrl.length > IMG_MAX_DATAURL) {
+              alert('Image is too large even after resizing. Try a smaller photo, or leave it blank.');
+              input.value = '';
+              return;
+            }
+            if (hidden) hidden.value = dataUrl;
+            if (preview) { preview.src = dataUrl; preview.style.display = ''; }
+          });
         });
 
         // Form submit handler:

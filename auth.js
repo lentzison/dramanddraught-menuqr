@@ -95,6 +95,22 @@ function createSession(res, user) {
   return sessionId;
 }
 
+// SSO sign-in: identity already proven by a verified handoff token, so no
+// password — just confirm the user still exists, is approved, and has access.
+async function authenticateSso(email) {
+  try {
+    const user = await findUserByEmail(email);
+    if (!user) return { error: 'No account' };
+    if (!user.isApproved) return { error: 'Account not approved' };
+    const roles = await getUserRoles(user.id);
+    if (!hasAccess(roles)) return { error: 'Insufficient permissions' };
+    return { user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName, roles } };
+  } catch (err) {
+    console.error('SSO auth error:', err.message);
+    return { error: 'Authentication service unavailable' };
+  }
+}
+
 function destroySession(req, res) {
   const cookies = parseCookies(req);
   const sessionId = cookies[COOKIE_NAME];
@@ -150,6 +166,7 @@ function refreshSession(req, res) {
 
 module.exports = {
   authenticate,
+  authenticateSso,
   createSession,
   destroySession,
   requireAuth,

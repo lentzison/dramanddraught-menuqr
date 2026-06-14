@@ -4,12 +4,14 @@ const {
   createSession,
   destroySession,
   requireAuth,
+  authenticateSso,
   refreshSession,
   isCompanyWide,
   getUserLocationSlugs,
   canAccessLocation,
 } = require('../auth');
 const { loginPage } = require('../views/adminLayout');
+const sso = require('../sso');
 const { locationsList, locationEditor } = require('../views/adminLocationViews');
 const { adminDashboard } = require('../views/adminDashboard');
 const { adminActivityView } = require('../views/adminActivityView');
@@ -176,6 +178,29 @@ async function handleAdmin(req, res, pathname, prisma) {
       return true;
     }
     sendHTML(res, 200, loginPage());
+    return true;
+  }
+
+  // ─── SSO accept (handoff from bartender / public) ───
+  if (pathname === '/admin/sso') {
+    const token = new URL(req.url, 'http://x').searchParams.get('token');
+    const result = token && sso.verify(token, 'menuqr');
+    if (!result) { redirect(res, '/admin/login?sso=expired'); return true; }
+    const auth = await authenticateSso(result.email);
+    if (auth.error) { redirect(res, '/admin/login?sso=' + encodeURIComponent(auth.error)); return true; }
+    createSession(res, auth.user);
+    redirect(res, '/admin');
+    return true;
+  }
+
+  // ─── SSO launch (jump to another app, no re-login) ───
+  if (pathname === '/admin/sso/launch') {
+    const user = requireAuth(req, res);
+    if (!user) { redirect(res, '/admin/login'); return true; }
+    const target = new URL(req.url, 'http://x').searchParams.get('target');
+    if (!target || !sso.APPS[target] || target === 'menuqr') { redirect(res, '/admin'); return true; }
+    const token = sso.sign({ sub: user.id, email: user.email, target });
+    redirect(res, sso.APPS[target].accept + '?token=' + encodeURIComponent(token));
     return true;
   }
 

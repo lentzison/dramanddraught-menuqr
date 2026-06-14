@@ -4,6 +4,7 @@
 // boolean flags so each reminder only fires once.
 
 const { sendEmailViaGoogle } = require('./helpers');
+const { sendSms } = require('./sms');
 
 const MENUQR_BASE_URL = process.env.MENUQR_BASE_URL || 'https://menuqr.apps.dramanddraught.com';
 const ACTIVE_STATUSES = ['new', 'reviewing'];
@@ -59,6 +60,21 @@ async function sendReminder(prisma, application, kind) {
     console.log(`[questionnaire-reminders] ${kind} sent to ${application.email}`);
   } catch (err) {
     console.warn(`[questionnaire-reminders] ${kind} send failed for ${application.email}: ${err.message}`);
+  }
+  // Companion SMS — covered by the same already-written flag, so it can never
+  // fire twice either. No-op unless TWILIO_* env vars are configured.
+  if (application.phone) {
+    const firstName = (application.name || '').split(' ')[0] || 'there';
+    const url = `${MENUQR_BASE_URL}/apply/q/${application.id}`;
+    try {
+      const r = await sendSms({
+        to: application.phone,
+        body: `Hi ${firstName} — Dram & Draught here. Your application is waiting on a short questionnaire (~10 min): ${url}`,
+      });
+      if (!r.ok && !r.skipped) console.warn(`[questionnaire-reminders] ${kind} SMS failed for ${application.id}: ${r.reason}`);
+    } catch (err) {
+      console.warn(`[questionnaire-reminders] ${kind} SMS failed for ${application.id}: ${err.message}`);
+    }
   }
 }
 

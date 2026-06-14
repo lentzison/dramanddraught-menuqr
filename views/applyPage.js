@@ -115,6 +115,49 @@ function pageShell(location, title, bodyHtml) {
     </html>`;
 }
 
+// Google Jobs structured data — one schema.org JobPosting per open role gets
+// the openings indexed in Google's job search for free. Rendered only on the
+// live apply page (the route already gates on location.isHiring).
+const JOB_BLURBS = {
+  Bartender: 'Build consistent, spec-driven cocktails in a whiskey-forward neighborhood bar. Warm, guest-first hospitality; product curiosity encouraged and trained.',
+  Barback: 'Keep service flowing: ice, glassware, citrus, restocking, cleanliness. Anticipation and urgency matter more than experience.',
+  Server: 'Warm greetings, paced service, and real product knowledge in an elevated neighborhood bar.',
+  Host: 'First impressions and pacing at the door — calm, welcoming, and organized.',
+  'Floor Manager': 'Lead shifts by example: coach the team, hold standards, own the guest experience.',
+};
+
+function jobPostingJsonLd(location) {
+  const today = new Date().toISOString().slice(0, 10);
+  const postings = POSITIONS.filter((p) => p !== 'Other').map((p) => ({
+    '@context': 'https://schema.org/',
+    '@type': 'JobPosting',
+    title: `${p} — Dram & Draught ${location.name}`,
+    description: `<p>${JOB_BLURBS[p] || 'Join the Dram & Draught team.'} Apply online in about five minutes.</p>`,
+    datePosted: today,
+    employmentType: ['FULL_TIME', 'PART_TIME'],
+    hiringOrganization: {
+      '@type': 'Organization',
+      name: 'Dram & Draught',
+      sameAs: 'https://dramanddraught.com',
+    },
+    jobLocation: {
+      '@type': 'Place',
+      address: {
+        '@type': 'PostalAddress',
+        ...(location.address ? { streetAddress: location.address } : {}),
+        addressLocality: location.city,
+        addressRegion: location.state || 'NC',
+        ...(location.zipCode ? { postalCode: location.zipCode } : {}),
+        addressCountry: 'US',
+      },
+    },
+    directApply: true,
+  }));
+  // <-escape so DB-sourced strings can never close the script tag.
+  const json = JSON.stringify(postings).replace(/</g, '\\u003c');
+  return `<script type="application/ld+json">${json}</script>`;
+}
+
 function generateApplyPage(location, opts = {}) {
   const errorMessage = opts.errorMessage || '';
   const prev = opts.prev || {};
@@ -138,6 +181,7 @@ function generateApplyPage(location, opts = {}) {
   }).join('');
 
   const body = `
+    ${jobPostingJsonLd(location)}
     <h1 class="apply-title">Join the ${escHTML(location.name)} team</h1>
     <p class="apply-sub">Tell us about yourself. We read every application.</p>
 
@@ -234,8 +278,9 @@ function generateApplyPage(location, opts = {}) {
       </div>
 
       <div class="apply-card">
-        <div class="apply-section-title">Availability</div>
-        <div class="apply-helper" style="margin-bottom: 10px;">Check every shift you can typically work.</div>
+        <div class="apply-section-title">Availability <span class="apply-req">*</span></div>
+        <div class="apply-helper" style="margin-bottom: 10px;">Check every shift you can typically work — at least one is required.</div>
+        <button type="button" id="avail-all-btn" style="margin-bottom:12px; background:transparent; border:1px solid rgba(212,175,55,0.4); color:var(--gold); border-radius:999px; padding:8px 16px; font-size:0.85rem; cursor:pointer;">✓ I have open availability — select everything</button>
         <div class="avail-grid">
           <span></span>
           <span class="avail-head">Day</span>
@@ -409,6 +454,84 @@ function generateApplyPage(location, opts = {}) {
           firstBad.scrollIntoView({ behavior: 'smooth', block: 'center' });
           setTimeout(function () { try { firstBad.focus(); } catch (e) {} }, 250);
         }
+      })();
+
+      // ---- Open-availability shortcut + at-least-one-slot guard ----
+      (function () {
+        var form = document.getElementById('apply-form');
+        if (!form) return;
+        var btn = document.getElementById('avail-all-btn');
+        var boxes = function () { return Array.from(form.querySelectorAll('input[type="checkbox"][name^="avail_"]')); };
+        if (btn) {
+          btn.addEventListener('click', function () {
+            var all = boxes();
+            var everyChecked = all.every(function (b) { return b.checked; });
+            all.forEach(function (b) { b.checked = !everyChecked; });
+            btn.textContent = everyChecked ? '✓ I have open availability — select everything' : '✕ Clear all availability';
+            form.dispatchEvent(new Event('change'));
+          });
+        }
+        form.addEventListener('submit', function (e) {
+          var any = boxes().some(function (b) { return b.checked; });
+          if (!any) {
+            e.preventDefault();
+            var grid = form.querySelector('.avail-grid');
+            if (grid) {
+              grid.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              grid.style.outline = '2px solid rgba(247,196,196,0.6)';
+              grid.style.borderRadius = '8px';
+            }
+            alert('Please check at least one availability slot (or tap "I have open availability").');
+          }
+        });
+      })();
+
+      // ---- Email typo guard ("gmial.com" → "gmail.com") ----
+      (function () {
+        var input = document.getElementById('ap-email');
+        if (!input) return;
+        var COMMON = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'aol.com', 'live.com', 'msn.com', 'proton.me', 'protonmail.com'];
+        var note = document.createElement('div');
+        note.className = 'apply-helper';
+        note.style.display = 'none';
+        input.parentElement.appendChild(note);
+        function distance(a, b) {
+          if (Math.abs(a.length - b.length) > 2) return 99;
+          var m = [];
+          for (var i = 0; i <= a.length; i++) m[i] = [i];
+          for (var j = 0; j <= b.length; j++) m[0][j] = j;
+          for (i = 1; i <= a.length; i++) for (j = 1; j <= b.length; j++) {
+            m[i][j] = Math.min(m[i-1][j] + 1, m[i][j-1] + 1, m[i-1][j-1] + (a[i-1] === b[j-1] ? 0 : 1));
+          }
+          return m[a.length][b.length];
+        }
+        function check() {
+          note.style.display = 'none';
+          var v = (input.value || '').trim().toLowerCase();
+          var at = v.lastIndexOf('@');
+          if (at < 1) return;
+          var domain = v.slice(at + 1);
+          if (!domain || COMMON.indexOf(domain) !== -1) return;
+          var best = null, bestD = 3;
+          COMMON.forEach(function (d) {
+            var dist = distance(domain, d);
+            if (dist > 0 && dist < bestD) { bestD = dist; best = d; }
+          });
+          if (!best) return;
+          var fixed = v.slice(0, at + 1) + best;
+          note.style.display = 'block';
+          note.style.color = '#f2c879';
+          note.innerHTML = 'Did you mean <a href="#" style="color:var(--gold); text-decoration:underline;" id="email-fix">' + fixed.replace(/</g, '&lt;') + '</a>? We can only reach you if this is right.';
+          var link = note.querySelector('#email-fix');
+          if (link) link.addEventListener('click', function (e) {
+            e.preventDefault();
+            input.value = fixed;
+            note.style.display = 'none';
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+          });
+        }
+        input.addEventListener('blur', check);
+        input.addEventListener('change', check);
       })();
 
       (function(){

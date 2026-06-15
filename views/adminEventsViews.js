@@ -617,6 +617,71 @@ function eventStatusBadge(event) {
 // ─── Events list (redesigned) ───
 // Same data, much more scannable: hero thumbnail, status pill, signup count
 // bar, inline action menu (Copy / QR / Public / Signups / Edit).
+// Redesigned import panel: events from the Dram website grouped by identity,
+// each showing per-venue status (✓ already on menuqr, or "+ <venue>" to add).
+// Accepts { groups, count }; tolerates the legacy array shape (renders nothing).
+function renderImportPanel(importable) {
+  const data = (importable && !Array.isArray(importable)) ? importable : null;
+  const groups = data && Array.isArray(data.groups) ? data.groups : [];
+  const count = data ? (data.count || 0) : 0;
+  if (!groups.length) return '';
+
+  const fmtDate = (d) => d
+    ? new Date(d).toLocaleString('en-US', { timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+    : 'Date TBD';
+
+  const groupHtml = groups.map((g) => {
+    const venues = (g.venues || []).map((v) => v.already
+      ? `<span class="ev-imp-chip is-done" title="Already on menuqr">✓ ${escHTML(v.locationName)}</span>`
+      : `<a class="ev-imp-chip is-add" href="/admin/events/new?importFrom=${encodeURIComponent(v.sourceId)}" title="Import to ${escHTML(v.locationName)}">+ ${escHTML(v.locationName)}</a>`
+    ).join('');
+    return `
+      <div class="ev-imp-event">
+        <div class="ev-imp-event-info">
+          <div class="ev-imp-event-name">${escHTML(g.baseName || 'Untitled event')}</div>
+          <div class="ev-imp-event-date">${escHTML(fmtDate(g.date))}</div>
+        </div>
+        <div class="ev-imp-venues">${venues}</div>
+      </div>`;
+  }).join('');
+
+  return `
+    <style>
+      .ev-import-rail { margin:0 0 16px; border-radius:12px; border:1px solid rgba(125,211,252,0.3);
+        background:linear-gradient(180deg,rgba(125,211,252,0.08),rgba(125,211,252,0.02)); }
+      .ev-import-rail > summary { cursor:pointer; list-style:none; display:flex; align-items:center; gap:12px; padding:14px 16px; }
+      .ev-import-rail > summary::-webkit-details-marker { display:none; }
+      .ev-imp-toggle { margin-left:auto; color:#9cc7ee; font-size:0.78rem; font-weight:700; white-space:nowrap; }
+      .ev-imp-toggle::after { content:'Hide ▴'; }
+      .ev-import-rail:not([open]) .ev-imp-toggle::after { content:'Show ▾'; }
+      .ev-imp-body { padding:4px 14px 14px; display:flex; flex-direction:column; gap:8px; max-height:460px; overflow:auto; }
+      .ev-imp-event { display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;
+        padding:11px 14px; border-radius:10px; background:rgba(0,0,0,0.18); border:1px solid rgba(255,255,255,0.06); }
+      .ev-imp-event-info { min-width:160px; flex:1; }
+      .ev-imp-event-name { color:var(--text); font-weight:800; font-size:0.95rem; }
+      .ev-imp-event-date { color:var(--text-muted); font-size:0.8rem; margin-top:2px; }
+      .ev-imp-venues { display:flex; flex-wrap:wrap; gap:6px; justify-content:flex-end; }
+      .ev-imp-chip { display:inline-flex; align-items:center; gap:4px; padding:5px 11px; border-radius:999px;
+        font-size:0.82rem; font-weight:700; text-decoration:none; white-space:nowrap; }
+      .ev-imp-chip.is-done { color:#86efac; background:rgba(34,197,94,0.12); border:1px solid rgba(34,197,94,0.3); }
+      .ev-imp-chip.is-add { color:#0f1012; background:linear-gradient(180deg,#bfe3ff,#7dd3fc); border:1px solid #7dd3fc; }
+      .ev-imp-chip.is-add:hover { filter:brightness(1.06); }
+    </style>
+    <details class="ev-import-rail" open>
+      <summary>
+        <span style="font-size:1.15rem;">✨</span>
+        <div style="min-width:0;">
+          <strong style="color:#cfe4ff;">Import from the Dram &amp; Draught website</strong>
+          <div style="color:var(--text-muted); font-size:0.8rem; margin-top:2px;">
+            ${count} to add across ${groups.length} event${groups.length === 1 ? '' : 's'} · <span style="color:#86efac;">✓</span> already on menuqr · tap a venue to import it
+          </div>
+        </div>
+        <span class="ev-imp-toggle"></span>
+      </summary>
+      <div class="ev-imp-body">${groupHtml}</div>
+    </details>`;
+}
+
 function eventsList(events, user, flashMsg, filter = 'upcoming', importable = []) {
   const now = new Date();
   const bucketOf = (ev) => {
@@ -943,37 +1008,7 @@ function eventsList(events, user, flashMsg, filter = 'upcoming', importable = []
       ${filterChip('all', 'All', counts.all)}
     </div>
 
-    ${Array.isArray(importable) && importable.length ? `
-    <style>
-      .ev-import-rail > summary::-webkit-details-marker { display:none; }
-      .ev-import-rail .ev-import-toggle::after { content:'Show ▾'; }
-      .ev-import-rail[open] .ev-import-toggle::after { content:'Hide ▴'; }
-    </style>
-    <details class="ev-import-rail" style="margin:0 0 16px;border-radius:12px;background:linear-gradient(180deg,rgba(125,211,252,0.08),rgba(125,211,252,0.02));border:1px solid rgba(125,211,252,0.3);">
-      <summary style="cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;padding:12px 16px;">
-        <span style="font-size:1.05rem;">✨</span>
-        <strong style="color:#cfe4ff;">From the Dram &amp; Draught website</strong>
-        <span style="color:var(--text-muted);font-size:0.84rem;">— ${importable.length} event${importable.length === 1 ? '' : 's'} not yet on menuqr</span>
-        <span class="ev-import-toggle" style="margin-left:auto;color:#9cc7ee;font-size:0.78rem;font-weight:700;white-space:nowrap;"></span>
-      </summary>
-      <div style="padding:0 16px 14px;">
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px;max-height:300px;overflow:auto;">
-          ${importable.map(it => {
-            const d = it.startAt ? new Date(it.startAt) : null;
-            const when = d ? d.toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'Date TBD';
-            const loc = it.location ? [it.location.name, it.location.city].filter(Boolean).join(', ') : '';
-            return `
-            <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:rgba(0,0,0,0.15);">
-              <div style="min-width:0;flex:1;">
-                <div style="color:var(--text);font-weight:700;font-size:0.88rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHTML(it.title || 'Untitled event')}</div>
-                <div style="color:var(--text-muted);font-size:0.78rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escHTML(when)}${loc ? ' · ' + escHTML(loc) : ''}</div>
-              </div>
-              <a class="btn btn-primary btn-sm" href="/admin/events/new?importFrom=${encodeURIComponent(it.id)}" style="white-space:nowrap;">Import →</a>
-            </div>`;
-          }).join('')}
-        </div>
-      </div>
-    </details>` : ''}
+    ${renderImportPanel(importable)}
 
     ${visible.length === 0 ? `
       <div class="ev-empty">
@@ -1974,7 +2009,7 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0, opts = {
     ${publicUrlBlock}
     ${editorTabs}
 
-    <form method="POST" action="${actionUrl}" id="ev-form" data-autosave="event-${escHTML(event?.id || 'new')}">
+    <form method="POST" action="${actionUrl}" id="ev-form"${opts.importedFromPublicId ? '' : ` data-autosave="event-${escHTML(event?.id || 'new')}"`}>
       ${opts.importedFromPublicId ? `
       <input type="hidden" name="importedFromPublicId" value="${escHTML(String(opts.importedFromPublicId))}" />
       <div class="ev-import-banner" style="margin:0 0 1rem;padding:0.75rem 1rem;border-radius:10px;background:#1e3a5f;border:1px solid #2f5a8f;color:#cfe4ff;font-size:0.9rem;">

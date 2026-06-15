@@ -550,46 +550,60 @@ async function handleAdminEvents(req, res, pathname, prisma) {
       return rows;
     });
 
-    // Offer a guided import of events the Dram website created but that aren't
-    // on menuqr yet. Best-effort + non-blocking: a feed outage just hides it.
-    let importable = [];
+    // Guided import of Dram-website events not yet on menuqr. Detection is by
+    // event IDENTITY (base name + date) + location, so it recognizes events
+    // already here whether they were imported or created by hand — not just by
+    // source id. Sources are grouped by identity (the same event across venues)
+    // and each venue is marked done ✓ or pending. Best-effort: a feed outage
+    // just hides the panel.
+    let importGroups = [];
+    let importCount = 0;
     if (safeFilter === 'upcoming') {
       const dramEvents = await fetchImportableDramEvents();
       if (dramEvents.length) {
-        // A source event can be imported to several venues (separate rows that
-        // group together), so only hide it once it's present at ALL of the
-        // user's accessible locations — not after the first import. Build a
-        // map of sourceId -> set of locationIds already holding it.
-        const importedRows = await prisma.event
-          .findMany({ where: { importedFromPublicId: { not: null } }, select: { importedFromPublicId: true, locationId: true } })
-          .catch(() => []);
-        const locsBySource = new Map();
-        for (const r of importedRows) {
-          if (!locsBySource.has(r.importedFromPublicId)) locsBySource.set(r.importedFromPublicId, new Set());
-          locsBySource.get(r.importedFromPublicId).add(r.locationId);
+        const existing = await prisma.event.findMany({
+          select: { title: true, startDate: true, locationId: true },
+        }).catch(() => []);
+        const existingSet = new Set();
+        for (const e of existing) {
+          const id = eventIdentityKey(e.title, e.startDate);
+          if (id) existingSet.add(`${id}@@${e.locationId}`);
         }
-        const accessibleLocationIds = locations.map(l => l.id);
-        importable = dramEvents.filter((it) => {
-          const have = locsBySource.get(Number(it.id));
-          if (!have) return true; // never imported
-          return !accessibleLocationIds.every((id) => have.has(id)); // hide only when at every venue
-        });
-        // Don't offer events whose date has already passed (recurring sources
-        // should only surface their upcoming occurrence).
         const now = Date.now();
-        importable = importable.filter((it) => {
-          const when = it.startAt ? new Date(it.startAt).getTime() : null;
-          return when == null || when >= now - 12 * 60 * 60 * 1000; // small grace for same-day
-        });
-        // Honor location scoping for non-company-wide users.
-        if (!userIsCompanyWide) {
-          const allowedNames = new Set(locations.map(l => String(l.name || '').toLowerCase()));
-          importable = importable.filter(it => it.location && allowedNames.has(String(it.location.name || '').toLowerCase()));
+        const byIdentity = new Map();
+        for (const src of dramEvents) {
+          const when = src.startAt ? new Date(src.startAt).getTime() : null;
+          if (when != null && when < now - 12 * 60 * 60 * 1000) continue; // skip past
+          const identity = eventIdentityKey(src.title, src.startAt);
+          if (!identity) continue;
+          const targetLoc = matchLocationId(src.location, locations) || null;
+          // Location scoping: non-company-wide users only see their venues.
+          if (!userIsCompanyWide && (!targetLoc || !locations.some(l => l.id === targetLoc))) continue;
+          const locationName = targetLoc
+            ? (locations.find(l => l.id === targetLoc)?.name || '')
+            : ((src.location && src.location.name) || 'Pick a location');
+          const already = !!(targetLoc && existingSet.has(`${identity}@@${targetLoc}`));
+          if (!byIdentity.has(identity)) {
+            byIdentity.set(identity, { identity, baseName: eventBaseName(src.title), date: src.startAt || null, venues: [], seenLoc: new Set() });
+          }
+          const g = byIdentity.get(identity);
+          // De-dupe resolved venues (duplicate source rows for one venue).
+          if (targetLoc) { if (g.seenLoc.has(targetLoc)) continue; g.seenLoc.add(targetLoc); }
+          g.venues.push({ sourceId: src.id, locationName, locationId: targetLoc, already });
         }
+        importGroups = Array.from(byIdentity.values())
+          .map(g => {
+            g.venues.sort((a, b) => Number(a.already) - Number(b.already) || a.locationName.localeCompare(b.locationName));
+            g.pendingCount = g.venues.filter(v => !v.already).length;
+            return g;
+          })
+          .filter(g => g.pendingCount > 0) // hide fully-imported events
+          .sort((a, b) => new Date(a.date || 0) - new Date(b.date || 0));
+        importCount = importGroups.reduce((n, g) => n + g.pendingCount, 0);
       }
     }
 
-    sendHTML(res, 200, eventsList(events, user, flashMsg, safeFilter, importable));
+    sendHTML(res, 200, eventsList(events, user, flashMsg, safeFilter, { groups: importGroups, count: importCount }));
     return true;
   }
 

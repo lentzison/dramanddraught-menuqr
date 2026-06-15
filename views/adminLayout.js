@@ -898,14 +898,22 @@ function adminLayout(title, content, user, options = {}) {
             });
             return data;
           }
+          // Non-clobbering restore: only fill fields that are currently EMPTY,
+          // so a saved draft never overwrites server-prefilled values (e.g. an
+          // imported event). Returns how many fields were actually restored —
+          // the banner only shows when that's > 0. Checkboxes/radios are left
+          // as the server rendered them.
           function restore(form, data) {
-            if (!data) return;
+            if (!data) return 0;
+            var restored = 0;
             Array.from(form.elements).forEach(function(el) {
               if (!el.name || !(el.name in data)) return;
-              if (el.type === 'checkbox') el.checked = !!data[el.name];
-              else if (el.type === 'radio') el.checked = (el.value === data[el.name]);
-              else el.value = data[el.name];
+              if (el.type === 'checkbox' || el.type === 'radio' || el.type === 'hidden') return;
+              if (el.value && String(el.value).trim()) return; // don't clobber existing/prefilled
+              var v = data[el.name];
+              if (v != null && String(v).trim()) { el.value = v; restored++; }
             });
+            return restored;
           }
           function showRestoredBanner(form, savedAt) {
             if (form.querySelector('.draft-banner')) return;
@@ -927,14 +935,19 @@ function adminLayout(title, content, user, options = {}) {
             var key = form.getAttribute('data-autosave');
             if (!key) return;
             var storageKey = STORAGE_PREFIX + key;
-            // Restore on load
+            // Restore on load — ignore stale drafts (>24h) and only show the
+            // banner when something was actually restored into an empty field.
             try {
               var raw = localStorage.getItem(storageKey);
               if (raw) {
                 var saved = JSON.parse(raw);
-                if (saved && saved.data && saved.savedAt) {
-                  restore(form, saved.data);
-                  showRestoredBanner(form, saved.savedAt);
+                var tooOld = saved && saved.savedAt && (Date.now() - saved.savedAt > 24 * 60 * 60 * 1000);
+                if (tooOld) {
+                  localStorage.removeItem(storageKey);
+                } else if (saved && saved.data && saved.savedAt) {
+                  var n = restore(form, saved.data);
+                  if (n > 0) showRestoredBanner(form, saved.savedAt);
+                  else localStorage.removeItem(storageKey); // nothing to restore (form prefilled) — clear it
                 }
               }
             } catch (e) { /* ignore */ }

@@ -850,23 +850,43 @@ async function handleAdminEvents(req, res, pathname, prisma) {
 
     const QRCode = require('qrcode');
     const urlObj = new URL(req.url, 'http://x');
-    const fmt = (urlObj.searchParams.get('fmt') || 'png').toLowerCase();
-    const size = Math.min(2000, Math.max(200, parseInt(urlObj.searchParams.get('size') || '800', 10)));
     const baseUrl = process.env.MENUQR_BASE_URL || 'https://menuqr.apps.dramanddraught.com';
     const target = `${baseUrl}/${event.location.slug}/events/${event.slug}`;
+
+    // Color customization for marketing: dark = QR module color, light =
+    // background, or transparent. Hex validated (3 or 6 digits) and defaulted.
+    const normHex = (v, fallback) => {
+      const s = String(v || '').trim().replace(/^#/, '');
+      return /^[0-9a-fA-F]{3}$|^[0-9a-fA-F]{6}$/.test(s) ? '#' + s : fallback;
+    };
+    const transparent = urlObj.searchParams.get('transparent') === '1';
+    const dark = normHex(urlObj.searchParams.get('dark'), '#0f1012');
+    const light = transparent ? '#00000000' : normHex(urlObj.searchParams.get('light') || urlObj.searchParams.get('bg'), '#ffffff');
+
+    // ?studio=1 → the color/customizer page (live preview + downloads).
+    if (urlObj.searchParams.get('studio') === '1') {
+      const { eventQrStudioPage } = require('../views/adminEventsViews');
+      sendHTML(res, 200, eventQrStudioPage(event, user, { dark, light, transparent }));
+      return true;
+    }
+
+    const fmt = (urlObj.searchParams.get('fmt') || 'png').toLowerCase();
+    const size = Math.min(2000, Math.max(200, parseInt(urlObj.searchParams.get('size') || '800', 10)));
+    const download = urlObj.searchParams.get('download') === '1';
     const filename = `event-${event.slug}-qr.${fmt === 'svg' ? 'svg' : 'png'}`;
+    const disposition = `${download ? 'attachment' : 'inline'}; filename="${filename}"`;
 
     try {
       if (fmt === 'svg') {
         const svg = await QRCode.toString(target, {
           type: 'svg',
           margin: 2,
-          color: { dark: '#0f1012', light: '#ffffff' },
+          color: { dark, light },
         });
         res.writeHead(200, {
           'Content-Type': 'image/svg+xml',
-          'Content-Disposition': `inline; filename="${filename}"`,
-          'Cache-Control': 'public, max-age=300',
+          'Content-Disposition': disposition,
+          'Cache-Control': 'no-store',
         });
         res.end(svg);
       } else {
@@ -874,13 +894,13 @@ async function handleAdminEvents(req, res, pathname, prisma) {
           type: 'png',
           margin: 2,
           width: size,
-          color: { dark: '#0f1012', light: '#ffffff' },
+          color: { dark, light },
         });
         res.writeHead(200, {
           'Content-Type': 'image/png',
           'Content-Length': png.length,
-          'Content-Disposition': `inline; filename="${filename}"`,
-          'Cache-Control': 'public, max-age=300',
+          'Content-Disposition': disposition,
+          'Cache-Control': 'no-store',
         });
         res.end(png);
       }

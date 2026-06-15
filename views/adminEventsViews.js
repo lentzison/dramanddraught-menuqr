@@ -648,6 +648,116 @@ function eventStatusBadge(event) {
 // ─── Events list (redesigned) ───
 // Same data, much more scannable: hero thumbnail, status pill, signup count
 // bar, inline action menu (Copy / QR / Public / Signups / Edit).
+// QR studio: pick the QR color, background color (or transparent) and size,
+// preview live, and download PNG/SVG for different ad backgrounds.
+function eventQrStudioPage(event, user, opts = {}) {
+  const dark = opts.dark || '#0f1012';
+  const light = opts.light && opts.light !== '#00000000' ? opts.light : '#ffffff';
+  const transparent = !!opts.transparent;
+  const qrBase = `/admin/events/${escHTML(event.id)}/qr`;
+  return adminLayout('QR code', `
+    <style>
+      .qr-studio { display:grid; grid-template-columns:300px 1fr; gap:20px; align-items:start; }
+      @media (max-width:720px) { .qr-studio { grid-template-columns:1fr; } }
+      .qr-controls .qr-field { margin-bottom:16px; }
+      .qr-controls label { display:block; font-size:0.8rem; font-weight:700; color:var(--text-muted); margin-bottom:6px; }
+      .qr-controls input[type=color] { width:54px; height:36px; padding:0; border:1px solid var(--line); border-radius:8px; background:#000; cursor:pointer; vertical-align:middle; }
+      .qr-controls input[type=text] { width:110px; font-family:monospace; }
+      .qr-controls input[type=range] { width:100%; }
+      .qr-swatches { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+      .qr-swatch { width:26px; height:26px; border-radius:6px; border:1px solid var(--line); cursor:pointer; }
+      .qr-preview-wrap { display:flex; flex-direction:column; align-items:center; gap:14px; }
+      /* checkerboard so a transparent background is visible in the preview */
+      .qr-preview { padding:16px; border-radius:12px; border:1px solid var(--line);
+        background-image:linear-gradient(45deg,#2a2b30 25%,transparent 25%),linear-gradient(-45deg,#2a2b30 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#2a2b30 75%),linear-gradient(-45deg,transparent 75%,#2a2b30 75%);
+        background-size:18px 18px; background-position:0 0,0 9px,9px -9px,-9px 0; }
+      .qr-preview img { display:block; width:280px; height:280px; }
+    </style>
+    <div class="page-header">
+      <div>
+        <a href="/admin/events/${escHTML(event.id)}" class="evs-back" style="color:#888;text-decoration:none;font-size:0.85rem;">← Back to event</a>
+        <h1 style="margin:4px 0 0;">QR code — ${escHTML(event.title)}</h1>
+        <p class="page-subtitle">Recolor the code for different ad backgrounds, then download. The code always points to the public event page.</p>
+      </div>
+    </div>
+    <div class="card">
+      <div class="qr-studio">
+        <div class="qr-controls">
+          <div class="qr-field">
+            <label>QR color ${helpTip('The color of the code itself. Keep it dark and high-contrast against the background so phones can still scan it.')}</label>
+            <input type="color" id="qr-dark" value="${escHTML(dark)}" />
+            <input type="text" id="qr-dark-hex" value="${escHTML(dark)}" />
+          </div>
+          <div class="qr-field">
+            <label>Background</label>
+            <input type="color" id="qr-light" value="${escHTML(light)}" ${transparent ? 'disabled' : ''} />
+            <input type="text" id="qr-light-hex" value="${escHTML(light)}" ${transparent ? 'disabled' : ''} />
+            <div class="qr-swatches">
+              <span class="qr-swatch" data-bg="#ffffff" style="background:#fff" title="White"></span>
+              <span class="qr-swatch" data-bg="#0f1012" style="background:#0f1012" title="Near-black"></span>
+              <span class="qr-swatch" data-bg="#f4f1ea" style="background:#f4f1ea" title="Cream"></span>
+              <span class="qr-swatch" data-bg="#d4af37" style="background:#d4af37" title="Gold"></span>
+            </div>
+          </div>
+          <div class="qr-field">
+            <label class="ev-check" style="display:flex;align-items:center;gap:8px;">
+              <input type="checkbox" id="qr-transparent" ${transparent ? 'checked' : ''} /> Transparent background ${helpTip('Removes the background so the code drops onto any colored or photo ad. Best with a dark QR color. PNG and SVG both keep the transparency.')}
+            </label>
+          </div>
+          <div class="qr-field">
+            <label>Size (PNG): <span id="qr-size-val">800</span> px</label>
+            <input type="range" id="qr-size" min="300" max="2000" step="100" value="800" />
+          </div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <a id="qr-dl-png" class="btn btn-primary" href="#">Download PNG</a>
+            <a id="qr-dl-svg" class="btn btn-secondary" href="#">Download SVG (vector)</a>
+          </div>
+          <p style="color:var(--text-soft); font-size:0.78rem; margin:12px 0 0;">SVG scales to any size without blurring — best for print. PNG is best for web/social.</p>
+        </div>
+        <div class="qr-preview-wrap">
+          <div class="qr-preview"><img id="qr-img" alt="QR preview" /></div>
+          <div style="color:var(--text-muted); font-size:0.8rem;">Scan to test before you print.</div>
+        </div>
+      </div>
+    </div>
+    <script>
+      (function() {
+        var base = ${JSON.stringify(`/admin/events/${event.id}/qr`)};
+        var darkC = document.getElementById('qr-dark'), darkH = document.getElementById('qr-dark-hex');
+        var lightC = document.getElementById('qr-light'), lightH = document.getElementById('qr-light-hex');
+        var trans = document.getElementById('qr-transparent');
+        var size = document.getElementById('qr-size'), sizeVal = document.getElementById('qr-size-val');
+        var img = document.getElementById('qr-img');
+        var dlPng = document.getElementById('qr-dl-png'), dlSvg = document.getElementById('qr-dl-svg');
+        function hex(v) { return String(v || '').replace(/^#/, ''); }
+        function params(extra) {
+          var p = 'dark=' + encodeURIComponent(hex(darkC.value));
+          if (trans.checked) p += '&transparent=1';
+          else p += '&light=' + encodeURIComponent(hex(lightC.value));
+          return p + (extra || '');
+        }
+        function refresh() {
+          sizeVal.textContent = size.value;
+          lightC.disabled = lightH.disabled = trans.checked;
+          img.src = base + '?' + params('&size=600') + '&_=' + Date.now();
+          dlPng.href = base + '?fmt=png&download=1&' + params('&size=' + size.value);
+          dlSvg.href = base + '?fmt=svg&download=1&' + params();
+        }
+        darkC.addEventListener('input', function(){ darkH.value = darkC.value; refresh(); });
+        darkH.addEventListener('change', function(){ if (/^#?[0-9a-fA-F]{6}$/.test(darkH.value)) { darkC.value = darkH.value.replace(/^#?/, '#'); refresh(); } });
+        lightC.addEventListener('input', function(){ lightH.value = lightC.value; refresh(); });
+        lightH.addEventListener('change', function(){ if (/^#?[0-9a-fA-F]{6}$/.test(lightH.value)) { lightC.value = lightH.value.replace(/^#?/, '#'); refresh(); } });
+        trans.addEventListener('change', refresh);
+        size.addEventListener('input', refresh);
+        Array.prototype.forEach.call(document.querySelectorAll('.qr-swatch'), function(s) {
+          s.addEventListener('click', function(){ trans.checked = false; lightC.value = s.getAttribute('data-bg'); lightH.value = s.getAttribute('data-bg'); refresh(); });
+        });
+        refresh();
+      })();
+    </script>
+  `, user);
+}
+
 // Redesigned import panel: events from the Dram website grouped by identity,
 // each showing per-venue status (✓ already on menuqr, or "+ <venue>" to add).
 // Accepts { groups, count }; tolerates the legacy array shape (renders nothing).
@@ -752,20 +862,54 @@ function renderImportPanel(importable) {
       .ev-imp-vrow-status.is-add { color:#7dd3fc; }
       .ev-imp-vrow-status.needs-pick { color:#fcd34d; }
       .ev-imp-note { color:var(--text-soft); font-size:0.78rem; line-height:1.5; margin:10px 0 0; }
+      .ev-imp-hide { margin-left:8px; background:transparent; border:1px solid rgba(255,255,255,0.18); color:var(--text-muted);
+        border-radius:999px; padding:3px 10px; font-size:0.74rem; font-weight:700; cursor:pointer; white-space:nowrap; }
+      .ev-imp-hide:hover { color:var(--text); border-color:rgba(255,255,255,0.4); }
+      .ev-imp-show { margin:0 0 16px; background:transparent; border:1px dashed rgba(125,211,252,0.4); color:#9cc7ee;
+        border-radius:10px; padding:8px 14px; font-size:0.82rem; font-weight:700; cursor:pointer; }
+      .ev-imp-show[hidden] { display:none; }
     </style>
-    <details class="ev-import-rail" open>
-      <summary>
-        <span style="font-size:1.15rem;">✨</span>
-        <div style="min-width:0;">
-          <strong style="color:#cfe4ff;">Import from the Dram &amp; Draught website</strong>
-          <div style="color:var(--text-muted); font-size:0.8rem; margin-top:2px;">
-            ${count} to add across ${groups.length} event${groups.length === 1 ? '' : 's'} · <span style="color:#86efac;">✓</span> already on menuqr · tap a venue to import it
+    <div id="ev-import-wrap">
+      <details class="ev-import-rail" open>
+        <summary>
+          <span style="font-size:1.15rem;">✨</span>
+          <div style="min-width:0;">
+            <strong style="color:#cfe4ff;">Import from the Dram &amp; Draught website</strong>
+            <div style="color:var(--text-muted); font-size:0.8rem; margin-top:2px;">
+              ${count} to add across ${groups.length} event${groups.length === 1 ? '' : 's'} · <span style="color:#86efac;">✓</span> already on menuqr · tap a venue to import it
+            </div>
           </div>
-        </div>
-        <span class="ev-imp-toggle"></span>
-      </summary>
-      <div class="ev-imp-body">${groupHtml}</div>
-    </details>`;
+          <span class="ev-imp-toggle"></span>
+          <button type="button" class="ev-imp-hide" id="ev-import-hide" title="Hide this panel — you can bring it back anytime">Hide ✕</button>
+        </summary>
+        <div class="ev-imp-body">${groupHtml}</div>
+      </details>
+    </div>
+    <button type="button" class="ev-imp-show" id="ev-import-show" hidden>✨ Show import from the Dram &amp; Draught website (${count})</button>
+    <script>
+      (function() {
+        var KEY = 'menuqr-events-import-hidden';
+        var wrap = document.getElementById('ev-import-wrap');
+        var showBtn = document.getElementById('ev-import-show');
+        var hideBtn = document.getElementById('ev-import-hide');
+        function apply(hidden) {
+          if (wrap) wrap.hidden = hidden;
+          if (showBtn) showBtn.hidden = !hidden;
+        }
+        var isHidden = false;
+        try { isHidden = localStorage.getItem(KEY) === '1'; } catch (e) {}
+        apply(isHidden);
+        if (hideBtn) hideBtn.addEventListener('click', function(e) {
+          e.preventDefault(); e.stopPropagation();
+          try { localStorage.setItem(KEY, '1'); } catch (e2) {}
+          apply(true);
+        });
+        if (showBtn) showBtn.addEventListener('click', function() {
+          try { localStorage.removeItem(KEY); } catch (e2) {}
+          apply(false);
+        });
+      })();
+    </script>`;
 }
 
 function eventsList(events, user, flashMsg, filter = 'upcoming', importable = []) {
@@ -850,8 +994,8 @@ function eventsList(events, user, flashMsg, filter = 'upcoming', importable = []
             <div class="ev-card-menu">
               ${publicPath ? `<a href="${escHTML(publicPath)}" target="_blank" rel="noopener">Open public page ↗</a>` : ''}
               ${publicPath ? `<button type="button" class="ev-copy-link" data-href="${escHTML(publicPath)}">Copy public link</button>` : ''}
-              <a href="${escHTML(qrPath)}" target="_blank" rel="noopener">QR code (PNG)</a>
-              <a href="${escHTML(qrPath)}?fmt=svg" target="_blank" rel="noopener">QR code (SVG)</a>
+              <a href="${escHTML(qrPath)}?studio=1">QR code &amp; colors</a>
+              <a href="${escHTML(qrPath)}?fmt=png&download=1" target="_blank" rel="noopener">Quick QR download (PNG)</a>
               <hr />
               <form method="POST" action="/admin/events/${escHTML(ev.id)}" style="margin:0;">
                 <input type="hidden" name="_action" value="duplicate" />
@@ -3542,4 +3686,4 @@ function eventSignupDecisionView(event, signup, decision, email, user, flashMsg)
   `, user, { pathname: `/admin/events/${event.id}/signups`, flashMsg });
 }
 
-module.exports = { eventsList, eventEditor, eventSignupsView, eventSignupDecisionView, eventResultsView };
+module.exports = { eventsList, eventEditor, eventSignupsView, eventSignupDecisionView, eventResultsView, eventQrStudioPage };

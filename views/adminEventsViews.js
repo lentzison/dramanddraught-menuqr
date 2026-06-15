@@ -1078,9 +1078,14 @@ function renderSectionsCard(event, actionUrl) {
           <h2>Page Sections</h2>
           <p class="ev-section-hint">Build out the event page with text, images, details, buttons, and videos. Sections show up in order on the public page below the event details.</p>
         </div>
+        ${event.sourceDescription ? `
+          <form method="POST" action="${actionUrl}" style="margin:0;" onsubmit="return confirm('${sectionRows ? 'Replace the current sections with a fresh AI design generated from the imported source text?' : 'Generate page sections from the imported source text with AI?'}');">
+            <input type="hidden" name="_action" value="generateDesign" />
+            <button type="submit" class="btn btn-primary btn-sm" title="Build sections from the imported source description">✨ ${sectionRows ? 'Regenerate' : 'Generate'} from source (AI)</button>
+          </form>` : ''}
       </div>
 
-      ${sectionRows || '<div class="sec-empty">No sections yet. Add your first one below.</div>'}
+      ${sectionRows || '<div class="sec-empty">No sections yet — add one below' + (event.sourceDescription ? ', or use “Generate from source (AI)” above.' : '.') + '</div>'}
 
       <div class="sec-add-bar">
         <span style="color:#888; font-size:0.85rem; margin-right:6px">+ Add section:</span>
@@ -1983,9 +1988,17 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0, opts = {
           <p style="color:#888; font-size:0.78rem; margin:6px 0 0">Events sharing a group are collapsed together in the admin list. Imported events are auto-grouped by their source event; you can override it here.</p>
         </div>
 
-        <label for="ev-description">Description</label>
+        <label for="ev-description">Description <span style="color:#888; font-weight:400; font-size:0.8rem">(short public blurb — the full details live in the Page Builder)</span></label>
         ${richTextToolbar('ev-description')}
-        <textarea id="ev-description" class="rich-textarea" name="description" rows="6" placeholder="Tell people what the event is about. Use bullets, pasted links, or [link text](https://example.com).">${escHTML(event?.description || '')}</textarea>
+        <textarea id="ev-description" class="rich-textarea" name="description" rows="6" placeholder="A sentence or two shown above the event page. Use bullets, pasted links, or [link text](https://example.com).">${escHTML(event?.description || '')}</textarea>
+        ${(!isNew && event.sourceDescription) ? `
+        <details class="ev-source-ref" style="margin-top:8px; border:1px solid var(--line); border-radius:8px; padding:0 12px;">
+          <summary style="cursor:pointer; padding:10px 0; color:var(--text-muted); font-size:0.85rem;">📄 Imported source text <span style="color:#888;">(reference only — not shown publicly)</span></summary>
+          <div style="padding:0 0 12px;">
+            <p style="color:#888; font-size:0.78rem; margin:0 0 8px;">The original text imported from the Dram &amp; Draught site / Eventbrite. The public description and Page Builder were generated from this. Kept so you can see the source.</p>
+            <textarea readonly rows="8" style="width:100%; background:#0f1012; color:#bbb; border:1px solid var(--line); border-radius:6px; padding:10px; font-size:0.84rem; line-height:1.5;">${escHTML(event.sourceDescription)}</textarea>
+          </div>
+        </details>` : ''}
 
         <label>Banner Image <span style="color:#888; font-weight:400; font-size:0.8rem">(optional)</span></label>
         ${(() => {

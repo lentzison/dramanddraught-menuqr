@@ -596,6 +596,7 @@ async function handleAdminEvents(req, res, pathname, prisma) {
         return Number.isFinite(n) ? n : null;
       })();
       const groupKey = normalizeText(body.groupKey) || (importedFromPublicId != null ? `src:${importedFromPublicId}` : null);
+      const fullDescription = normalizeText(body.description) || null;
 
       try {
         const created = await prisma.event.create({
@@ -603,7 +604,10 @@ async function handleAdminEvents(req, res, pathname, prisma) {
             locationId,
             slug: uniqueSlug,
             title,
-            description: normalizeText(body.description) || null,
+            description: fullDescription,
+            // Imported events keep the original text admin-side for reference;
+            // the public description gets distilled by the AI below.
+            sourceDescription: importedFromPublicId != null ? fullDescription : null,
             startDate,
             endDate: parseDateTimeLocal(body.endDate),
             isRecurring: recurrence.isRecurring,
@@ -655,23 +659,37 @@ async function handleAdminEvents(req, res, pathname, prisma) {
           action: 'create', resourceType: 'event', resourceId: created.id,
           resourceLabel: created.title, locationSlug: loc ? loc.slug : null,
         });
-        // Imported event: auto-design the page from the description in the
-        // background, then the admin reviews/edits in Page Builder. Fire-and-
-        // forget so the create response is instant (generation can take ~10s).
+        // Imported event: design the page from the source description NOW (await
+        // it) so the sections are already in the Page Builder when the editor
+        // loads, and distill the public description to a short summary. The full
+        // text stays in sourceDescription. Graceful if AI is unavailable.
         if (importedFromPublicId != null) {
           const dateText = startDate
             ? new Date(startDate).toLocaleString('en-US', { timeZone: 'America/New_York', weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })
             : '';
-          generateEventSections({
-            title,
-            description: normalizeText(body.description) || '',
-            dateText,
-            locationName: loc ? loc.name : '',
-            ticketUrl: normalizeTicketUrl(body.ticketUrl),
-          })
-            .then((sections) => (sections.length ? prisma.event.update({ where: { id: created.id }, data: { sections } }) : null))
-            .catch((err) => console.warn('[event-design] post-import generation failed:', err.message));
-          redirect(res, `/admin/events/${created.id}?msg=` + encodeURIComponent('success|Imported. The AI is designing the event page from the description — refresh in a few seconds, then review it in the Page Builder tab before publishing.'));
+          let designed = false;
+          try {
+            const { sections, summary } = await generateEventSections({
+              title,
+              description: fullDescription || '',
+              dateText,
+              locationName: loc ? loc.name : '',
+              ticketUrl: normalizeTicketUrl(body.ticketUrl),
+            });
+            const data = {};
+            if (sections.length) data.sections = sections;
+            if (summary) data.description = summary; // concise public blurb; full text kept in sourceDescription
+            if (Object.keys(data).length) {
+              await prisma.event.update({ where: { id: created.id }, data });
+              designed = sections.length > 0;
+            }
+          } catch (err) {
+            console.warn('[event-design] import generation failed:', err.message);
+          }
+          const note = designed
+            ? 'Imported and auto-designed — review the page in the Page Builder tab, then publish.'
+            : 'Imported. Add page content in the Page Builder tab (AI design was unavailable), then publish.';
+          redirect(res, `/admin/events/${created.id}?msg=` + encodeURIComponent('success|' + note) + '#page');
           return true;
         }
         redirect(res, `/admin/events/${created.id}?msg=created`);
@@ -1232,6 +1250,40 @@ async function handleAdminEvents(req, res, pathname, prisma) {
       }
 
       // ─── Section actions ───
+      // (Re)build the page sections from the stored source description with AI.
+      // Replaces existing sections; the source text and the rest of the event
+      // are untouched. Runs synchronously (admin clicked a button and waits).
+      if (action === 'generateDesign') {
+        const source = event.sourceDescription || event.description || '';
+        if (String(source).trim().length < 40) {
+          redirect(res, `/admin/events/${eventId}?msg=` + encodeURIComponent('error|Not enough source text to generate a design.') + '#page');
+          return true;
+        }
+        const loc = locations.find(l => l.id === event.locationId);
+        const dateText = event.startDate
+          ? new Date(event.startDate).toLocaleString('en-US', { timeZone: 'America/New_York', weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+          : '';
+        try {
+          const { sections, summary } = await generateEventSections({
+            title: event.title, description: source, dateText,
+            locationName: loc ? loc.name : '', ticketUrl: event.ticketUrl || '',
+          });
+          if (!sections.length) {
+            redirect(res, `/admin/events/${eventId}?msg=` + encodeURIComponent('error|AI returned no usable sections — try again, or build the page manually.') + '#page');
+            return true;
+          }
+          const data = { sections };
+          // Only set the public description from the summary if it's still empty.
+          if (summary && !String(event.description || '').trim()) data.description = summary;
+          await prisma.event.update({ where: { id: eventId }, data });
+          redirect(res, `/admin/events/${eventId}?msg=` + encodeURIComponent('success|Generated ' + sections.length + ' section' + (sections.length === 1 ? '' : 's') + ' from the source. Review and edit below.') + '#page');
+        } catch (err) {
+          console.warn('[event-design] manual generation failed:', err.message);
+          redirect(res, `/admin/events/${eventId}?msg=` + encodeURIComponent('error|Could not generate a design right now.') + '#page');
+        }
+        return true;
+      }
+
       if (action === 'addSection') {
         const newSection = buildSectionFromForm(body);
         if (!newSection) { redirect(res, `/admin/events/${eventId}?msg=error#sections`); return true; }

@@ -271,6 +271,11 @@ model Event {
   slug        String // URL slug, unique per location
   title       String
   description String?
+  // Admin-only reference: the original (full) imported text from the Dram site /
+  // Eventbrite. The AI distills the public `description` down to a concise blurb
+  // and moves the detail into Page Builder sections, but we keep the source here
+  // so staff can see where the info came from. NEVER rendered on the public page.
+  sourceDescription String? @db.Text
   startDate   DateTime // When the event happens
   endDate     DateTime?
   image       String? // Banner image URL

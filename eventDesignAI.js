@@ -113,7 +113,9 @@ Rules:
 - Keep copy concise. Plain text only (no HTML, no markdown headers). For bold use **double asterisks** sparingly.
 - 2 to 6 sections total. Omit anything you can't fill from the description.
 
-Return JSON: { "sections": [ ... ] } where each section matches its type's fields:
+Also write a "summary": a concise 1-2 sentence public blurb for the event (the short description shown above the page sections). It should entice without repeating everything the sections already cover. Plain text, no markdown.
+
+Return JSON: { "summary": "...", "sections": [ ... ] } where each section matches its type's fields:
 - text: { type, heading?, body }
 - details: { type, title?, items: [{ label, value }] }
 - schedule: { type, title?, items: [{ time, title, description? }] }
@@ -127,6 +129,7 @@ const RESPONSE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   properties: {
+    summary: { type: ['string', 'null'] },
     sections: {
       type: 'array',
       items: {
@@ -146,7 +149,7 @@ const RESPONSE_SCHEMA = {
       },
     },
   },
-  required: ['sections'],
+  required: ['summary', 'sections'],
 };
 
 async function callOpenAI(prompt, apiKey) {
@@ -194,19 +197,24 @@ async function callAnthropic(prompt, apiKey) {
   return {};
 }
 
-// Public entry. Returns a validated sections array (possibly empty). Never throws.
+// Public entry. Returns { sections, summary } — sections validated (possibly
+// empty), summary a short public blurb or ''. Never throws.
 async function generateEventSections({ title, description, dateText, locationName, ticketUrl }) {
+  const empty = { sections: [], summary: '' };
   const desc = String(description || '').trim();
-  if (desc.length < 40) return []; // too thin to design from
+  if (desc.length < 40) return empty; // too thin to design from
   const apiKey = PROVIDER === 'anthropic' ? process.env.ANTHROPIC_API_KEY : process.env.OPENAI_API_KEY;
-  if (!apiKey || typeof fetch !== 'function') return [];
+  if (!apiKey || typeof fetch !== 'function') return empty;
   const prompt = buildPrompt({ title, description: desc, dateText, locationName, ticketUrl });
   try {
     const parsed = PROVIDER === 'anthropic' ? await callAnthropic(prompt, apiKey) : await callOpenAI(prompt, apiKey);
-    return validateSections(parsed && parsed.sections);
+    return {
+      sections: validateSections(parsed && parsed.sections),
+      summary: parsed && typeof parsed.summary === 'string' ? parsed.summary.trim().slice(0, 600) : '',
+    };
   } catch (err) {
     console.warn('[event-design] generation failed:', err.message);
-    return [];
+    return empty;
   }
 }
 

@@ -2,7 +2,7 @@
 // independent of the model).
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { validateSections, validateSection, ALLOWED_TYPES } = require('../eventDesignAI');
+const { validateSections, validateSection, ALLOWED_TYPES, generateEventSections } = require('../eventDesignAI');
 
 test('drops image-bearing and unknown section types', () => {
   const out = validateSections([
@@ -60,4 +60,21 @@ test('divider needs no fields; MAX_SECTIONS cap enforced', () => {
 test('ALLOWED_TYPES excludes image/hero/twocol', () => {
   for (const t of ['image', 'hero', 'twocol']) assert.ok(!ALLOWED_TYPES.includes(t));
   for (const t of ['text', 'details', 'schedule', 'faq', 'cocktailmenu', 'button', 'divider']) assert.ok(ALLOWED_TYPES.includes(t));
+});
+
+test('generateEventSections returns {sections,summary} and no-ops without a key', async () => {
+  // No API key in test env → graceful empty shape, never throws.
+  const savedOpenAI = process.env.OPENAI_API_KEY;
+  const savedAnthropic = process.env.ANTHROPIC_API_KEY;
+  delete process.env.OPENAI_API_KEY;
+  delete process.env.ANTHROPIC_API_KEY;
+  try {
+    const out = await generateEventSections({ title: 'X', description: 'A reasonably long description of the event so it passes the length gate.' });
+    assert.deepEqual(out, { sections: [], summary: '' });
+    const thin = await generateEventSections({ title: 'X', description: 'too short' });
+    assert.deepEqual(thin, { sections: [], summary: '' });
+  } finally {
+    if (savedOpenAI !== undefined) process.env.OPENAI_API_KEY = savedOpenAI;
+    if (savedAnthropic !== undefined) process.env.ANTHROPIC_API_KEY = savedAnthropic;
+  }
 });

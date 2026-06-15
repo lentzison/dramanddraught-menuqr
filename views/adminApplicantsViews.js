@@ -1671,7 +1671,7 @@ function applicantsList({ applications, locations, filters, counts, user, flashM
       <div class="al-empty">
         <strong>${hasAnyFilter ? 'No applicants match.' : 'No applicants yet.'}</strong>
         ${hasAnyFilter
-          ? `<div>Try clearing some filters. <a href="/admin/applicants" style="color:var(--gold-strong); text-decoration:none;">Reset all →</a></div>`
+          ? `<div>Try clearing some filters. <a href="/admin/applicants?reset=1" style="color:var(--gold-strong); text-decoration:none;">Reset all →</a></div>`
           : '<div>Share the apply link to start hearing from people. Apply forms live at <code>/{location}/apply</code>.</div>'}
       </div>`;
   } else if (f.group === 'none') {
@@ -1797,7 +1797,7 @@ function applicantsList({ applications, locations, filters, counts, user, flashM
           <select class="al-select" name="position" onchange="this.form.submit();">${positionOptions}</select>
         </div>
         <div style="display:flex; align-items:flex-end;">
-          <a class="btn btn-secondary btn-sm" href="/admin/applicants">Reset all filters</a>
+          <a class="btn btn-secondary btn-sm" href="/admin/applicants?reset=1">Reset all filters</a>
         </div>
       </form>
     </details>
@@ -1841,6 +1841,46 @@ function applicantsList({ applications, locations, filters, counts, user, flashM
     ${rejectModalHtml()}
 
     <script>
+      // ---------- Remember filters + scroll position ----------
+      // So returning from a person (or another page) keeps the view you set.
+      (function () {
+        var FK = 'menuqr-applicants-filters';
+        var SK = 'menuqr-applicants-scroll';
+        var qs = location.search.replace(/^\\?/, '');
+        // Explicit "Reset all filters" — forget the remembered view, show default.
+        if (/(^|&)reset=1(&|$)/.test(qs)) {
+          try { localStorage.removeItem(FK); localStorage.removeItem(SK); } catch (e) {}
+          location.replace(location.pathname);
+          return;
+        }
+        if (qs) {
+          // A filtered view — remember it.
+          try { localStorage.setItem(FK, qs); } catch (e) {}
+        } else {
+          // Landed with no filters (nav or a back link) — restore the last view.
+          try {
+            var saved = localStorage.getItem(FK);
+            if (saved) { location.replace(location.pathname + '?' + saved); return; }
+          } catch (e) {}
+        }
+        // Restore scroll for this exact filter set.
+        try {
+          var raw = localStorage.getItem(SK);
+          if (raw) {
+            var s = JSON.parse(raw);
+            if (s && s.q === qs && typeof s.y === 'number') {
+              window.requestAnimationFrame(function () { window.scrollTo(0, s.y); });
+            }
+          }
+        } catch (e) {}
+        function saveScroll() { try { localStorage.setItem(SK, JSON.stringify({ q: qs, y: window.scrollY || window.pageYOffset || 0 })); } catch (e) {} }
+        // Save before leaving (clicking a card, a link, or navigating away).
+        window.addEventListener('beforeunload', saveScroll);
+        document.addEventListener('click', function (e) {
+          if (e.target.closest && e.target.closest('a[href], button[type="submit"]')) saveScroll();
+        }, true);
+      })();
+
       (function () {
         // ---------- Bulk select ----------
         var bar = document.getElementById('alBulkBar');

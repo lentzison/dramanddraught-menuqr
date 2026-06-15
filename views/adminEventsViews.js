@@ -791,13 +791,14 @@ function renderImportPanel(importable) {
       </div>`).join('');
     const needsPickAny = (g.venues || []).some(v => v.needsPick && !v.already);
     return `
-      <div class="ev-imp-event">
+      <div class="ev-imp-event" data-imp-id="${escHTML(g.identity || g.baseName || '')}">
         <div class="ev-imp-event-top">
           <div class="ev-imp-event-info">
             <div class="ev-imp-event-name">${escHTML(g.baseName || 'Untitled event')}</div>
             <div class="ev-imp-event-date">${escHTML(fmtDate(g.date))}</div>
           </div>
           <div class="ev-imp-venues">${venues}</div>
+          <button type="button" class="ev-imp-dismiss" title="Remove from this list (you can restore it)" aria-label="Remove this import">✕</button>
         </div>
         <details class="ev-imp-details">
           <summary>See details${needsPickAny ? ' · ⚲ a venue needs a location' : ''}</summary>
@@ -836,6 +837,13 @@ function renderImportPanel(importable) {
       .ev-imp-event-name { color:var(--text); font-weight:800; font-size:0.95rem; }
       .ev-imp-event-date { color:var(--text-muted); font-size:0.8rem; margin-top:2px; }
       .ev-imp-venues { display:flex; flex-wrap:wrap; gap:6px; justify-content:flex-end; }
+      .ev-imp-event[hidden] { display:none; }
+      .ev-imp-dismiss { flex:0 0 auto; width:26px; height:26px; border-radius:50%; border:1px solid rgba(255,255,255,0.15);
+        background:transparent; color:var(--text-soft); font-size:0.85rem; cursor:pointer; line-height:1; }
+      .ev-imp-dismiss:hover { color:#fca5a5; border-color:rgba(239,68,68,0.5); background:rgba(239,68,68,0.1); }
+      .ev-imp-restore { margin:8px 14px 12px; color:#9cc7ee; font-size:0.8rem; }
+      .ev-imp-restore[hidden] { display:none; }
+      .ev-imp-restore button { background:none; border:none; color:#9cc7ee; font:inherit; font-weight:700; cursor:pointer; text-decoration:underline; padding:0; }
       .ev-imp-chip { display:inline-flex; align-items:center; gap:4px; padding:5px 11px; border-radius:999px;
         font-size:0.82rem; font-weight:700; text-decoration:none; white-space:nowrap; }
       .ev-imp-chip.is-done { color:#86efac; background:rgba(34,197,94,0.12); border:1px solid rgba(34,197,94,0.3); }
@@ -883,31 +891,69 @@ function renderImportPanel(importable) {
           <button type="button" class="ev-imp-hide" id="ev-import-hide" title="Hide this panel — you can bring it back anytime">Hide ✕</button>
         </summary>
         <div class="ev-imp-body">${groupHtml}</div>
+      <div class="ev-imp-restore" id="ev-import-restore" hidden><span id="ev-import-restore-n"></span> removed · <button type="button" id="ev-import-restore-btn">show them</button></div>
       </details>
     </div>
     <button type="button" class="ev-imp-show" id="ev-import-show" hidden>✨ Show import from the Dram &amp; Draught website (${count})</button>
     <script>
       (function() {
-        var KEY = 'menuqr-events-import-hidden';
+        var HIDE_KEY = 'menuqr-events-import-hidden';
+        var DISMISS_KEY = 'menuqr-events-import-dismissed';
         var wrap = document.getElementById('ev-import-wrap');
         var showBtn = document.getElementById('ev-import-show');
         var hideBtn = document.getElementById('ev-import-hide');
-        function apply(hidden) {
+        function applyHide(hidden) {
           if (wrap) wrap.hidden = hidden;
           if (showBtn) showBtn.hidden = !hidden;
         }
         var isHidden = false;
-        try { isHidden = localStorage.getItem(KEY) === '1'; } catch (e) {}
-        apply(isHidden);
+        try { isHidden = localStorage.getItem(HIDE_KEY) === '1'; } catch (e) {}
+        applyHide(isHidden);
         if (hideBtn) hideBtn.addEventListener('click', function(e) {
           e.preventDefault(); e.stopPropagation();
-          try { localStorage.setItem(KEY, '1'); } catch (e2) {}
-          apply(true);
+          try { localStorage.setItem(HIDE_KEY, '1'); } catch (e2) {}
+          applyHide(true);
         });
         if (showBtn) showBtn.addEventListener('click', function() {
-          try { localStorage.removeItem(KEY); } catch (e2) {}
-          apply(false);
+          try { localStorage.removeItem(HIDE_KEY); } catch (e2) {}
+          applyHide(false);
         });
+
+        // Per-event dismissal: remove individual imports from the list (kept in
+        // localStorage by identity). A footer lets you restore everything.
+        var restore = document.getElementById('ev-import-restore');
+        var restoreN = document.getElementById('ev-import-restore-n');
+        var restoreBtn = document.getElementById('ev-import-restore-btn');
+        function getDismissed() {
+          try { var a = JSON.parse(localStorage.getItem(DISMISS_KEY) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; }
+        }
+        function setDismissed(a) { try { localStorage.setItem(DISMISS_KEY, JSON.stringify(a)); } catch (e) {} }
+        function applyDismissed() {
+          var set = getDismissed();
+          var events = wrap ? wrap.querySelectorAll('.ev-imp-event') : [];
+          var hiddenCount = 0;
+          Array.prototype.forEach.call(events, function(ev) {
+            var id = ev.getAttribute('data-imp-id');
+            var dismissed = set.indexOf(id) !== -1;
+            ev.hidden = dismissed;
+            if (dismissed) hiddenCount++;
+          });
+          if (restore) restore.hidden = hiddenCount === 0;
+          if (restoreN) restoreN.textContent = hiddenCount + (hiddenCount === 1 ? ' event' : ' events');
+        }
+        if (wrap) wrap.addEventListener('click', function(e) {
+          var btn = e.target.closest && e.target.closest('.ev-imp-dismiss');
+          if (!btn) return;
+          var ev = btn.closest('.ev-imp-event');
+          var id = ev && ev.getAttribute('data-imp-id');
+          if (!id) return;
+          var set = getDismissed();
+          if (set.indexOf(id) === -1) set.push(id);
+          setDismissed(set);
+          applyDismissed();
+        });
+        if (restoreBtn) restoreBtn.addEventListener('click', function() { setDismissed([]); applyDismissed(); });
+        applyDismissed();
       })();
     </script>`;
 }

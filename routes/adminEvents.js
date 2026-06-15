@@ -17,6 +17,35 @@ const { normalizeRecurrenceRule } = require('../recurrence');
 const { rolloverEvent, materializeOccurrences, syncManualOccurrences, announceToSeries } = require('../eventRollover');
 const { htmlToRichText } = require('../views/eventPage');
 const { generateEventSections } = require('../eventDesignAI');
+const { eventIdentityKey, effectiveGroupKey, eventBaseName } = require('../eventGrouping');
+
+// Build the "group with" dropdown options for the editor: one entry per
+// distinct existing group among the user's events (excluding the one being
+// edited), labelled by base name + date + the venues already in it.
+async function buildGroupOptions(prisma, locations, excludeEventId) {
+  const locationIds = locations.map(l => l.id);
+  const rows = await prisma.event.findMany({
+    where: {
+      ...(locationIds.length ? { locationId: { in: locationIds } } : {}),
+      ...(excludeEventId ? { id: { not: excludeEventId } } : {}),
+    },
+    select: { title: true, startDate: true, groupKey: true, location: { select: { name: true } } },
+    orderBy: { startDate: 'desc' },
+    take: 500,
+  }).catch(() => []);
+  const groups = new Map();
+  for (const ev of rows) {
+    const key = effectiveGroupKey(ev);
+    if (!key) continue;
+    if (!groups.has(key)) groups.set(key, { key, base: eventBaseName(ev.title), date: ev.startDate, locs: new Set() });
+    if (ev.location && ev.location.name) groups.get(key).locs.add(ev.location.name);
+  }
+  return Array.from(groups.values()).map(g => {
+    const dateStr = g.date ? new Date(g.date).toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric' }) : '';
+    const locStr = g.locs.size ? Array.from(g.locs).join(', ') : '';
+    return { key: g.key, label: [g.base, dateStr, locStr].filter(Boolean).join(' · ') };
+  });
+}
 
 // Parse the "specific dates" list (a JSON array of datetime-local strings) into
 // de-duplicated UTC Dates.
@@ -595,8 +624,25 @@ async function handleAdminEvents(req, res, pathname, prisma) {
         const n = parseInt(body.importedFromPublicId, 10);
         return Number.isFinite(n) ? n : null;
       })();
-      const groupKey = normalizeText(body.groupKey) || (importedFromPublicId != null ? `src:${importedFromPublicId}` : null);
+      // groupKey is a manual override only; auto cross-location grouping is
+      // computed from the event's identity (name + date) at render time.
+      const groupKey = normalizeText(body.groupKey) || null;
       const fullDescription = normalizeText(body.description) || null;
+
+      // Block creating the same event (same name + date, venue suffix ignored)
+      // at a location that already has it. Cross-location is fine — that only
+      // matches within the same locationId.
+      const newIdentity = eventIdentityKey(title, startDate);
+      if (newIdentity) {
+        const sameLoc = await prisma.event.findMany({
+          where: { locationId },
+          select: { title: true, startDate: true },
+        }).catch(() => []);
+        if (sameLoc.some(e => eventIdentityKey(e.title, e.startDate) === newIdentity)) {
+          redirect(res, flashError('That event already exists at this location (same name and date). Edit the existing one instead, or change the date/name.'));
+          return true;
+        }
+      }
 
       try {
         const created = await prisma.event.create({
@@ -737,17 +783,20 @@ async function handleAdminEvents(req, res, pathname, prisma) {
         capacity: src.capacity || null,
         ticketUrl: src.ticketUrl || '',
         locationId: matchedLoc,
-        // Auto-link siblings imported from the same source event across venues.
-        groupKey: `src:${src.id}`,
+        // No groupKey — siblings auto-group by identity (name + date).
       };
+      const groupOptions = await buildGroupOptions(prisma, locations, null);
       sendHTML(res, 200, eventEditor(draft, locations, user, flashMsg, 0, {
         forceNew: true,
         importedFromPublicId: src.id,
+        groupOptions,
+        autoKey: eventIdentityKey(draft.title, draft.startDate),
       }));
       return true;
     }
 
-    sendHTML(res, 200, eventEditor(null, locations, user, flashMsg));
+    const groupOptions = await buildGroupOptions(prisma, locations, null);
+    sendHTML(res, 200, eventEditor(null, locations, user, flashMsg, 0, { groupOptions }));
     return true;
   }
 
@@ -1457,7 +1506,11 @@ async function handleAdminEvents(req, res, pathname, prisma) {
     const signupCount = await prisma.eventSignup.count({
       where: { eventId, ...(event.currentOccurrenceId ? { occurrenceId: event.currentOccurrenceId } : {}) },
     }).catch(() => 0);
-    sendHTML(res, 200, eventEditor(event, locations, user, flashMsg, signupCount));
+    const groupOptions = await buildGroupOptions(prisma, locations, eventId);
+    sendHTML(res, 200, eventEditor(event, locations, user, flashMsg, signupCount, {
+      groupOptions,
+      autoKey: eventIdentityKey(event.title, event.startDate),
+    }));
     return true;
   }
 

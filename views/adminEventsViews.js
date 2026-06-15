@@ -706,39 +706,57 @@ function eventsList(events, user, flashMsg, filter = 'upcoming', importable = []
                 <input type="hidden" name="_action" value="duplicate" />
                 <button type="submit">Duplicate</button>
               </form>
+              <hr />
+              <form method="POST" action="/admin/events/${escHTML(ev.id)}" style="margin:0;" onsubmit="return confirm('Delete &quot;${escHTML((ev.title || 'this event').replace(/"/g, ''))}&quot;? This permanently removes the event and all its signups. This cannot be undone.');">
+                <input type="hidden" name="_action" value="delete" />
+                <button type="submit" style="color:#fca5a5;">Delete event</button>
+              </form>
             </div>
           </details>
         </div>
       </div>`;
   };
 
-  // Collapse cross-location siblings (same groupKey, 2+ members) into one
-  // group entry rendered at the position of its first member. Everything else
-  // renders as a normal card in original order.
+  // Collapse the same event across locations into one group. Grouping is by
+  // computed IDENTITY (base name + date) — not source id or raw title — so the
+  // same event at different venues groups even when imported separately. A
+  // manual groupKey overrides. The header uses the clean base name and shows
+  // each DISTINCT location (a same-location duplicate is flagged, not counted
+  // as another location).
+  const { eventBaseName, effectiveGroupKey } = require('../eventGrouping');
   const groups = new Map();
   for (const ev of visible) {
-    const key = ev.groupKey ? String(ev.groupKey) : null;
+    const key = effectiveGroupKey(ev);
     if (!key) continue;
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(ev);
   }
   const renderedGroups = new Set();
   const cards = visible.map((ev) => {
-    const key = ev.groupKey ? String(ev.groupKey) : null;
+    const key = effectiveGroupKey(ev);
     const members = key ? groups.get(key) : null;
     if (!members || members.length < 2) return renderCard(ev);
     if (renderedGroups.has(key)) return '';
     renderedGroups.add(key);
-    const locChips = members
-      .map(m => `<span class="ev-group-chip">${escHTML(m.location?.name || 'No location')}</span>`)
+    // Distinct locations, with a duplicate warning when a venue appears twice.
+    const locCounts = new Map();
+    for (const m of members) {
+      const name = m.location?.name || 'No location';
+      locCounts.set(name, (locCounts.get(name) || 0) + 1);
+    }
+    const locChips = Array.from(locCounts.entries())
+      .map(([name, n]) => `<span class="ev-group-chip${n > 1 ? ' is-dup' : ''}"${n > 1 ? ' title="Duplicate — this event exists more than once at this location"' : ''}>${escHTML(name)}${n > 1 ? ` ⚠×${n}` : ''}</span>`)
       .join('');
+    const distinctLocs = locCounts.size;
+    const hasDup = Array.from(locCounts.values()).some(n => n > 1);
     const totalSignups = members.reduce((s, m) => s + (m._count?.signups || 0), 0);
     return `
       <details class="ev-group" open>
         <summary class="ev-group-head">
           <span class="ev-group-caret" aria-hidden="true">▾</span>
-          <span class="ev-group-title">${escHTML(members[0].title)}</span>
-          <span class="ev-group-badge">${members.length} locations</span>
+          <span class="ev-group-title">${escHTML(eventBaseName(members[0].title))}</span>
+          <span class="ev-group-badge">${distinctLocs} location${distinctLocs === 1 ? '' : 's'}</span>
+          ${hasDup ? '<span class="ev-group-badge" style="background:rgba(239,68,68,0.14);border-color:rgba(239,68,68,0.4);color:#fca5a5;">duplicates</span>' : ''}
           <span class="ev-group-locs">${locChips}</span>
           <span class="ev-group-signups">${totalSignups} signup${totalSignups === 1 ? '' : 's'} total</span>
         </summary>
@@ -765,7 +783,8 @@ function eventsList(events, user, flashMsg, filter = 'upcoming', importable = []
 
       .ev-group {
         border: 1px solid var(--line); border-radius: var(--ev-card-radius);
-        background: rgba(255,255,255,0.02); margin-bottom: 10px; overflow: hidden;
+        background: rgba(255,255,255,0.02); margin-bottom: 10px;
+        /* not overflow:hidden — it would clip the card "More" dropdown */
       }
       .ev-group[open] { background: rgba(212,175,55,0.04); }
       .ev-group-head {
@@ -789,6 +808,7 @@ function eventsList(events, user, flashMsg, filter = 'upcoming', importable = []
         background: rgba(255,255,255,0.05); border: 1px solid var(--line);
         border-radius: 999px; padding: 2px 9px;
       }
+      .ev-group-chip.is-dup { color:#fca5a5; background:rgba(239,68,68,0.12); border-color:rgba(239,68,68,0.4); font-weight:700; }
       .ev-group-signups { margin-left: auto; color: var(--text-muted); font-size: 0.82rem; }
       .ev-group-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
       .ev-group-body .ev-card { background: var(--surface); }
@@ -1982,11 +2002,31 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0, opts = {
             <input type="text" id="ev-slug" name="slug" value="${escHTML(event?.slug || '')}" placeholder="lubrication-cup" pattern="[-a-z0-9]*" />
           </div>
         </div>
+        ${(() => {
+          const groupOptions = Array.isArray(opts.groupOptions) ? opts.groupOptions : [];
+          const currentGroup = (event?.groupKey && !String(event.groupKey).startsWith('src:')) ? String(event.groupKey) : '';
+          const autoMatch = opts.autoKey ? groupOptions.find(g => g.key === opts.autoKey) : null;
+          const optionEls = groupOptions
+            .map(g => `<option value="${escHTML(g.key)}"${currentGroup === g.key ? ' selected' : ''}>${escHTML(g.label)}</option>`)
+            .join('');
+          const customOpt = (currentGroup && !groupOptions.some(g => g.key === currentGroup))
+            ? `<option value="${escHTML(currentGroup)}" selected>${escHTML(currentGroup)} (current)</option>` : '';
+          const note = currentGroup
+            ? ''
+            : (autoMatch
+              ? `<p style="color:#a4f4c2; font-size:0.8rem; margin:6px 0 0">↳ Will be grouped automatically with: <strong>${escHTML(autoMatch.label)}</strong></p>`
+              : `<p style="color:#888; font-size:0.78rem; margin:6px 0 0">No matching event yet — it'll group automatically with any event of the same name &amp; date added later, or pick one above to force a group.</p>`);
+          return `
         <div>
-          <label for="ev-groupkey">Event group <span style="color:#888; font-weight:400; font-size:0.8rem">(optional — links the same event across locations)</span></label>
-          <input type="text" id="ev-groupkey" name="groupKey" value="${escHTML(event?.groupKey || '')}" placeholder="e.g. fifa-watch-party" />
-          <p style="color:#888; font-size:0.78rem; margin:6px 0 0">Events sharing a group are collapsed together in the admin list. Imported events are auto-grouped by their source event; you can override it here.</p>
-        </div>
+          <label for="ev-groupkey">Group with <span style="color:#888; font-weight:400; font-size:0.8rem">(links the same event across locations in the admin list)</span></label>
+          <select id="ev-groupkey" name="groupKey">
+            <option value="">Auto-detect — group with events of the same name &amp; date</option>
+            ${optionEls}
+            ${customOpt}
+          </select>
+          ${note}
+        </div>`;
+        })()}
 
         <label for="ev-description">Description <span style="color:#888; font-weight:400; font-size:0.8rem">(short public blurb — the full details live in the Page Builder)</span></label>
         ${richTextToolbar('ev-description')}

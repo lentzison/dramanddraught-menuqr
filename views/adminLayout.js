@@ -808,6 +808,24 @@ function adminLayout(title, content, user, options = {}) {
           .hours-row .day-label { grid-column: 1 / -1; }
           .hours-row .to-label { display: none; }
         }
+
+        /* Contextual help: a "?" marker (helpTip) that toggles a popover with
+           an explanation. Click-based so it works on touch as well as hover. */
+        .help-tip {
+          display: inline-flex; align-items: center; justify-content: center;
+          width: 17px; height: 17px; margin-left: 6px; padding: 0; vertical-align: middle;
+          border-radius: 50%; border: 1px solid rgba(125,211,252,0.5);
+          background: rgba(125,211,252,0.12); color: #9cc7ee;
+          font-size: 0.7rem; font-weight: 800; line-height: 1; cursor: help; flex: 0 0 auto;
+        }
+        .help-tip:hover, .help-tip[aria-expanded="true"] { background: rgba(125,211,252,0.25); color: #d7ecff; }
+        .help-pop {
+          position: fixed; z-index: 1000; max-width: 320px;
+          background: #14161b; color: #e7e2d6; border: 1px solid rgba(125,211,252,0.4);
+          border-radius: 10px; padding: 11px 13px; font-size: 0.84rem; font-weight: 400; line-height: 1.5;
+          box-shadow: 0 12px 34px rgba(0,0,0,0.5); white-space: normal; text-transform: none; letter-spacing: normal;
+        }
+        .help-pop[hidden] { display: none; }
       </style>
     </head>
     <body>
@@ -879,6 +897,50 @@ function adminLayout(title, content, user, options = {}) {
           document.addEventListener('visibilitychange', function() {
             if (!document.hidden) ping();
           });
+        })();
+
+        // Contextual help popovers — a single popover element reused by every
+        // .help-tip button (data-help holds the text). Click toggles; click
+        // outside or Escape closes. Positioned under the marker, kept on-screen.
+        (function() {
+          if (window.__adminHelpStarted) return;
+          window.__adminHelpStarted = true;
+          var pop = null;
+          var openBtn = null;
+          function close() {
+            if (pop) pop.setAttribute('hidden', '');
+            if (openBtn) openBtn.setAttribute('aria-expanded', 'false');
+            openBtn = null;
+          }
+          function open(btn) {
+            if (!pop) {
+              pop = document.createElement('div');
+              pop.className = 'help-pop';
+              pop.setAttribute('hidden', '');
+              document.body.appendChild(pop);
+            }
+            pop.textContent = btn.getAttribute('data-help') || '';
+            pop.removeAttribute('hidden');
+            btn.setAttribute('aria-expanded', 'true');
+            openBtn = btn;
+            var r = btn.getBoundingClientRect();
+            var pw = Math.min(320, window.innerWidth - 20);
+            pop.style.maxWidth = pw + 'px';
+            var left = Math.max(10, Math.min(r.left, window.innerWidth - pw - 10));
+            pop.style.left = left + 'px';
+            pop.style.top = (r.bottom + 8) + 'px';
+          }
+          document.addEventListener('click', function(e) {
+            var btn = e.target.closest && e.target.closest('.help-tip');
+            if (btn) {
+              e.preventDefault();
+              if (openBtn === btn) { close(); } else { open(btn); }
+              return;
+            }
+            if (pop && !pop.contains(e.target)) close();
+          });
+          document.addEventListener('keydown', function(e) { if (e.key === 'Escape') close(); });
+          window.addEventListener('resize', close);
         })();
 
         // localStorage draft auto-save for forms with data-autosave="<key>".

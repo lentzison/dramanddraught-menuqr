@@ -4,6 +4,37 @@ const { EVENT_THEMES, THEME_BY_KEY, themeLabel } = require('./eventThemes');
 const { normalizeRecurrenceRule, generateOccurrences, describeRecurrence } = require('../recurrence');
 const { easternParts } = require('../dateEastern');
 
+// Contextual help marker. Renders a "?" that pops the explanation (handled by
+// the shared script in adminLayout). Use beside any feature staff might not
+// recognize. Text is attribute-escaped.
+function helpTip(text) {
+  return `<button type="button" class="help-tip" aria-label="Help" aria-expanded="false" data-help="${escHTML(String(text || ''))}">?</button>`;
+}
+
+// Collapsible "How to use Events" guide shown at the top of the events list.
+function eventsHowTo() {
+  const step = (title, body) => `<li style="margin-bottom:10px;"><strong style="color:var(--text);">${escHTML(title)}</strong><br><span style="color:var(--text-muted); font-size:0.88rem;">${body}</span></li>`;
+  return `
+    <details class="ev-howto" style="margin:0 0 16px; border:1px solid var(--line); border-radius:12px; background:rgba(255,255,255,0.02);">
+      <summary style="cursor:pointer; list-style:none; display:flex; align-items:center; gap:10px; padding:13px 16px; font-weight:800; color:var(--text);">
+        <span style="font-size:1.1rem;">📖</span> How to use Events
+        <span style="margin-left:auto; color:var(--text-muted); font-size:0.8rem; font-weight:600;">read me</span>
+      </summary>
+      <div style="padding:0 18px 16px;">
+        <p style="color:var(--text-muted); font-size:0.88rem; margin:0 0 12px;">Everything you can do here. Tap any <span class="help-tip" style="cursor:default;">?</span> around the page for a quick explanation of that feature.</p>
+        <ol style="margin:0; padding-left:20px;">
+          ${step('Create or import an event', 'Click <strong>+ New event</strong> to build one from scratch, or use the <strong>Import from the Dram &amp; Draught website</strong> panel to pull in events from the public site — tap a venue chip to add it there. Already-added venues show a green ✓.')}
+          ${step('The AI designs the page for you', 'When you import, the AI writes a short public blurb and builds the event page (Page Builder sections) from the source text automatically. You review and tweak it before publishing. The full original text is kept under the description as reference.')}
+          ${step('Fill in the tabs', '<strong>Basics</strong> (name, date, location, description), <strong>Appearance</strong> (banner, theme), <strong>Signups</strong> (who can sign up + custom questions), and <strong>Page Builder</strong> (the rich event page — appears after you save).')}
+          ${step('Same event at several locations', 'Make a separate event per venue (each has its own page and signups). They group together automatically in this list by name + date. Use <strong>Group with</strong> in the editor if you need to link them manually. The system won’t let you create the same event twice at the same location.')}
+          ${step('Manage signups', 'Open <strong>Signups</strong> on any event to see who’s coming, check people in, export a CSV, and (for vendor/participant events) approve or reject applications.')}
+          ${step('Run a competition', 'For cocktail comps etc., set the event’s signup type to <strong>Participant</strong>, collect entries, mark your <strong>finalists</strong>, then add judging criteria + judges and share the <strong>judge link</strong>. Scores roll up on the <strong>Results</strong> page.')}
+          ${step('Publish & share', 'Turn the event <strong>Active</strong> to make it public (you’ll get a pre-publish checklist first). Then grab the public link or QR code from the <strong>More ▾</strong> menu. Delete an event from that same menu.')}
+        </ol>
+      </div>
+    </details>`;
+}
+
 const WEEKDAY_OPTS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const WEEK_OF_MONTH_OPTS = [[1, 'first'], [2, 'second'], [3, 'third'], [4, 'fourth'], [-1, 'last']];
 
@@ -630,18 +661,52 @@ function renderImportPanel(importable) {
     ? new Date(d).toLocaleString('en-US', { timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
     : 'Date TBD';
 
+  const chip = (v) => {
+    if (v.already) return `<span class="ev-imp-chip is-done" title="Already on menuqr">✓ ${escHTML(v.locationName)}</span>`;
+    if (v.needsPick) return `<a class="ev-imp-chip needs-pick" href="/admin/events/new?importFrom=${encodeURIComponent(v.sourceId)}" title="We couldn't match this to one of your locations — you'll choose it on the next screen">+ ${escHTML(v.locationName)} ⚲</a>`;
+    return `<a class="ev-imp-chip is-add" href="/admin/events/new?importFrom=${encodeURIComponent(v.sourceId)}" title="Import to ${escHTML(v.locationName)}">+ ${escHTML(v.locationName)}</a>`;
+  };
+
   const groupHtml = groups.map((g) => {
-    const venues = (g.venues || []).map((v) => v.already
-      ? `<span class="ev-imp-chip is-done" title="Already on menuqr">✓ ${escHTML(v.locationName)}</span>`
-      : `<a class="ev-imp-chip is-add" href="/admin/events/new?importFrom=${encodeURIComponent(v.sourceId)}" title="Import to ${escHTML(v.locationName)}">+ ${escHTML(v.locationName)}</a>`
-    ).join('');
+    const venues = (g.venues || []).map(chip).join('');
+    const d = g.detail || {};
+    const venueRows = (g.venues || []).map((v) => `
+      <div class="ev-imp-vrow">
+        <span class="ev-imp-vrow-loc">${escHTML(v.locationName)}${v.needsPick && v.sourceVenue ? '' : ''}</span>
+        ${v.already
+          ? '<span class="ev-imp-vrow-status is-done">✓ already on menuqr</span>'
+          : (v.needsPick
+            ? `<a class="ev-imp-vrow-status needs-pick" href="/admin/events/new?importFrom=${encodeURIComponent(v.sourceId)}">choose location &amp; import →</a>`
+            : `<a class="ev-imp-vrow-status is-add" href="/admin/events/new?importFrom=${encodeURIComponent(v.sourceId)}">import →</a>`)}
+      </div>`).join('');
+    const needsPickAny = (g.venues || []).some(v => v.needsPick && !v.already);
     return `
       <div class="ev-imp-event">
-        <div class="ev-imp-event-info">
-          <div class="ev-imp-event-name">${escHTML(g.baseName || 'Untitled event')}</div>
-          <div class="ev-imp-event-date">${escHTML(fmtDate(g.date))}</div>
+        <div class="ev-imp-event-top">
+          <div class="ev-imp-event-info">
+            <div class="ev-imp-event-name">${escHTML(g.baseName || 'Untitled event')}</div>
+            <div class="ev-imp-event-date">${escHTML(fmtDate(g.date))}</div>
+          </div>
+          <div class="ev-imp-venues">${venues}</div>
         </div>
-        <div class="ev-imp-venues">${venues}</div>
+        <details class="ev-imp-details">
+          <summary>See details${needsPickAny ? ' · ⚲ a venue needs a location' : ''}</summary>
+          <div class="ev-imp-detail-body">
+            ${d.image ? `<img class="ev-imp-thumb" src="${escHTML(d.image)}" alt="" loading="lazy" />` : ''}
+            <div class="ev-imp-detail-text">
+              ${d.descPreview ? `<p class="ev-imp-desc">${escHTML(d.descPreview)}${d.descPreview.length >= 320 ? '…' : ''}</p>` : '<p class="ev-imp-desc" style="color:var(--text-soft);">No description provided by the source.</p>'}
+              <div class="ev-imp-detail-meta">
+                ${d.capacity ? `<span>Capacity: ${escHTML(String(d.capacity))}</span>` : ''}
+                ${d.ticketUrl ? `<span>· <a href="${escHTML(d.ticketUrl)}" target="_blank" rel="noopener">Ticket link ↗</a></span>` : ''}
+              </div>
+              <div class="ev-imp-venue-list">
+                <div class="ev-imp-venue-list-head">Locations on the source site:</div>
+                ${venueRows}
+              </div>
+              <p class="ev-imp-note">Importing opens the event for review — you confirm the location, see the full text, and the AI builds the page before anything is published. Nothing goes live until you publish it.</p>
+            </div>
+          </div>
+        </details>
       </div>`;
   }).join('');
 
@@ -655,8 +720,8 @@ function renderImportPanel(importable) {
       .ev-imp-toggle::after { content:'Hide ▴'; }
       .ev-import-rail:not([open]) .ev-imp-toggle::after { content:'Show ▾'; }
       .ev-imp-body { padding:4px 14px 14px; display:flex; flex-direction:column; gap:8px; max-height:460px; overflow:auto; }
-      .ev-imp-event { display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap;
-        padding:11px 14px; border-radius:10px; background:rgba(0,0,0,0.18); border:1px solid rgba(255,255,255,0.06); }
+      .ev-imp-event { padding:11px 14px; border-radius:10px; background:rgba(0,0,0,0.18); border:1px solid rgba(255,255,255,0.06); }
+      .ev-imp-event-top { display:flex; align-items:center; justify-content:space-between; gap:14px; flex-wrap:wrap; }
       .ev-imp-event-info { min-width:160px; flex:1; }
       .ev-imp-event-name { color:var(--text); font-weight:800; font-size:0.95rem; }
       .ev-imp-event-date { color:var(--text-muted); font-size:0.8rem; margin-top:2px; }
@@ -666,6 +731,27 @@ function renderImportPanel(importable) {
       .ev-imp-chip.is-done { color:#86efac; background:rgba(34,197,94,0.12); border:1px solid rgba(34,197,94,0.3); }
       .ev-imp-chip.is-add { color:#0f1012; background:linear-gradient(180deg,#bfe3ff,#7dd3fc); border:1px solid #7dd3fc; }
       .ev-imp-chip.is-add:hover { filter:brightness(1.06); }
+      .ev-imp-chip.needs-pick { color:#fcd34d; background:rgba(245,158,11,0.12); border:1px solid rgba(245,158,11,0.4); }
+      .ev-imp-chip.needs-pick:hover { background:rgba(245,158,11,0.2); }
+      .ev-imp-details { margin-top:8px; }
+      .ev-imp-details > summary { cursor:pointer; list-style:none; color:#9cc7ee; font-size:0.78rem; font-weight:700; padding:4px 0; }
+      .ev-imp-details > summary::-webkit-details-marker { display:none; }
+      .ev-imp-details > summary::before { content:'▸ '; }
+      .ev-imp-details[open] > summary::before { content:'▾ '; }
+      .ev-imp-detail-body { display:flex; gap:14px; padding:8px 0 2px; flex-wrap:wrap; }
+      .ev-imp-thumb { width:120px; height:80px; object-fit:cover; border-radius:8px; flex:0 0 auto; }
+      .ev-imp-detail-text { flex:1; min-width:200px; }
+      .ev-imp-desc { color:var(--text); font-size:0.86rem; line-height:1.5; margin:0 0 8px; }
+      .ev-imp-detail-meta { color:var(--text-muted); font-size:0.8rem; margin-bottom:10px; }
+      .ev-imp-detail-meta a { color:#9cc7ee; }
+      .ev-imp-venue-list-head { color:var(--text-soft); font-size:0.72rem; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:5px; }
+      .ev-imp-vrow { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:5px 0; border-top:1px solid rgba(255,255,255,0.06); }
+      .ev-imp-vrow-loc { color:var(--text); font-size:0.86rem; font-weight:600; }
+      .ev-imp-vrow-status { font-size:0.8rem; font-weight:700; text-decoration:none; white-space:nowrap; }
+      .ev-imp-vrow-status.is-done { color:#86efac; }
+      .ev-imp-vrow-status.is-add { color:#7dd3fc; }
+      .ev-imp-vrow-status.needs-pick { color:#fcd34d; }
+      .ev-imp-note { color:var(--text-soft); font-size:0.78rem; line-height:1.5; margin:10px 0 0; }
     </style>
     <details class="ev-import-rail" open>
       <summary>
@@ -1008,6 +1094,8 @@ function eventsList(events, user, flashMsg, filter = 'upcoming', importable = []
       ${filterChip('all', 'All', counts.all)}
     </div>
 
+    ${eventsHowTo()}
+
     ${renderImportPanel(importable)}
 
     ${visible.length === 0 ? `
@@ -1130,7 +1218,7 @@ function renderSectionsCard(event, actionUrl) {
     <div class="ev-section ev-sections-card" id="sections">
       <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:4px">
         <div>
-          <h2>Page Sections</h2>
+          <h2>Page Sections ${helpTip('These build the public event page. Add text, images, schedules, FAQs, a cocktail menu, buttons, and more — they appear in order below the event details. Imported events get these filled in by the AI automatically; edit or reorder them here.')}</h2>
           <p class="ev-section-hint">Build out the event page with text, images, details, buttons, and videos. Sections show up in order on the public page below the event details.</p>
         </div>
         ${event.sourceDescription ? `
@@ -2053,7 +2141,7 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0, opts = {
               : `<p style="color:#888; font-size:0.78rem; margin:6px 0 0">No matching event yet — it'll group automatically with any event of the same name &amp; date added later, or pick one above to force a group.</p>`);
           return `
         <div>
-          <label for="ev-groupkey">Group with <span style="color:#888; font-weight:400; font-size:0.8rem">(links the same event across locations in the admin list)</span></label>
+          <label for="ev-groupkey">Group with ${helpTip('When the same event runs at multiple venues, grouping shows them together as one entry in the events list. Leave on Auto-detect to group by name + date, or pick an existing group to force it.')}<span style="color:#888; font-weight:400; font-size:0.8rem">(links the same event across locations in the admin list)</span></label>
           <select id="ev-groupkey" name="groupKey">
             <option value="">Auto-detect — group with events of the same name &amp; date</option>
             ${optionEls}
@@ -2180,7 +2268,7 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0, opts = {
               <span>${escHTML(SIGNUP_TYPE_DESCRIPTIONS[key])}</span>
             </label>`;
           return `
-            <label style="margin-top: 10px; margin-bottom: 6px;">Signup mode</label>
+            <label style="margin-top: 10px; margin-bottom: 6px;">Signup mode ${helpTip('Guest RSVP confirms instantly. Vendor and Participant route signups to an approval queue first — use Participant for competition entrants (it unlocks finalists + judging).')}</label>
             <div class="ev-signup-type-grid">
               ${opt('guest')}
               ${opt('vendor')}
@@ -2238,7 +2326,7 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0, opts = {
           <label class="ev-check"><input type="checkbox" name="collectNotes" ${event?.collectNotes ? 'checked' : ''} /> Notes or special requests</label>
         </div>
 
-        <label style="margin-top:18px; margin-bottom:6px">Custom Questions</label>
+        <label style="margin-top:18px; margin-bottom:6px">Custom Questions ${helpTip('Extra questions on the signup form — short text, long text, number, yes/no, a single image, or an image gallery. Use these to collect things like dietary needs, a cocktail spec, or photos from entrants.')}</label>
         <p style="color:#888; font-size:0.8rem; margin-bottom:10px">
           Add your own questions, like &ldquo;T-shirt size&rdquo; or &ldquo;Experience level&rdquo;.
         </p>
@@ -2246,7 +2334,7 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0, opts = {
         <button type="button" id="cq-add" class="btn btn-secondary btn-sm">+ Add Custom Question</button>
 
         <div class="ev-judging-section" style="margin-top:22px; padding-top:18px; border-top:1px solid var(--line);">
-          <label style="margin-bottom:6px">Competition judging <span style="color:#888; font-weight:400; font-size:0.8rem">(optional)</span></label>
+          <label style="margin-bottom:6px">Competition judging ${helpTip('For cocktail comps, cook-offs, etc. Add scoring criteria and judges, then a private judge link appears on the Signups page. Mark finalists there, judges score them on their phones, and results rank automatically.')}<span style="color:#888; font-weight:400; font-size:0.8rem">(optional)</span></label>
           <p style="color:#888; font-size:0.8rem; margin-bottom:10px">
             For cocktail comps, cook-offs, performances, etc. Collect applications, mark finalists on the signups page, then judges score the finalists on the criteria below via a private link. Leave empty for normal events.
           </p>
@@ -3054,7 +3142,7 @@ function eventSignupsView(event, signups, user, flashMsg, occCtx = {}) {
     <div class="card" style="margin:16px 0; padding:16px;">
       <div style="display:flex; flex-wrap:wrap; gap:16px; align-items:center; justify-content:space-between;">
         <div>
-          <div class="admin-kicker">Competition judging</div>
+          <div class="admin-kicker">Competition judging ${helpTip('Mark which entrants are finalists using the “Select as finalist” button on each signup below. Then open scoring and share the judge link — judges score finalists on your criteria, and “View results” ranks them.')}</div>
           <div style="font-size:1.2rem; font-weight:800; color:var(--text); margin-top:4px;">
             ${finalistCount}${finalistTarget ? ` / ${finalistTarget}` : ''} finalist${finalistCount === 1 ? '' : 's'} selected
             ${finalistTarget && finalistCount >= finalistTarget ? ' ✓' : ''}

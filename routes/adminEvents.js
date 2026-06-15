@@ -579,17 +579,32 @@ async function handleAdminEvents(req, res, pathname, prisma) {
           const targetLoc = matchLocationId(src.location, locations) || null;
           // Location scoping: non-company-wide users only see their venues.
           if (!userIsCompanyWide && (!targetLoc || !locations.some(l => l.id === targetLoc))) continue;
+          const sourceVenue = (src.location && (src.location.name || src.location.city)) || '';
           const locationName = targetLoc
             ? (locations.find(l => l.id === targetLoc)?.name || '')
-            : ((src.location && src.location.name) || 'Pick a location');
+            : (sourceVenue || 'Set location');
           const already = !!(targetLoc && existingSet.has(`${identity}@@${targetLoc}`));
           if (!byIdentity.has(identity)) {
-            byIdentity.set(identity, { identity, baseName: eventBaseName(src.title), date: src.startAt || null, venues: [], seenLoc: new Set() });
+            byIdentity.set(identity, {
+              identity,
+              baseName: eventBaseName(src.title),
+              date: src.startAt || null,
+              venues: [],
+              seenLoc: new Set(),
+              // Representative source detail for the "see details" view (the
+              // description/image are the same across a multi-venue event).
+              detail: {
+                descPreview: String(src.description || src.summary || '').replace(/<[^>]+>/g, ' ').replace(/&[a-z#0-9]+;/gi, ' ').replace(/\s+/g, ' ').trim().slice(0, 320),
+                image: (src.heroImage && /^https?:\/\//i.test(src.heroImage)) ? src.heroImage : null,
+                ticketUrl: src.ticketUrl || null,
+                capacity: src.capacity || null,
+              },
+            });
           }
           const g = byIdentity.get(identity);
           // De-dupe resolved venues (duplicate source rows for one venue).
           if (targetLoc) { if (g.seenLoc.has(targetLoc)) continue; g.seenLoc.add(targetLoc); }
-          g.venues.push({ sourceId: src.id, locationName, locationId: targetLoc, already });
+          g.venues.push({ sourceId: src.id, locationName, locationId: targetLoc, already, needsPick: !targetLoc, sourceVenue });
         }
         importGroups = Array.from(byIdentity.values())
           .map(g => {

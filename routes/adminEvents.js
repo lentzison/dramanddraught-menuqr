@@ -558,7 +558,13 @@ async function handleAdminEvents(req, res, pathname, prisma) {
     // just hides the panel.
     let importGroups = [];
     let importCount = 0;
+    let archivedImports = [];
     if (safeFilter === 'upcoming') {
+      // Team-wide archived (removed) imports — kept so they can be restored.
+      archivedImports = await prisma.archivedEventImport
+        .findMany({ orderBy: { archivedAt: 'desc' } })
+        .catch(() => []);
+      const archivedSet = new Set(archivedImports.map(a => a.identityKey));
       const dramEvents = await fetchImportableDramEvents();
       if (dramEvents.length) {
         const existing = await prisma.event.findMany({
@@ -576,6 +582,7 @@ async function handleAdminEvents(req, res, pathname, prisma) {
           if (when != null && when < now - 12 * 60 * 60 * 1000) continue; // skip past
           const identity = eventIdentityKey(src.title, src.startAt);
           if (!identity) continue;
+          if (archivedSet.has(identity)) continue; // removed for everyone
           const targetLoc = matchLocationId(src.location, locations) || null;
           // Location scoping: non-company-wide users only see their venues.
           if (!userIsCompanyWide && (!targetLoc || !locations.some(l => l.id === targetLoc))) continue;
@@ -618,7 +625,33 @@ async function handleAdminEvents(req, res, pathname, prisma) {
       }
     }
 
-    sendHTML(res, 200, eventsList(events, user, flashMsg, safeFilter, { groups: importGroups, count: importCount }));
+    sendHTML(res, 200, eventsList(events, user, flashMsg, safeFilter, { groups: importGroups, count: importCount, archived: archivedImports }));
+    return true;
+  }
+
+  // ─── Remove / restore an import (team-wide, restorable) ───
+  if (pathname === '/admin/events/archive-import' && req.method === 'POST') {
+    const body = await parseBody(req);
+    const identityKey = normalizeText(body.identityKey);
+    if (identityKey) {
+      await prisma.archivedEventImport.upsert({
+        where: { identityKey },
+        update: { label: normalizeText(body.label) || undefined, archivedBy: user.email || null, archivedAt: new Date() },
+        create: { identityKey, label: normalizeText(body.label) || null, archivedBy: user.email || null },
+      }).catch((err) => console.warn('[events] archive-import failed:', err.message));
+      writeAudit(prisma, req, user, { action: 'archive', resourceType: 'eventImport', resourceLabel: normalizeText(body.label) || identityKey }).catch(() => {});
+    }
+    redirect(res, '/admin/events?msg=' + encodeURIComponent('success|Removed from the import list for everyone. Restore it anytime from “Archived imports”.'));
+    return true;
+  }
+  if (pathname === '/admin/events/restore-import' && req.method === 'POST') {
+    const body = await parseBody(req);
+    const identityKey = normalizeText(body.identityKey);
+    if (identityKey) {
+      await prisma.archivedEventImport.deleteMany({ where: { identityKey } }).catch((err) => console.warn('[events] restore-import failed:', err.message));
+      writeAudit(prisma, req, user, { action: 'restore', resourceType: 'eventImport', resourceLabel: identityKey }).catch(() => {});
+    }
+    redirect(res, '/admin/events?msg=' + encodeURIComponent('success|Restored to the import list.'));
     return true;
   }
 

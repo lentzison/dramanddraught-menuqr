@@ -448,6 +448,18 @@ model EventSeriesOptOut {
   @@index([eventId])
 }
 
+// An imported event the team chose to remove from the "Import from the
+// website" list — for EVERYONE, not just one browser. Keyed by event identity
+// (base name + date) so it matches the import grouping. Kept (not deleted) so
+// it can be restored from the Archived imports view.
+model ArchivedEventImport {
+  id          String   @id @default(uuid())
+  identityKey String   @unique // eventIdentityKey(title, startDate)
+  label       String? // human-readable name + date for the archive view
+  archivedBy  String? // admin email
+  archivedAt  DateTime @default(now())
+}
+
 model EventSignup {
   id            String   @id @default(uuid())
   eventId       String

@@ -765,7 +765,8 @@ function renderImportPanel(importable) {
   const data = (importable && !Array.isArray(importable)) ? importable : null;
   const groups = data && Array.isArray(data.groups) ? data.groups : [];
   const count = data ? (data.count || 0) : 0;
-  if (!groups.length) return '';
+  const archived = data && Array.isArray(data.archived) ? data.archived : [];
+  if (!groups.length && !archived.length) return '';
 
   const fmtDate = (d) => d
     ? new Date(d).toLocaleString('en-US', { timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
@@ -790,15 +791,20 @@ function renderImportPanel(importable) {
             : `<a class="ev-imp-vrow-status is-add" href="/admin/events/new?importFrom=${encodeURIComponent(v.sourceId)}">import →</a>`)}
       </div>`).join('');
     const needsPickAny = (g.venues || []).some(v => v.needsPick && !v.already);
+    const archiveLabel = `${g.baseName || 'Untitled event'}${g.date ? ' · ' + fmtDate(g.date) : ''}`;
     return `
-      <div class="ev-imp-event" data-imp-id="${escHTML(g.identity || g.baseName || '')}">
+      <div class="ev-imp-event">
         <div class="ev-imp-event-top">
           <div class="ev-imp-event-info">
             <div class="ev-imp-event-name">${escHTML(g.baseName || 'Untitled event')}</div>
             <div class="ev-imp-event-date">${escHTML(fmtDate(g.date))}</div>
           </div>
           <div class="ev-imp-venues">${venues}</div>
-          <button type="button" class="ev-imp-dismiss" title="Remove from this list (you can restore it)" aria-label="Remove this import">✕</button>
+          <form method="POST" action="/admin/events/archive-import" style="margin:0;" onsubmit="return confirm('Remove “${escHTML((g.baseName || 'this event').replace(/'/g, ''))}” from the import list for everyone? You can restore it from Archived imports.');">
+            <input type="hidden" name="identityKey" value="${escHTML(g.identity || '')}" />
+            <input type="hidden" name="label" value="${escHTML(archiveLabel)}" />
+            <button type="submit" class="ev-imp-dismiss" title="Remove this import for everyone (restorable)" aria-label="Remove this import">✕</button>
+          </form>
         </div>
         <details class="ev-imp-details">
           <summary>See details${needsPickAny ? ' · ⚲ a venue needs a location' : ''}</summary>
@@ -876,29 +882,54 @@ function renderImportPanel(importable) {
       .ev-imp-show { margin:0 0 16px; background:transparent; border:1px dashed rgba(125,211,252,0.4); color:#9cc7ee;
         border-radius:10px; padding:8px 14px; font-size:0.82rem; font-weight:700; cursor:pointer; }
       .ev-imp-show[hidden] { display:none; }
+      .ev-imp-archived { margin-top:6px; border-top:1px solid rgba(255,255,255,0.08); padding-top:8px; }
+      .ev-imp-archived > summary { cursor:pointer; list-style:none; color:var(--text-muted); font-size:0.8rem; font-weight:700; padding:4px 0; }
+      .ev-imp-archived > summary::-webkit-details-marker { display:none; }
+      .ev-imp-arow { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:6px 0; border-top:1px solid rgba(255,255,255,0.05); }
+      .ev-imp-arow-info { color:var(--text-muted); font-size:0.84rem; }
+      .ev-imp-arow form { margin:0; }
+      .ev-imp-restore-btn { background:transparent; border:1px solid rgba(125,211,252,0.4); color:#9cc7ee; border-radius:999px; padding:3px 12px; font-size:0.78rem; font-weight:700; cursor:pointer; }
+      .ev-imp-restore-btn:hover { background:rgba(125,211,252,0.15); }
     </style>
     <div id="ev-import-wrap">
-      <details class="ev-import-rail" open>
+      <details class="ev-import-rail" ${groups.length ? 'open' : ''}>
         <summary>
           <span style="font-size:1.15rem;">✨</span>
           <div style="min-width:0;">
             <strong style="color:#cfe4ff;">Import from the Dram &amp; Draught website</strong>
             <div style="color:var(--text-muted); font-size:0.8rem; margin-top:2px;">
-              ${count} to add across ${groups.length} event${groups.length === 1 ? '' : 's'} · <span style="color:#86efac;">✓</span> already on menuqr · tap a venue to import it
+              ${groups.length
+                ? `${count} to add across ${groups.length} event${groups.length === 1 ? '' : 's'} · <span style="color:#86efac;">✓</span> already on menuqr · tap a venue to import it`
+                : 'No new events to import right now.'}
             </div>
           </div>
           <span class="ev-imp-toggle"></span>
-          <button type="button" class="ev-imp-hide" id="ev-import-hide" title="Hide this panel — you can bring it back anytime">Hide ✕</button>
+          <button type="button" class="ev-imp-hide" id="ev-import-hide" title="Hide this panel for yourself — you can bring it back anytime">Hide ✕</button>
         </summary>
-        <div class="ev-imp-body">${groupHtml}</div>
-      <div class="ev-imp-restore" id="ev-import-restore" hidden><span id="ev-import-restore-n"></span> removed · <button type="button" id="ev-import-restore-btn">show them</button></div>
+        <div class="ev-imp-body">
+          ${groupHtml}
+          ${archived.length ? `
+          <details class="ev-imp-archived">
+            <summary>🗄 Archived imports (${archived.length}) — removed for everyone, restore here</summary>
+            ${archived.map((a) => `
+              <div class="ev-imp-arow">
+                <span class="ev-imp-arow-info">${escHTML(a.label || a.identityKey)}${a.archivedBy ? ` · removed by ${escHTML(a.archivedBy)}` : ''}</span>
+                <form method="POST" action="/admin/events/restore-import">
+                  <input type="hidden" name="identityKey" value="${escHTML(a.identityKey)}" />
+                  <button type="submit" class="ev-imp-restore-btn">Restore</button>
+                </form>
+              </div>`).join('')}
+          </details>` : ''}
+        </div>
       </details>
     </div>
-    <button type="button" class="ev-imp-show" id="ev-import-show" hidden>✨ Show import from the Dram &amp; Draught website (${count})</button>
+    <button type="button" class="ev-imp-show" id="ev-import-show" hidden>✨ Show import from the Dram &amp; Draught website${count ? ` (${count})` : ''}</button>
     <script>
       (function() {
+        // Whole-panel Hide is a personal (per-browser) declutter. Removing an
+        // individual import is server-side (handled by the form) so it applies
+        // to everyone and shows up under "Archived imports".
         var HIDE_KEY = 'menuqr-events-import-hidden';
-        var DISMISS_KEY = 'menuqr-events-import-dismissed';
         var wrap = document.getElementById('ev-import-wrap');
         var showBtn = document.getElementById('ev-import-show');
         var hideBtn = document.getElementById('ev-import-hide');
@@ -918,42 +949,6 @@ function renderImportPanel(importable) {
           try { localStorage.removeItem(HIDE_KEY); } catch (e2) {}
           applyHide(false);
         });
-
-        // Per-event dismissal: remove individual imports from the list (kept in
-        // localStorage by identity). A footer lets you restore everything.
-        var restore = document.getElementById('ev-import-restore');
-        var restoreN = document.getElementById('ev-import-restore-n');
-        var restoreBtn = document.getElementById('ev-import-restore-btn');
-        function getDismissed() {
-          try { var a = JSON.parse(localStorage.getItem(DISMISS_KEY) || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; }
-        }
-        function setDismissed(a) { try { localStorage.setItem(DISMISS_KEY, JSON.stringify(a)); } catch (e) {} }
-        function applyDismissed() {
-          var set = getDismissed();
-          var events = wrap ? wrap.querySelectorAll('.ev-imp-event') : [];
-          var hiddenCount = 0;
-          Array.prototype.forEach.call(events, function(ev) {
-            var id = ev.getAttribute('data-imp-id');
-            var dismissed = set.indexOf(id) !== -1;
-            ev.hidden = dismissed;
-            if (dismissed) hiddenCount++;
-          });
-          if (restore) restore.hidden = hiddenCount === 0;
-          if (restoreN) restoreN.textContent = hiddenCount + (hiddenCount === 1 ? ' event' : ' events');
-        }
-        if (wrap) wrap.addEventListener('click', function(e) {
-          var btn = e.target.closest && e.target.closest('.ev-imp-dismiss');
-          if (!btn) return;
-          var ev = btn.closest('.ev-imp-event');
-          var id = ev && ev.getAttribute('data-imp-id');
-          if (!id) return;
-          var set = getDismissed();
-          if (set.indexOf(id) === -1) set.push(id);
-          setDismissed(set);
-          applyDismissed();
-        });
-        if (restoreBtn) restoreBtn.addEventListener('click', function() { setDismissed([]); applyDismissed(); });
-        applyDismissed();
       })();
     </script>`;
 }

@@ -643,7 +643,7 @@ function eventsList(events, user, flashMsg, filter = 'upcoming', importable = []
     return `<a class="ev-chip ${active ? 'is-active' : ''}" href="${escHTML(href)}">${escHTML(label)}<span class="ev-chip-count">${count}</span></a>`;
   };
 
-  const cards = visible.map(ev => {
+  const renderCard = (ev) => {
     const signupCount = ev._count?.signups || 0;
     const cap = ev.capacity || 0;
     const fillPct = cap ? Math.min(100, Math.round((signupCount / cap) * 100)) : 0;
@@ -710,6 +710,40 @@ function eventsList(events, user, flashMsg, filter = 'upcoming', importable = []
           </details>
         </div>
       </div>`;
+  };
+
+  // Collapse cross-location siblings (same groupKey, 2+ members) into one
+  // group entry rendered at the position of its first member. Everything else
+  // renders as a normal card in original order.
+  const groups = new Map();
+  for (const ev of visible) {
+    const key = ev.groupKey ? String(ev.groupKey) : null;
+    if (!key) continue;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(ev);
+  }
+  const renderedGroups = new Set();
+  const cards = visible.map((ev) => {
+    const key = ev.groupKey ? String(ev.groupKey) : null;
+    const members = key ? groups.get(key) : null;
+    if (!members || members.length < 2) return renderCard(ev);
+    if (renderedGroups.has(key)) return '';
+    renderedGroups.add(key);
+    const locChips = members
+      .map(m => `<span class="ev-group-chip">${escHTML(m.location?.name || 'No location')}</span>`)
+      .join('');
+    const totalSignups = members.reduce((s, m) => s + (m._count?.signups || 0), 0);
+    return `
+      <details class="ev-group" open>
+        <summary class="ev-group-head">
+          <span class="ev-group-caret" aria-hidden="true">▾</span>
+          <span class="ev-group-title">${escHTML(members[0].title)}</span>
+          <span class="ev-group-badge">${members.length} locations</span>
+          <span class="ev-group-locs">${locChips}</span>
+          <span class="ev-group-signups">${totalSignups} signup${totalSignups === 1 ? '' : 's'} total</span>
+        </summary>
+        <div class="ev-group-body">${members.map(renderCard).join('')}</div>
+      </details>`;
   }).join('');
 
   return adminLayout('Events', `
@@ -728,6 +762,36 @@ function eventsList(events, user, flashMsg, filter = 'upcoming', importable = []
       }
       .ev-hero .ev-hero-stats strong { color: var(--gold-strong); font-size: 1.4rem; display: block; line-height: 1; }
       .ev-hero .ev-hero-stats span.sub { display: block; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 700; margin-top: 4px; }
+
+      .ev-group {
+        border: 1px solid var(--line); border-radius: var(--ev-card-radius);
+        background: rgba(255,255,255,0.02); margin-bottom: 10px; overflow: hidden;
+      }
+      .ev-group[open] { background: rgba(212,175,55,0.04); }
+      .ev-group-head {
+        display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+        padding: 12px 16px; cursor: pointer; list-style: none;
+        border-bottom: 1px solid transparent;
+      }
+      .ev-group[open] .ev-group-head { border-bottom-color: var(--line); }
+      .ev-group-head::-webkit-details-marker { display: none; }
+      .ev-group-caret { color: var(--text-muted); transition: transform 0.15s; }
+      .ev-group:not([open]) .ev-group-caret { transform: rotate(-90deg); }
+      .ev-group-title { font-weight: 800; color: var(--text); font-size: 1rem; }
+      .ev-group-badge {
+        font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;
+        color: var(--gold-strong); background: rgba(212,175,55,0.12);
+        border: 1px solid rgba(212,175,55,0.3); border-radius: 999px; padding: 2px 9px;
+      }
+      .ev-group-locs { display: flex; flex-wrap: wrap; gap: 5px; }
+      .ev-group-chip {
+        font-size: 0.74rem; color: var(--text-muted);
+        background: rgba(255,255,255,0.05); border: 1px solid var(--line);
+        border-radius: 999px; padding: 2px 9px;
+      }
+      .ev-group-signups { margin-left: auto; color: var(--text-muted); font-size: 0.82rem; }
+      .ev-group-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
+      .ev-group-body .ev-card { background: var(--surface); }
 
       .ev-chip-rail { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
       .ev-chip {
@@ -1334,6 +1398,25 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0, opts = {
     </div>
   `).join('');
 
+  // ─── Pre-publish checklist ───
+  // Gentle review prompts shown when saving an event that will be live, so
+  // things like a missing cocktail menu or a past date get a second look
+  // before it posts. Section-aware checks only apply to saved events (Page
+  // Builder content doesn't exist yet on the create/import form).
+  const evSections = (!isNew && Array.isArray(event.sections)) ? event.sections : [];
+  const hasSectionType = (t) => evSections.some(s => s && s.type === t);
+  const publishChecklist = [];
+  if (!isNew) {
+    if (!hasSectionType('cocktailmenu')) publishChecklist.push('No cocktail menu added — if this event features specific cocktails, add a Cocktail Menu section in Page Builder.');
+    if (!event.image && !hasSectionType('hero')) publishChecklist.push('No banner image set for this event.');
+    if (evSections.length === 0) publishChecklist.push('The event page has no Page Builder content yet — just the short description.');
+    if (event.startDate && new Date(event.startDate) < new Date()) publishChecklist.push("This event's date is in the past, so it won't appear on the public events page.");
+  }
+  // Emit as a JS array literal (JSON is valid JS); escape "<" so the data can
+  // never break out of the <script> context. Do NOT escHTML it — that would
+  // corrupt the JSON, and apostrophes in the copy would break a quoted string.
+  const publishChecklistJson = JSON.stringify(publishChecklist).replace(/</g, '\\u003c');
+
   // ─── Competition judging config ───
   const judgingCriteria = (!isNew && Array.isArray(event.judgingCriteria)) ? event.judgingCriteria : [];
   const judgesList = (!isNew && Array.isArray(event.judges)) ? event.judges : [];
@@ -1894,6 +1977,11 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0, opts = {
             <input type="text" id="ev-slug" name="slug" value="${escHTML(event?.slug || '')}" placeholder="lubrication-cup" pattern="[-a-z0-9]*" />
           </div>
         </div>
+        <div>
+          <label for="ev-groupkey">Event group <span style="color:#888; font-weight:400; font-size:0.8rem">(optional — links the same event across locations)</span></label>
+          <input type="text" id="ev-groupkey" name="groupKey" value="${escHTML(event?.groupKey || '')}" placeholder="e.g. fifa-watch-party" />
+          <p style="color:#888; font-size:0.78rem; margin:6px 0 0">Events sharing a group are collapsed together in the admin list. Imported events are auto-grouped by their source event; you can override it here.</p>
+        </div>
 
         <label for="ev-description">Description</label>
         ${richTextToolbar('ev-description')}
@@ -2104,6 +2192,24 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0, opts = {
         <a href="/admin/events" class="btn btn-secondary">Cancel</a>
       </div>
     </form>
+
+    <div id="ev-publish-modal" class="ev-publish-overlay" hidden>
+      <div class="ev-publish-card" role="dialog" aria-modal="true" aria-labelledby="ev-publish-title">
+        <h3 id="ev-publish-title">Before you publish</h3>
+        <p style="color:#aaa; font-size:0.88rem; margin:0 0 10px">A few things to double-check on this event:</p>
+        <ul id="ev-publish-list" style="margin:0 0 16px; padding-left:18px; line-height:1.7; color:#e7e2d6;"></ul>
+        <div style="display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap;">
+          <button type="button" class="btn btn-secondary" id="ev-publish-back">Go back &amp; fix</button>
+          <button type="button" class="btn btn-primary" id="ev-publish-go">Publish anyway</button>
+        </div>
+      </div>
+    </div>
+    <style>
+      .ev-publish-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; z-index:1000; padding:18px; }
+      .ev-publish-overlay[hidden] { display:none; }
+      .ev-publish-card { background:var(--surface,#1a1b1f); border:1px solid var(--line,#2a2b30); border-radius:14px; padding:22px; max-width:460px; width:100%; }
+      .ev-publish-card h3 { margin:0 0 6px; color:#f0c869; }
+    </style>
 
     ${!isNew ? `
       <div class="ev-tab-panel" data-tab-panel="page">
@@ -2475,6 +2581,41 @@ function eventEditor(event, locations, user, flashMsg, signupCount = 0, opts = {
             card.classList.toggle('is-active', !!(input && input.checked));
           });
         });
+
+        // ─── Pre-publish checklist ───
+        // When saving an event that will be live, surface a quick review of
+        // things that are commonly forgotten (cocktail menu, image, past date)
+        // before it posts. Bypassed once the admin confirms.
+        var checklist = ${publishChecklistJson};
+        var evForm = document.getElementById('ev-form');
+        var pubModal = document.getElementById('ev-publish-modal');
+        var pubProceed = false;
+        if (evForm && pubModal && checklist.length) {
+          evForm.addEventListener('submit', function(e) {
+            if (pubProceed) return;
+            var active = evForm.querySelector('[name="isActive"]');
+            var willBeLive = active ? active.checked : false;
+            if (!willBeLive) return; // only nag when actually publishing
+            e.preventDefault();
+            var list = document.getElementById('ev-publish-list');
+            list.innerHTML = '';
+            checklist.forEach(function(item) {
+              var li = document.createElement('li');
+              li.textContent = item;
+              list.appendChild(li);
+            });
+            pubModal.hidden = false;
+          });
+          var back = document.getElementById('ev-publish-back');
+          var go = document.getElementById('ev-publish-go');
+          if (back) back.addEventListener('click', function() { pubModal.hidden = true; });
+          if (go) go.addEventListener('click', function() {
+            pubProceed = true;
+            pubModal.hidden = true;
+            if (evForm.requestSubmit) evForm.requestSubmit(); else evForm.submit();
+          });
+          pubModal.addEventListener('click', function(e) { if (e.target === pubModal) pubModal.hidden = true; });
+        }
       })();
     </script>
   `, user, { pathname: isNew ? '/admin/events/new' : `/admin/events/${event.id}`, flashMsg });

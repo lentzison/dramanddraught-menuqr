@@ -16,6 +16,7 @@ const { parseDateTimeLocal } = require('../dateEastern');
 const { normalizeRecurrenceRule } = require('../recurrence');
 const { rolloverEvent, materializeOccurrences, syncManualOccurrences, announceToSeries } = require('../eventRollover');
 const { htmlToRichText } = require('../views/eventPage');
+const { generateEventSections } = require('../eventDesignAI');
 
 // Parse the "specific dates" list (a JSON array of datetime-local strings) into
 // de-duplicated UTC Dates.
@@ -526,13 +527,31 @@ async function handleAdminEvents(req, res, pathname, prisma) {
     if (safeFilter === 'upcoming') {
       const dramEvents = await fetchImportableDramEvents();
       if (dramEvents.length) {
-        // Drop any we've already imported (covers the window before the public
-        // sync flips the originating row off its feed).
-        const alreadyImported = await prisma.event
-          .findMany({ where: { importedFromPublicId: { not: null } }, select: { importedFromPublicId: true } })
-          .then(rows => new Set(rows.map(r => r.importedFromPublicId)))
-          .catch(() => new Set());
-        importable = dramEvents.filter(it => !alreadyImported.has(Number(it.id)));
+        // A source event can be imported to several venues (separate rows that
+        // group together), so only hide it once it's present at ALL of the
+        // user's accessible locations — not after the first import. Build a
+        // map of sourceId -> set of locationIds already holding it.
+        const importedRows = await prisma.event
+          .findMany({ where: { importedFromPublicId: { not: null } }, select: { importedFromPublicId: true, locationId: true } })
+          .catch(() => []);
+        const locsBySource = new Map();
+        for (const r of importedRows) {
+          if (!locsBySource.has(r.importedFromPublicId)) locsBySource.set(r.importedFromPublicId, new Set());
+          locsBySource.get(r.importedFromPublicId).add(r.locationId);
+        }
+        const accessibleLocationIds = locations.map(l => l.id);
+        importable = dramEvents.filter((it) => {
+          const have = locsBySource.get(Number(it.id));
+          if (!have) return true; // never imported
+          return !accessibleLocationIds.every((id) => have.has(id)); // hide only when at every venue
+        });
+        // Don't offer events whose date has already passed (recurring sources
+        // should only surface their upcoming occurrence).
+        const now = Date.now();
+        importable = importable.filter((it) => {
+          const when = it.startAt ? new Date(it.startAt).getTime() : null;
+          return when == null || when >= now - 12 * 60 * 60 * 1000; // small grace for same-day
+        });
         // Honor location scoping for non-company-wide users.
         if (!userIsCompanyWide) {
           const allowedNames = new Set(locations.map(l => String(l.name || '').toLowerCase()));
@@ -570,6 +589,13 @@ async function handleAdminEvents(req, res, pathname, prisma) {
       const judgeToken = (judging.criteria.length > 0 && judging.judges.length > 0) ? makeJudgeToken() : null;
       const imageValue = await resolveEventImage(body.image, uniqueSlug);
       const recurrence = parseRecurrenceFromBody(body);
+      // Imported events auto-link to their source so the same event at multiple
+      // venues groups together; a manual groupKey in the form overrides it.
+      const importedFromPublicId = (() => {
+        const n = parseInt(body.importedFromPublicId, 10);
+        return Number.isFinite(n) ? n : null;
+      })();
+      const groupKey = normalizeText(body.groupKey) || (importedFromPublicId != null ? `src:${importedFromPublicId}` : null);
 
       try {
         const created = await prisma.event.create({
@@ -612,10 +638,8 @@ async function handleAdminEvents(req, res, pathname, prisma) {
             bannerStyle: normalizeBannerStyle(body.bannerStyle),
             // When finishing an imported Dram event, link it back so the public
             // sync transfers ownership to that row instead of duplicating it.
-            importedFromPublicId: (() => {
-              const n = parseInt(body.importedFromPublicId, 10);
-              return Number.isFinite(n) ? n : null;
-            })(),
+            importedFromPublicId,
+            groupKey,
           },
         });
         // Create the first occurrence + (if recurring) the future buffer.
@@ -631,6 +655,25 @@ async function handleAdminEvents(req, res, pathname, prisma) {
           action: 'create', resourceType: 'event', resourceId: created.id,
           resourceLabel: created.title, locationSlug: loc ? loc.slug : null,
         });
+        // Imported event: auto-design the page from the description in the
+        // background, then the admin reviews/edits in Page Builder. Fire-and-
+        // forget so the create response is instant (generation can take ~10s).
+        if (importedFromPublicId != null) {
+          const dateText = startDate
+            ? new Date(startDate).toLocaleString('en-US', { timeZone: 'America/New_York', weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+            : '';
+          generateEventSections({
+            title,
+            description: normalizeText(body.description) || '',
+            dateText,
+            locationName: loc ? loc.name : '',
+            ticketUrl: normalizeTicketUrl(body.ticketUrl),
+          })
+            .then((sections) => (sections.length ? prisma.event.update({ where: { id: created.id }, data: { sections } }) : null))
+            .catch((err) => console.warn('[event-design] post-import generation failed:', err.message));
+          redirect(res, `/admin/events/${created.id}?msg=` + encodeURIComponent('success|Imported. The AI is designing the event page from the description — refresh in a few seconds, then review it in the Page Builder tab before publishing.'));
+          return true;
+        }
         redirect(res, `/admin/events/${created.id}?msg=created`);
         return true;
       } catch (err) {
@@ -656,6 +699,16 @@ async function handleAdminEvents(req, res, pathname, prisma) {
       // format so the editor textarea and the public page show formatted text,
       // not raw tags.
       const rawDescription = src.description || src.summary || '';
+      // Which venues already have this source imported — so we can avoid
+      // pre-selecting one that's taken (multi-location: each venue gets its
+      // own row). If the matched venue is taken, leave location blank to force
+      // the admin to pick a fresh one.
+      const takenLocs = await prisma.event
+        .findMany({ where: { importedFromPublicId: Number(src.id) }, select: { locationId: true } })
+        .then(rows => new Set(rows.map(r => r.locationId)))
+        .catch(() => new Set());
+      let matchedLoc = matchLocationId(src.location, locations);
+      if (matchedLoc && takenLocs.has(matchedLoc)) matchedLoc = '';
       const draft = {
         title: src.title || '',
         description: htmlToRichText(rawDescription),
@@ -665,7 +718,9 @@ async function handleAdminEvents(req, res, pathname, prisma) {
         image: src.heroImage || '',
         capacity: src.capacity || null,
         ticketUrl: src.ticketUrl || '',
-        locationId: matchLocationId(src.location, locations),
+        locationId: matchedLoc,
+        // Auto-link siblings imported from the same source event across venues.
+        groupKey: `src:${src.id}`,
       };
       sendHTML(res, 200, eventEditor(draft, locations, user, flashMsg, 0, {
         forceNew: true,
@@ -1316,6 +1371,7 @@ async function handleAdminEvents(req, res, pathname, prisma) {
             judges: judging.judges.length > 0 ? judging.judges : null,
             finalistTarget: judging.finalistTarget,
             judgeToken,
+            groupKey: normalizeText(body.groupKey) || null,
             ticketUrl: normalizeTicketUrl(body.ticketUrl),
             ticketProvider: detectTicketProvider(body.ticketUrl),
             remindersEnabled: body.remindersEnabled === 'on',

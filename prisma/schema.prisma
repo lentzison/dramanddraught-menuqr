@@ -386,6 +386,12 @@ model Event {
   // creating a duplicate. Null for events authored directly in menuqr.
   importedFromPublicId Int?
 
+  // Cross-location grouping. The "same" event run at multiple venues (separate
+  // rows, separate pages/signups) shares a groupKey so the admin list can
+  // collapse the siblings into one group. Auto-set on import from the source
+  // event id ("src:<publicId>"); editable as a manual override. Null = ungrouped.
+  groupKey      String?
+
   location      Location            @relation(fields: [locationId], references: [id], onDelete: Cascade)
   signups       EventSignup[]
   occurrences   EventOccurrence[]   @relation("EventOccurrences")
@@ -397,6 +403,7 @@ model Event {
   @@unique([locationId, slug])
   @@index([locationId, startDate])
   @@index([slug])
+  @@index([groupKey])
 }
 
 // One scheduled date of an event. Non-recurring events have exactly one.

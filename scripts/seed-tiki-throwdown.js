@@ -11,9 +11,9 @@ const EVENT_SLUG = 'rooftop-tiki-throwdown';
 const TITLE = 'Rooftop Tiki Throwdown';
 
 // Eastern times (July = EDT, UTC-4).
-// Competition: Tue July 7, 2026, 6:00–9:00 PM ET  → 22:00 / next-day 01:00 UTC.
-const START = new Date(Date.UTC(2026, 6, 7, 22, 0, 0));
-const END = new Date(Date.UTC(2026, 6, 8, 1, 0, 0));
+// Competition: Tue July 7, 2026, 6:30–8:30 PM ET  → 22:30 / next-day 00:30 UTC.
+const START = new Date(Date.UTC(2026, 6, 7, 22, 30, 0));
+const END = new Date(Date.UTC(2026, 6, 8, 0, 30, 0));
 // Applications close end of day June 30, 2026 (11:59 PM ET) → July 1 03:59 UTC.
 const APPLY_CLOSE = new Date(Date.UTC(2026, 6, 1, 3, 59, 0));
 
@@ -225,6 +225,13 @@ async function main() {
 
     let event;
     if (existing) {
+      // SEED_CREATE_ONLY=1 (used by the deploy boot) never overwrites an event
+      // that already exists, so admin edits — judges, time tweaks, copy — are
+      // safe across redeploys. A manual run without the flag refreshes copy.
+      if (process.env.SEED_CREATE_ONLY === '1') {
+        console.log(`Event already exists (${existing.id}); SEED_CREATE_ONLY set — leaving it untouched.`);
+        return;
+      }
       event = await prisma.event.update({ where: { id: existing.id }, data });
       console.log(`Updated event: ${event.title} (${event.id})`);
     } else {

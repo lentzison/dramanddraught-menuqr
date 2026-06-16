@@ -17,7 +17,10 @@ ENV NODE_ENV=production
 ENV PORT=80
 EXPOSE 80
 
-# Apply pending migrations on startup then run app.
-# Migrations are managed via prisma/migrations/ — every schema change must
-# be authored as a migration file (npx prisma migrate dev) and committed.
-CMD ["sh","-c","npx prisma migrate deploy && node index.js"]
+# Apply pending migrations on startup, ensure one-off seed events exist, then
+# run app. Migrations are managed via prisma/migrations/ — every schema change
+# must be authored as a migration file (npx prisma migrate dev) and committed.
+# SEED_CREATE_ONLY makes the Tiki Throwdown seed create-only, so it never
+# overwrites later admin edits and is a no-op once the event exists; a seed
+# failure never blocks startup.
+CMD ["sh","-c","npx prisma migrate deploy && (SEED_CREATE_ONLY=1 node scripts/seed-tiki-throwdown.js || true) && node index.js"]

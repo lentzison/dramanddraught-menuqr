@@ -100,6 +100,33 @@ function specialsStyles() {
       .sp-tabs a:hover { color: var(--text); background: rgba(255,255,255,0.045); text-decoration: none; }
       .sp-tabs a.is-active { background: var(--gold-strong); color: #17110a; }
 
+      /* ========== One-time overrides ========== */
+      .sp-override-banner {
+        display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+        background: rgba(240,199,102,0.09); border: 1px solid rgba(240,199,102,0.35);
+        border-radius: var(--radius); padding: 12px 16px; margin-bottom: 18px;
+      }
+      .sp-override-banner strong { display: block; color: var(--gold-strong); font-size: 0.95rem; }
+      .sp-override-banner span { color: var(--text-soft); font-size: 0.85rem; line-height: 1.5; }
+      .sp-override-banner em { color: var(--text); font-style: normal; font-weight: 700; }
+      .sp-override-create { margin: 0 0 14px; }
+      .sp-override-create label { display: block; font-weight: 700; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-soft); margin-bottom: 6px; }
+      .sp-override-create input[type="date"] {
+        background: rgba(255,255,255,0.04); border: 1px solid var(--line); border-radius: 8px;
+        color: var(--text); padding: 8px 10px; font-size: 0.95rem;
+      }
+      .sp-override-group-label { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); font-weight: 800; margin: 6px 0; }
+      .sp-override-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+      .sp-override-row {
+        display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+        background: rgba(255,255,255,0.025); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px;
+      }
+      .sp-override-row-main { display: flex; flex-direction: column; gap: 2px; }
+      .sp-override-date { font-weight: 800; color: var(--text); }
+      .sp-override-name { color: var(--text-muted); font-size: 0.85rem; }
+      .sp-override-row-actions { display: flex; gap: 6px; align-items: center; }
+      .btn-sm { padding: 5px 10px; font-size: 0.82rem; }
+
       /* ========== Dashboard: 7-day grid ========== */
       .sp-day-grid {
         display: grid;
@@ -1451,18 +1478,96 @@ function dayThemeEditor(day, theme, specials, locations, locationSlug, user, mes
   const today = getTodayDayKey();
   const isToday = day === today;
 
-  const actionUrl = `/admin/specials/day/${day}${isOverride ? `/location/${locationSlug}` : ''}`;
+  // One-time, date-specific override context (distinct from `isOverride`, which
+  // means "a location-specific theme"). When set, every form posts to the dated
+  // scope and the page reverts to the recurring theme after the date.
+  const overrideDateStr = opts.overrideDateStr || null;
+  const isDateOverride = !!overrideDateStr;
+  const overrides = Array.isArray(opts.overrides) ? opts.overrides : [];
+  const dayLabel = DAY_LABELS[day] || day;
+  const locSegment = isOverride ? `/location/${locationSlug}` : '';
+  const recurringPath = `/admin/specials/day/${day}${locSegment}`;
+  // Eastern YYYY-MM-DD for an override's stored date (noon Eastern UTC).
+  const easternYmd = (d) => new Date(d).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  const overrideLongDate = (d) => new Date(d).toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+
+  const actionUrl = `${recurringPath}${isDateOverride ? `/override/${overrideDateStr}` : ''}`;
   const themeColor = theme && theme.themeColor ? theme.themeColor : '#f0c766';
   const heroStyle = theme && theme.themeColor ? `style="--theme-color: ${escAttr(themeColor)};"` : '';
 
   // Public-page URL — only meaningful when we have a location context.
   const publicUrl = locationSlug ? `/${escAttr(locationSlug)}/specials?day=${day}` : '';
 
-  // Override tabs (segmented)
-  const overrideTabs = locations.length > 0 ? `
+  // Override tabs (segmented) — hidden while editing a dated override, since the
+  // override is tied to one day/location and switching tabs would lose context.
+  const overrideTabs = (!isDateOverride && locations.length > 0) ? `
     <div class="sp-tabs" role="tablist" aria-label="Location override">
       ${showCompanyDefault ? `<a href="/admin/specials/day/${day}" class="${!isOverride ? 'is-active' : ''}" role="tab" aria-selected="${!isOverride}">Company default</a>` : ''}
       ${locations.map(l => `<a href="/admin/specials/day/${day}/location/${l.slug}" class="${locationSlug === l.slug ? 'is-active' : ''}" role="tab" aria-selected="${locationSlug === l.slug}">${escHTML(l.name)}</a>`).join('')}
+    </div>
+  ` : '';
+
+  // ===== Date-override banner (shown only while editing an override) =====
+  const overrideBanner = isDateOverride ? `
+    <div class="sp-override-banner">
+      <div>
+        <strong>One-time override — ${escHTML(overrideLongDate(overrideDateStr + 'T12:00:00'))}</strong>
+        <span>Changes here apply <em>only</em> on this date. Every other ${escHTML(dayLabel)} keeps the regular lineup, and the page reverts automatically afterward.</span>
+      </div>
+      <a href="${recurringPath}" class="btn btn-secondary btn-sm">← Back to the regular ${escHTML(dayLabel)}</a>
+    </div>
+  ` : '';
+
+  // ===== One-time overrides panel (shown only on the recurring editor) =====
+  const todayYmd = easternYmd(new Date());
+  const upcomingOverrides = overrides.filter(o => easternYmd(o.overrideDate) >= todayYmd);
+  const pastOverrides = overrides.filter(o => easternYmd(o.overrideDate) < todayYmd);
+  const renderOverrideRow = (o) => {
+    const ymd = easternYmd(o.overrideDate);
+    const count = (o._count && typeof o._count.specials === 'number') ? o._count.specials : null;
+    return `
+      <li class="sp-override-row">
+        <div class="sp-override-row-main">
+          <span class="sp-override-date">${escHTML(overrideLongDate(o.overrideDate))}</span>
+          <span class="sp-override-name">${escHTML(o.name || dayLabel)}${count !== null ? ` · ${count} special${count === 1 ? '' : 's'}` : ''}${o.isActive ? '' : ' · <span style="color:var(--text-muted)">inactive</span>'}</span>
+        </div>
+        <div class="sp-override-row-actions">
+          <a href="${recurringPath}/override/${ymd}" class="btn btn-secondary btn-sm">Edit</a>
+          <form method="POST" action="${recurringPath}" style="margin:0;" onsubmit="return confirm('Cancel this override? The ${escHTML(dayLabel)} on ${escHTML(overrideLongDate(o.overrideDate))} will use the regular lineup.');">
+            <input type="hidden" name="_action" value="deleteOverride" />
+            <input type="hidden" name="overrideId" value="${escAttr(o.id)}" />
+            <button type="submit" class="btn btn-danger btn-sm">Cancel</button>
+          </form>
+        </div>
+      </li>`;
+  };
+  const overridePanel = !isDateOverride ? `
+    <div class="sp-card" id="overrides">
+      <div class="sp-card-head">
+        <h2>One-time overrides</h2>
+        <span class="aside">Different lineup for a single date — then it reverts</span>
+      </div>
+      <p style="color:var(--text-muted); line-height:1.55; margin:0 0 12px;">
+        Running something different on one ${escHTML(dayLabel)} — a themed week, a takeover, a holiday? Schedule an override for that date. It <strong style="color:var(--text);">copies this ${escHTML(dayLabel)}'s current specials and 50%-off bottles</strong> so you only tweak what changes, shows on the public page that day only, and switches back to normal on its own.
+      </p>
+      <form method="POST" action="${recurringPath}" class="sp-override-create">
+        <input type="hidden" name="_action" value="createOverride" />
+        <label for="ov-date">Override date <span style="font-weight:600; color:var(--text-soft); text-transform:none; letter-spacing:0;">(must be a ${escHTML(dayLabel)})</span></label>
+        <div class="row" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <input type="date" id="ov-date" name="overrideDate" required />
+          <button type="submit" class="btn btn-primary">Schedule override →</button>
+        </div>
+      </form>
+      ${upcomingOverrides.length ? `
+        <div class="sp-override-group">
+          <div class="sp-override-group-label">Upcoming</div>
+          <ul class="sp-override-list">${upcomingOverrides.map(renderOverrideRow).join('')}</ul>
+        </div>` : `<p style="color:var(--text-muted); font-style:italic; margin:10px 0 0;">No overrides scheduled.</p>`}
+      ${pastOverrides.length ? `
+        <details class="sp-override-group" style="margin-top:10px;">
+          <summary style="cursor:pointer; color:var(--gold-strong); font-weight:700;">Past overrides (${pastOverrides.length}) — reuse one</summary>
+          <ul class="sp-override-list" style="margin-top:8px;">${pastOverrides.map(renderOverrideRow).join('')}</ul>
+        </details>` : ''}
     </div>
   ` : '';
 
@@ -1471,9 +1576,9 @@ function dayThemeEditor(day, theme, specials, locations, locationSlug, user, mes
     <div class="sp-card">
       <div class="sp-card-head">
         <h2>Theme details</h2>
-        <span class="aside">${isOverride ? 'Override for this location' : 'Company default — shown on every location'}</span>
+        <span class="aside">${isDateOverride ? `One-time override · ${escHTML(overrideLongDate(overrideDateStr + 'T12:00:00'))}` : (isOverride ? 'Override for this location' : 'Company default — shown on every location')}</span>
       </div>
-      <form method="POST" action="${actionUrl}" data-autosave="special-theme-${day}${isOverride ? '-' + escAttr(locationSlug) : '-default'}">
+      <form method="POST" action="${actionUrl}" data-autosave="special-theme-${day}${isOverride ? '-' + escAttr(locationSlug) : '-default'}${isDateOverride ? '-ov-' + escAttr(overrideDateStr) : ''}">
         <input type="hidden" name="_action" value="saveTheme" />
         <div class="sp-form-row">
           <div><label>Theme name</label><input type="text" name="name" value="${escAttr(theme ? theme.name : '')}" required placeholder="e.g. Industry Night" /></div>
@@ -1500,7 +1605,7 @@ function dayThemeEditor(day, theme, specials, locations, locationSlug, user, mes
           </label>
         </div>
         <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
-          ${theme ? `<button type="submit" name="_action" value="deleteTheme" class="btn btn-danger" onclick="return confirm('Delete this theme and all its specials? This cannot be undone.')">Delete theme</button>` : ''}
+          ${theme ? `<button type="submit" name="_action" value="deleteTheme" class="btn btn-danger" onclick="return confirm('${isDateOverride ? 'Cancel this override and delete its specials? The day reverts to the regular lineup.' : 'Delete this theme and all its specials? This cannot be undone.'}')">${isDateOverride ? 'Cancel override' : 'Delete theme'}</button>` : ''}
           <button type="submit" class="btn btn-primary">Save theme</button>
         </div>
       </form>
@@ -1625,12 +1730,14 @@ function dayThemeEditor(day, theme, specials, locations, locationSlug, user, mes
     ${heroHtml}
     ${message ? `<div class="alert ${message.type === 'error' ? 'alert-error' : 'alert-success'}">${escHTML(message.text)}</div>` : ''}
     ${overrideTabs}
+    ${overrideBanner}
 
     <div class="sp-grid">
       <div class="sp-main">
         ${themeCard}
         ${specialsCard}
         ${halfPriceBlock}
+        ${overridePanel}
         ${sundayBottlesCard}
       </div>
       <aside class="sp-rail">

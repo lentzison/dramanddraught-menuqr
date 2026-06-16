@@ -56,4 +56,32 @@ function easternParts(date) {
   };
 }
 
-module.exports = { getEasternOffsetMinutes, easternWallClockToUtc, parseDateTimeLocal, easternParts };
+// Parse a date-only string ("YYYY-MM-DD") as an Eastern calendar date and return
+// the UTC Date for NOON Eastern of that day. Noon avoids DST midnight edges, and
+// every override date is stored/compared at this same canonical instant so exact
+// equality matching works.
+function parseOverrideDate(value) {
+  if (!value) return null;
+  const m = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const [year, month, day] = m.slice(1).map((n) => parseInt(n, 10));
+  if ([year, month, day].some((n) => Number.isNaN(n))) return null;
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const utc = easternWallClockToUtc(year, month, day, 12, 0);
+  if (!utc) return null;
+  // Reject rolled-over dates (e.g. Feb 31): the stored instant must map back to
+  // the same Eastern calendar date that was entered.
+  const parts = easternParts(utc);
+  if (parts.y !== year || parts.m !== month || parts.d !== day) return null;
+  return utc;
+}
+
+// The canonical override instant (noon Eastern, in UTC) for the Eastern calendar
+// date that a given UTC instant falls on. Used to match "today" against stored
+// override dates.
+function easternDateNoonUtc(date) {
+  const { y, m, d } = easternParts(date);
+  return easternWallClockToUtc(y, m, d, 12, 0);
+}
+
+module.exports = { getEasternOffsetMinutes, easternWallClockToUtc, parseDateTimeLocal, easternParts, parseOverrideDate, easternDateNoonUtc };

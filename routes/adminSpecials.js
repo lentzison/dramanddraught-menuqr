@@ -1,11 +1,12 @@
 const { sendHTML, parseBody, redirect, generateCocktailImage, getFlashMsg } = require('../helpers');
 const { requireAuth, isCompanyWide, getUserLocationSlugs, canAccessLocation } = require('../auth');
-const { specialsDashboard, dayThemeEditor, bottlesList, bottleEditor, DAYS } = require('../views/adminSpecialsViews');
+const { specialsDashboard, dayThemeEditor, bottlesList, bottleEditor, DAYS, DAY_LABELS } = require('../views/adminSpecialsViews');
 const { adminLayout } = require('../views/adminLayout');
 const { getSpiritCategories, getSpiritCatalog, getHalfPriceSpirits } = require('../bartenderDb');
 const { sendJSON } = require('../helpers');
 const { sanitizeImageSrc } = require('../views/imageUploadWidget');
 const { writeAudit } = require('../auditLog');
+const { parseOverrideDate, easternParts } = require('../dateEastern');
 // No insecure default — an unset token means the optional second-factor check
 // is simply skipped (the endpoint still requires an admin login + company role).
 const OP_IMAGE_REGEN_TOKEN = process.env.OP_SPECIAL_IMAGE_REGEN_TOKEN || '';
@@ -289,6 +290,7 @@ async function runSpecialImageRegeneration(prisma, requestedDay) {
   const where = {
     ...dayFilter,
     isActive: true,
+    overrideDate: null, // recurring themes only; overrides regen from their own editor
   };
 
   const themes = await prisma.dayTheme.findMany({
@@ -613,7 +615,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
     // editor.
     if (userIsCompanyWide) {
       const themes = await prisma.dayTheme.findMany({
-        where: { locationId: null },
+        where: { locationId: null, overrideDate: null },
         include: { specials: { where: { isActive: true }, orderBy: { displayOrder: 'asc' } } },
       });
       sendHTML(res, 200, specialsDashboard(themes, user, flashMsg));
@@ -645,11 +647,11 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
     // day card shows whichever is the source of truth for this location.
     const [overrides, defaults] = await Promise.all([
       prisma.dayTheme.findMany({
-        where: { locationId: activeLocation.id },
+        where: { locationId: activeLocation.id, overrideDate: null },
         include: { specials: { where: { isActive: true }, orderBy: { displayOrder: 'asc' } } },
       }),
       prisma.dayTheme.findMany({
-        where: { locationId: null },
+        where: { locationId: null, overrideDate: null },
         include: { specials: { where: { isActive: true }, orderBy: { displayOrder: 'asc' } } },
       }),
     ]);
@@ -667,12 +669,18 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
   }
 
   // ─── Day Theme Editor ───
-  const dayMatch = pathname.match(/^\/admin\/specials\/day\/([A-Z]+)$/);
-  const dayLocMatch = pathname.match(/^\/admin\/specials\/day\/([A-Z]+)\/location\/([a-z0-9-]+)$/);
+  const dayMatch = pathname.match(/^\/admin\/specials\/day\/([A-Z]+)(?:\/override\/(\d{4}-\d{2}-\d{2}))?$/);
+  const dayLocMatch = pathname.match(/^\/admin\/specials\/day\/([A-Z]+)\/location\/([a-z0-9-]+)(?:\/override\/(\d{4}-\d{2}-\d{2}))?$/);
 
   if (dayMatch || dayLocMatch) {
     const day = dayMatch ? dayMatch[1] : dayLocMatch[1];
     const locationSlug = dayLocMatch ? dayLocMatch[2] : null;
+    // Optional one-time override scope: /…/override/YYYY-MM-DD. overrideDate is a
+    // canonical noon-Eastern UTC Date for that calendar day, or null for the
+    // recurring weekly theme. It's the third dimension of the theme's identity.
+    const overrideDateStr = dayMatch ? (dayMatch[2] || null) : (dayLocMatch[3] || null);
+    const overrideDate = overrideDateStr ? parseOverrideDate(overrideDateStr) : null;
+    if (overrideDateStr && !overrideDate) { redirect(res, '/admin/specials'); return true; }
 
     if (!DAYS.includes(day)) {
       sendHTML(res, 404, '<h1>Invalid day</h1>');
@@ -704,6 +712,13 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
     }
 
     const locationId = location ? location.id : null;
+    // Every theme lookup in this handler is scoped to (day, location, override).
+    // overrideDate null → the recurring weekly theme; a Date → that day's one-time
+    // override. recurringWhere is the same scope but always the recurring theme,
+    // used when cloning/falling back regardless of the current override scope.
+    const themeWhere = { dayOfWeek: day, locationId: locationId, overrideDate: overrideDate };
+    const recurringWhere = { dayOfWeek: day, locationId: locationId, overrideDate: null };
+    const recurringPath = `/admin/specials/day/${day}${locationSlug ? `/location/${locationSlug}` : ''}`;
 
     if (req.method === 'POST') {
       const body = await parseBody(req);
@@ -711,7 +726,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
 
       if (action === 'saveTheme') {
         // Prisma can't upsert on composite unique with null, so findFirst + create/update
-        const existing = await prisma.dayTheme.findFirst({ where: { dayOfWeek: day, locationId: locationId } });
+        const existing = await prisma.dayTheme.findFirst({ where: themeWhere });
         // Validate theme color: must be #RRGGBB or null
         const colorRaw = (body.themeColor || '').trim();
         const themeColor = /^#[0-9a-fA-F]{6}$/.test(colorRaw) && colorRaw.toLowerCase() !== '#d4af37'
@@ -723,7 +738,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
           });
         } else {
           await prisma.dayTheme.create({
-            data: { dayOfWeek: day, locationId: locationId, name: body.name, tagline: body.tagline || null, description: body.description || null, themeColor, isActive: body.isActive === 'on' },
+            data: { dayOfWeek: day, locationId: locationId, overrideDate: overrideDate, name: body.name, tagline: body.tagline || null, description: body.description || null, themeColor, isActive: body.isActive === 'on' },
           });
         }
         writeAudit(prisma, req, user, {
@@ -737,7 +752,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
 
       if (action === 'saveHalfPrice') {
         const config = JSON.parse(body.halfPriceConfig || '{}');
-        const existing = await prisma.dayTheme.findFirst({ where: { dayOfWeek: day, locationId: locationId } });
+        const existing = await prisma.dayTheme.findFirst({ where: themeWhere });
         if (existing) {
           await prisma.dayTheme.update({
             where: { id: existing.id },
@@ -745,11 +760,12 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
           });
         } else if (locationId) {
           // Auto-create location override theme for half-price config
-          const defaultTheme = await prisma.dayTheme.findFirst({ where: { dayOfWeek: day, locationId: null } });
+          const defaultTheme = await prisma.dayTheme.findFirst({ where: { dayOfWeek: day, locationId: null, overrideDate: null } });
           await prisma.dayTheme.create({
             data: {
               dayOfWeek: day,
               locationId: locationId,
+              overrideDate: overrideDate,
               name: defaultTheme ? defaultTheme.name : day,
               tagline: defaultTheme ? defaultTheme.tagline : null,
               description: defaultTheme ? defaultTheme.description : null,
@@ -767,15 +783,89 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       }
 
       if (action === 'deleteTheme') {
-        const existing = await prisma.dayTheme.findFirst({ where: { dayOfWeek: day, locationId: locationId } });
+        const existing = await prisma.dayTheme.findFirst({ where: themeWhere });
         if (existing) await prisma.dayTheme.delete({ where: { id: existing.id } });
-        redirect(res, '/admin/specials?msg=deleted');
+        // Deleting an override drops back to the recurring day; deleting the
+        // recurring theme returns to the weekly overview.
+        redirect(res, (overrideDate ? recurringPath : '/admin/specials') + '?msg=deleted');
+        return true;
+      }
+
+      // Schedule a one-time override for a specific date: clone the recurring
+      // theme (specials + half-price config) into a dated copy you can freely
+      // edit. On that date the public page shows the override, then reverts.
+      if (action === 'createOverride') {
+        const dateStr = (body.overrideDate || '').trim();
+        const parsed = parseOverrideDate(dateStr);
+        const dayLabel = DAY_LABELS[day] || day;
+        if (!parsed) {
+          redirect(res, recurringPath + '?msg=' + encodeURIComponent('error|Enter a valid date for the override.'));
+          return true;
+        }
+        const WD_TO_DAY = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+        if (WD_TO_DAY[easternParts(parsed).weekday] !== day) {
+          redirect(res, recurringPath + '?msg=' + encodeURIComponent(`error|That date isn't a ${dayLabel}. Pick a ${dayLabel} so the override lands on the right day.`));
+          return true;
+        }
+        const overridePath = `${recurringPath}/override/${dateStr}`;
+        const already = await prisma.dayTheme.findFirst({ where: { dayOfWeek: day, locationId: locationId, overrideDate: parsed } });
+        if (already) { redirect(res, overridePath); return true; }
+        // Clone from the recurring theme at this scope, else the company default.
+        let source = await prisma.dayTheme.findFirst({ where: recurringWhere, include: { specials: { orderBy: { displayOrder: 'asc' } } } });
+        if (!source && locationId) {
+          source = await prisma.dayTheme.findFirst({ where: { dayOfWeek: day, locationId: null, overrideDate: null }, include: { specials: { orderBy: { displayOrder: 'asc' } } } });
+        }
+        const created = await prisma.dayTheme.create({
+          data: {
+            dayOfWeek: day,
+            locationId: locationId,
+            overrideDate: parsed,
+            name: source ? source.name : day,
+            tagline: source ? source.tagline : null,
+            description: source ? source.description : null,
+            themeColor: source ? source.themeColor : null,
+            isActive: true,
+            halfPriceConfig: source ? (source.halfPriceConfig ?? undefined) : undefined,
+          },
+        });
+        if (source && Array.isArray(source.specials) && source.specials.length) {
+          for (const sp of source.specials) {
+            await prisma.dailySpecial.create({
+              data: {
+                dayThemeId: created.id,
+                name: sp.name, description: sp.description, price: sp.price, imageUrl: sp.imageUrl,
+                category: sp.category, displayOrder: sp.displayOrder, section: sp.section,
+                detailText: sp.detailText, badges: sp.badges, timeWindow: sp.timeWindow,
+                isFeatured: sp.isFeatured, isActive: sp.isActive,
+              },
+            });
+          }
+        }
+        writeAudit(prisma, req, user, {
+          action: 'create', resourceType: 'day_theme_override', resourceId: created.id,
+          resourceLabel: created.name, locationSlug: locationSlug || null,
+          details: { day, date: dateStr },
+        });
+        redirect(res, overridePath + '?msg=created');
+        return true;
+      }
+
+      if (action === 'deleteOverride' && body.overrideId) {
+        const ov = await prisma.dayTheme.findFirst({
+          where: { id: body.overrideId, dayOfWeek: day, locationId: locationId, overrideDate: { not: null } },
+        });
+        if (ov) await prisma.dayTheme.delete({ where: { id: ov.id } });
+        writeAudit(prisma, req, user, {
+          action: 'delete', resourceType: 'day_theme_override', resourceId: body.overrideId,
+          locationSlug: locationSlug || null, details: { day },
+        });
+        redirect(res, recurringPath + '?msg=deleted');
         return true;
       }
 
       if (action === 'generateSpecialImages') {
         const currentTheme = await prisma.dayTheme.findFirst({
-          where: { dayOfWeek: day, locationId: locationId },
+          where: themeWhere,
           include: { specials: true },
         });
         if (currentTheme && currentTheme.specials && currentTheme.specials.length) {
@@ -787,7 +877,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
 
       if (action === 'addSpecial') {
         const theme = await prisma.dayTheme.findFirst({
-          where: { dayOfWeek: day, locationId: locationId }
+          where: themeWhere
         });
         if (theme) {
           const maxOrderSpecial = await prisma.dailySpecial.findFirst({
@@ -864,7 +954,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       }
 
       if (action === 'setSpecialCategoryBulk' && body.specialIds) {
-        const theme = await prisma.dayTheme.findFirst({ where: { dayOfWeek: day, locationId: locationId } });
+        const theme = await prisma.dayTheme.findFirst({ where: themeWhere });
         if (!theme) {
           redirect(res, pathname);
           return true;
@@ -888,7 +978,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       }
 
       if (action === 'reorderSpecials' && (body.specialOrderPayload || body.specialIds)) {
-        const theme = await prisma.dayTheme.findFirst({ where: { dayOfWeek: day, locationId: locationId } });
+        const theme = await prisma.dayTheme.findFirst({ where: themeWhere });
         if (!theme) {
           redirect(res, pathname);
           return true;
@@ -919,7 +1009,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       }
 
       if (action === 'moveSpecial' && body.specialId) {
-        const theme = await prisma.dayTheme.findFirst({ where: { dayOfWeek: day, locationId: locationId } });
+        const theme = await prisma.dayTheme.findFirst({ where: themeWhere });
         if (!theme) {
           redirect(res, pathname);
           return true;
@@ -956,7 +1046,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       }
 
       if (action === 'setSpecialOrder' && body.specialId) {
-        const theme = await prisma.dayTheme.findFirst({ where: { dayOfWeek: day, locationId: locationId } });
+        const theme = await prisma.dayTheme.findFirst({ where: themeWhere });
         if (!theme) {
           redirect(res, pathname);
           return true;
@@ -1018,10 +1108,18 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
     // For location override, use a compound unique that allows null
     const flashMsg = getFlashMsg(req.url);
     const theme = await prisma.dayTheme.findFirst({
-      where: { dayOfWeek: day, locationId: locationId },
+      where: themeWhere,
       include: { specials: { orderBy: { displayOrder: 'asc' } } },
     });
     const categoryOptions = getAllCategories(theme ? theme.specials : []);
+
+    // One-time overrides scheduled for this day/location (for the schedule panel
+    // on the recurring editor). Kept after the date passes so they're reusable.
+    const overrides = await prisma.dayTheme.findMany({
+      where: { dayOfWeek: day, locationId: locationId, overrideDate: { not: null } },
+      orderBy: { overrideDate: 'asc' },
+      include: { _count: { select: { specials: true } } },
+    });
 
     let spiritCatalog = [];
     let spiritCategories = { categories: [], styles: [] };
@@ -1038,7 +1136,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
         console.warn('Error loading spirit catalog for admin:', err.message);
       }
       if (!halfPriceTheme) {
-        const defaultTheme = await prisma.dayTheme.findFirst({ where: { dayOfWeek: day, locationId: null } });
+        const defaultTheme = await prisma.dayTheme.findFirst({ where: { dayOfWeek: day, locationId: null, overrideDate: null } });
         if (defaultTheme) {
           halfPriceTheme = { halfPriceConfig: defaultTheme.halfPriceConfig || {} };
         }
@@ -1058,7 +1156,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       spiritCatalog,
       spiritCategories,
       halfPriceTheme,
-      { showCompanyDefault: userIsCompanyWide }
+      { showCompanyDefault: userIsCompanyWide, overrideDateStr, overrides }
     ));
     return true;
   }

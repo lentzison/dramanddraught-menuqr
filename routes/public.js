@@ -21,6 +21,7 @@ const { generateHomepage } = require('../views/homepage');
 const { generateHiringIndexPage } = require('../views/hiringIndexPage');
 const { generateLocationPage } = require('../views/locationPage');
 const specialPages = require('../views/specialsPage');
+const { easternDateNoonUtc } = require('../dateEastern');
 const {
   generateSpecialsPage,
   getEasternDay: importedGetEasternDay,
@@ -152,13 +153,14 @@ function buildNextThemeLookup(prisma, location, activeDay) {
   if (dayIndex === -1 || !prisma) return Promise.resolve(null);
 
   const tryLookup = async (dayOfWeek) => {
+    // "Next day with a theme" previews the recurring schedule, not dated overrides.
     let theme = await prisma.dayTheme.findFirst({
-      where: { dayOfWeek, locationId: location.id, isActive: true },
+      where: { dayOfWeek, locationId: location.id, isActive: true, overrideDate: null },
       include: { specials: { where: { isActive: true }, orderBy: { displayOrder: 'asc' } } },
     });
     if (theme) return theme;
     return prisma.dayTheme.findFirst({
-      where: { dayOfWeek, locationId: null, isActive: true },
+      where: { dayOfWeek, locationId: null, isActive: true, overrideDate: null },
       include: { specials: { where: { isActive: true }, orderBy: { displayOrder: 'asc' } } },
     });
   };
@@ -880,7 +882,23 @@ async function handleFeedback(req, res, prisma) {
   return true;
 }
 
-async function loadLocationSpecials(prisma, location, dayOfWeek, warningState) {
+// Resolve the effective DayTheme for a day/location at a given moment: a one-time
+// override scheduled for that exact Eastern date wins over the recurring weekly
+// theme; otherwise the recurring theme is used and the page reverts on its own.
+// `atDate` null → recurring only (used when browsing a generic, non-today day).
+async function resolveThemeWithOverride(prisma, { dayOfWeek, locationId, include, atDate = null }) {
+  const base = { dayOfWeek, locationId, isActive: true };
+  if (atDate) {
+    const override = await prisma.dayTheme.findFirst({
+      where: { ...base, overrideDate: easternDateNoonUtc(atDate) },
+      include,
+    });
+    if (override) return override;
+  }
+  return prisma.dayTheme.findFirst({ where: { ...base, overrideDate: null }, include });
+}
+
+async function loadLocationSpecials(prisma, location, dayOfWeek, warningState, atDate = null) {
   const fallback = {
     theme: null,
     activeSpecials: [],
@@ -893,14 +911,9 @@ async function loadLocationSpecials(prisma, location, dayOfWeek, warningState) {
   let activeSpecials = [];
   let allSpecials = [];
   try {
-    const locationTheme = await prisma.dayTheme.findFirst({
-      where: { dayOfWeek, locationId: location.id, isActive: true },
-      include: { specials: { where: { isActive: true }, orderBy: { displayOrder: 'asc' } } },
-    });
-    const defaultTheme = await prisma.dayTheme.findFirst({
-      where: { dayOfWeek, locationId: null, isActive: true },
-      include: { specials: { where: { isActive: true }, orderBy: { displayOrder: 'asc' } } },
-    });
+    const include = { specials: { where: { isActive: true }, orderBy: { displayOrder: 'asc' } } };
+    const locationTheme = await resolveThemeWithOverride(prisma, { dayOfWeek, locationId: location.id, include, atDate });
+    const defaultTheme = await resolveThemeWithOverride(prisma, { dayOfWeek, locationId: null, include, atDate });
 
     // Use location theme if it exists, otherwise company default
     theme = locationTheme || defaultTheme || null;
@@ -952,7 +965,7 @@ async function loadLocationSpecials(prisma, location, dayOfWeek, warningState) {
       const tomorrowIdx = (DAYS_ORDER.indexOf(dayOfWeek) + 1) % 7;
       const tomorrowDay = DAYS_ORDER[tomorrowIdx];
       return prisma.dayTheme.findFirst({
-        where: { dayOfWeek: tomorrowDay, locationId: null, isActive: true },
+        where: { dayOfWeek: tomorrowDay, locationId: null, isActive: true, overrideDate: null },
       }).catch(() => null);
     })(),
   };
@@ -1044,7 +1057,10 @@ async function handleSpecials(req, res, prisma, parsedUrl, location) {
   let bartenderFlightState = { items: [], item: null, error: null };
 
   if (prisma) {
-    const loaded = await loadLocationSpecials(prisma, loc, viewingDay, warnings);
+    // Overrides apply only on the actual current Eastern date — browsing a
+    // different day with ?day= shows the regular recurring lineup.
+    const atDate = viewingDay === todayDay ? getEasternDay().date : null;
+    const loaded = await loadLocationSpecials(prisma, loc, viewingDay, warnings, atDate);
     theme = loaded.theme;
     specials = loaded.activeSpecials;
     nextAvailable = loaded.nextAvailable;
@@ -1181,8 +1197,9 @@ async function loadTvSpecials(prisma, location) {
   const day = getEasternDay().dayOfWeek;
   const dayLabel = getDayLabel(day);
   const include = { specials: { where: { isActive: true }, orderBy: { displayOrder: 'asc' } } };
-  const locTheme = await prisma.dayTheme.findFirst({ where: { dayOfWeek: day, locationId: location.id, isActive: true }, include }).catch(() => null);
-  const defTheme = await prisma.dayTheme.findFirst({ where: { dayOfWeek: day, locationId: null, isActive: true }, include }).catch(() => null);
+  const atDate = getEasternDay().date;
+  const locTheme = await resolveThemeWithOverride(prisma, { dayOfWeek: day, locationId: location.id, include, atDate }).catch(() => null);
+  const defTheme = await resolveThemeWithOverride(prisma, { dayOfWeek: day, locationId: null, include, atDate }).catch(() => null);
   const theme = locTheme || defTheme;
   if (!theme) return { items: [], dayLabel };
   const themeSpecials = (theme.specials && theme.specials.length) ? theme.specials : (defTheme ? defTheme.specials || [] : []);

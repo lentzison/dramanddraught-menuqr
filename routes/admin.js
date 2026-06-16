@@ -15,6 +15,7 @@ const sso = require('../sso');
 const { locationsList, locationEditor } = require('../views/adminLocationViews');
 const { adminDashboard } = require('../views/adminDashboard');
 const { adminActivityView } = require('../views/adminActivityView');
+const { easternDateNoonUtc } = require('../dateEastern');
 
 const DAYS = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
 function getEasternToday() {
@@ -51,17 +52,21 @@ async function buildDashboardData(prisma, restrictToSlugs = null) {
 
     // Today's theme — prefer location override, fall back to company default
     try {
-      const overrideTheme = await prisma.dayTheme.findFirst({
-        where: { dayOfWeek: todayDay, locationId: loc.id, isActive: true },
-        include: { specials: true },
-      });
-      const defaultTheme = !overrideTheme
-        ? await prisma.dayTheme.findFirst({
-            where: { dayOfWeek: todayDay, locationId: null, isActive: true },
-            include: { specials: true },
-          })
-        : null;
-      const theme = overrideTheme || defaultTheme;
+      // Prefer a one-time override for today's date, then the recurring theme —
+      // at the location level first, falling back to the company default.
+      const todayNoon = easternDateNoonUtc(new Date());
+      const pickTheme = async (locationId) => {
+        const ov = await prisma.dayTheme.findFirst({
+          where: { dayOfWeek: todayDay, locationId, isActive: true, overrideDate: todayNoon },
+          include: { specials: true },
+        });
+        if (ov) return ov;
+        return prisma.dayTheme.findFirst({
+          where: { dayOfWeek: todayDay, locationId, isActive: true, overrideDate: null },
+          include: { specials: true },
+        });
+      };
+      const theme = (await pickTheme(loc.id)) || (await pickTheme(null));
       if (theme) {
         summary.todayTheme = {
           name: theme.name,

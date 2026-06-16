@@ -112,14 +112,23 @@ model DayTheme {
 
   halfPriceConfig Json? // Selection rules for half-price spirits (Wed/Thu)
 
+  // When set, this is a one-time override for a single Eastern calendar date
+  // (stored as noon Eastern, in UTC) rather than the recurring weekly theme.
+  // A date-specific override takes precedence over the recurring theme
+  // (overrideDate IS NULL) for the same day-of-week + location, then the page
+  // automatically reverts. Uniqueness is enforced by two partial indexes
+  // created in the migration (one recurring per day/location, one per date):
+  // Prisma can't express partial unique indexes, so they live in SQL only.
+  overrideDate DateTime?
+
   location Location?      @relation(fields: [locationId], references: [id], onDelete: Cascade)
   specials DailySpecial[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@unique([dayOfWeek, locationId])
   @@index([dayOfWeek])
+  @@index([overrideDate])
 }
 
 model DailySpecial {

@@ -21,7 +21,18 @@ const { generateHomepage } = require('../views/homepage');
 const { generateHiringIndexPage } = require('../views/hiringIndexPage');
 const { generateLocationPage } = require('../views/locationPage');
 const specialPages = require('../views/specialsPage');
-const { easternDateNoonUtc } = require('../dateEastern');
+const { easternDateNoonUtc, upcomingWeekdayNoonUtc } = require('../dateEastern');
+
+// The noon-Eastern (UTC) instant for the UPCOMING occurrence of a weekday: today
+// if it's that weekday, otherwise the next one within the coming 7 days. The
+// specials day-tabs show this occurrence, so a dated override is reflected for
+// the whole week leading up to it, then the page reverts once it passes.
+const WD_INDEX = { SUNDAY: 0, MONDAY: 1, TUESDAY: 2, WEDNESDAY: 3, THURSDAY: 4, FRIDAY: 5, SATURDAY: 6 };
+function upcomingOccurrenceInstant(viewingDay) {
+  const target = WD_INDEX[viewingDay];
+  if (target === undefined) return null;
+  return upcomingWeekdayNoonUtc(target);
+}
 const {
   generateSpecialsPage,
   getEasternDay: importedGetEasternDay,
@@ -1057,9 +1068,10 @@ async function handleSpecials(req, res, prisma, parsedUrl, location) {
   let bartenderFlightState = { items: [], item: null, error: null };
 
   if (prisma) {
-    // Overrides apply only on the actual current Eastern date — browsing a
-    // different day with ?day= shows the regular recurring lineup.
-    const atDate = viewingDay === todayDay ? getEasternDay().date : null;
+    // Match overrides against the upcoming occurrence of the viewed day, so a
+    // dated override shows for the week leading up to it (not only on the day
+    // itself) and reverts automatically once that date passes.
+    const atDate = upcomingOccurrenceInstant(viewingDay);
     const loaded = await loadLocationSpecials(prisma, loc, viewingDay, warnings, atDate);
     theme = loaded.theme;
     specials = loaded.activeSpecials;

@@ -84,4 +84,15 @@ function easternDateNoonUtc(date) {
   return easternWallClockToUtc(y, m, d, 12, 0);
 }
 
-module.exports = { getEasternOffsetMinutes, easternWallClockToUtc, parseDateTimeLocal, easternParts, parseOverrideDate, easternDateNoonUtc };
+// The noon-Eastern (UTC) instant for the next occurrence of a target weekday
+// (0=Sun..6=Sat) on/after `fromDate`: returns today's date when it already is
+// that weekday, otherwise the upcoming one within 7 days. Computed in Eastern
+// calendar terms so DST never shifts the resulting day.
+function upcomingWeekdayNoonUtc(targetWeekday, fromDate = new Date()) {
+  if (typeof targetWeekday !== 'number' || targetWeekday < 0 || targetWeekday > 6) return null;
+  const { y, m, d, weekday } = easternParts(fromDate);
+  const delta = (targetWeekday - weekday + 7) % 7;
+  return easternWallClockToUtc(y, m, d + delta, 12, 0);
+}
+
+module.exports = { getEasternOffsetMinutes, easternWallClockToUtc, parseDateTimeLocal, easternParts, parseOverrideDate, easternDateNoonUtc, upcomingWeekdayNoonUtc };

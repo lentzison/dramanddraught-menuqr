@@ -1846,6 +1846,92 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
           + '</div>';
       }
 
+      // A small "?" with a hover/tap explanation, so jargon is always one tap away.
+      function helpTip(text) {
+        return '<span class="a-tip" tabindex="0" role="note" aria-label="' + esc(text) + '" data-tip="' + esc(text) + '">?</span>';
+      }
+
+      // A headline metric card: big number, optional vs-previous arrow, a plain
+      // "what it means" line, and an optional "?" definition.
+      function kpiCard(label, value, pct, meaning, help) {
+        const arrow = (pct !== undefined && pct !== null) ? '<div style="margin-top:3px;">' + changeArrow(pct) + '</div>' : '';
+        return '<div class="a-kpi">'
+          + '<div class="a-kpi-label">' + esc(label) + (help ? ' ' + helpTip(help) : '') + '</div>'
+          + '<div class="a-kpi-value">' + esc(String(value)) + '</div>'
+          + arrow
+          + (meaning ? '<div class="a-kpi-meaning">' + esc(meaning) + '</div>' : '')
+          + '</div>';
+      }
+
+      // ── Plain-English takeaways + actions, computed from the metrics above ──
+      // Returns a prioritized list of { tone, text }. tone drives the color.
+      function buildInsights() {
+        const out = [];
+        const multiLoc = !scopedFilterSlug && locationsSorted.length > 1;
+
+        // Overall trend
+        if (totalSessions > 0) {
+          const c = pctChange(totalSessions, prevTotal);
+          const dir = c > 0 ? `up ${c}%` : (c < 0 ? `down ${Math.abs(c)}%` : 'flat');
+          out.push({ tone: c >= 0 ? 'good' : 'warn', text: `${totalSessions} total visits this period — ${dir} vs the previous period.` });
+        }
+
+        // Marketing: top tagged source + its trend
+        const topTagged = sourcesSorted.find(([k]) => k !== 'organic');
+        if (topTagged) {
+          const [name, count] = topTagged;
+          const prev = prevSourceCounts[name] || 0;
+          const c = pctChange(count, prev);
+          const trend = prev === 0 ? 'new this period' : (c > 0 ? `up ${c}%` : (c < 0 ? `down ${Math.abs(c)}%` : 'flat'));
+          out.push({ tone: 'good', text: `“${name}” is your top tagged source — ${count} visit${count === 1 ? '' : 's'} (${trend}).` });
+        }
+
+        // Marketing: tagged coverage
+        if (totalSessions >= 15) {
+          if (taggedRate < 25) {
+            out.push({ tone: 'warn', text: `Only ${taggedRate}% of visits come from tagged links — add ?src= tags to your social posts and QR codes (use the Trackable Links tool on the Marketing tab) so you can see what's working.` });
+          } else {
+            out.push({ tone: 'good', text: `${taggedRate}% of visits came from your tagged links and QR codes — good tracking coverage.` });
+          }
+        }
+
+        // Retention
+        if (uniqueVisitors > 0) {
+          const c = pctChange(returnRate, prevReturnRate);
+          const trend = prevReturnRate === 0 ? '' : (c > 0 ? `, up ${c}%` : (c < 0 ? `, down ${Math.abs(c)}%` : ''));
+          out.push({ tone: returnRate >= 25 ? 'good' : 'info', text: `${returnRate}% of visitors are returning${trend} — ${returningVisitors} repeat visitor${returningVisitors === 1 ? '' : 's'}.` });
+        }
+        const newCaptures = (newsletterOptIns || 0) + (giftCardEntries || 0);
+        if (newCaptures > 0) {
+          out.push({ tone: 'good', text: `Captured ${newsletterOptIns || 0} newsletter opt-in${(newsletterOptIns || 0) === 1 ? '' : 's'} and ${giftCardEntries || 0} gift-card entr${(giftCardEntries || 0) === 1 ? 'y' : 'ies'} — growing your known-guest list.` });
+        }
+
+        // Locations
+        if (multiLoc && strongReturningLocations.length > 0) {
+          const best = strongReturningLocations[0];
+          out.push({ tone: 'good', text: `Best return rate: ${best.name} at ${best.returnRate}%.` });
+        }
+        if (multiLoc && lowTaggedLocations.length > 0) {
+          const lt = lowTaggedLocations[0];
+          out.push({ tone: 'warn', text: `${lt.name} gets traffic but only ${lt.taggedRate}% is tagged — tag its QR codes and printed links to see where its guests come from.` });
+        }
+
+        // Content / events
+        if (eventInterestRows.length > 0) {
+          const ev = eventInterestRows[0];
+          if (ev.signups > 0) {
+            out.push({ tone: 'good', text: `Top event “${ev.event}” drew ${ev.views} view${ev.views === 1 ? '' : 's'} and ${ev.signups} signup${ev.signups === 1 ? '' : 's'} (${ev.conversionRate}% of viewers).` });
+          } else if (ev.views > 0) {
+            out.push({ tone: 'info', text: `“${ev.event}” is your most-viewed event (${ev.views} views) but has no signups yet — make the signup button clearer or add a reason to sign up.` });
+          }
+        }
+
+        if (out.length === 0) {
+          out.push({ tone: 'info', text: 'Not enough traffic yet to surface trends. As visits add up, this box will call out what changed and what to do about it.' });
+        }
+        return out.slice(0, 6);
+      }
+
       // ── Filter controls ──
       const locationOptions = locations.map(l => '<option value="' + esc(l.slug) + '"' + (filterSlug === l.slug ? ' selected' : '') + '>' + esc(l.name) + '</option>').join('');
       const rangeChoices = [['today', 'Today'], ['7d', 'Last 7 Days'], ['30d', 'Last 30 Days'], ['custom', 'Custom Range']];
@@ -2147,39 +2233,44 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
           </p>
         </div>`;
 
-      const deeperAnalyticsSection = `
-        <div class="a-grid-2">
-          <div class="a-card" style="overflow-x:auto;">
-            <h3 class="a-heading">QR and Campaign Performance</h3>
-            <table class="a-table">
-              <thead><tr><th>#</th><th>Campaign</th><th>Sessions</th><th>Visitors</th><th>Returning</th><th>Locations</th><th>Pages</th></tr></thead>
-              <tbody>${campaignTableRows}</tbody>
-            </table>
-          </div>
-          <div class="a-card" style="overflow-x:auto;">
-            <h3 class="a-heading">Known Repeat Guests</h3>
-            <table class="a-table">
-              <thead><tr><th>#</th><th>Guest</th><th>Range</th><th>Total</th><th>Devices</th><th>Locations</th><th>Feedback</th><th>Events</th><th>Last Seen</th></tr></thead>
-              <tbody>${knownGuestTableRows}</tbody>
-            </table>
-          </div>
-        </div>
-        <div class="a-grid-2">
-          <div class="a-card" style="overflow-x:auto;">
-            <h3 class="a-heading">Event Impact</h3>
-            <table class="a-table">
-              <thead><tr><th>#</th><th>Event</th><th>Views</th><th>Visitors</th><th>Signups</th><th>Rate</th></tr></thead>
-              <tbody>${eventInterestTableRows}</tbody>
-            </table>
-          </div>
-          <div class="a-card" style="overflow-x:auto;">
-            <h3 class="a-heading">Known High-Intent Guests</h3>
-            <table class="a-table">
-              <thead><tr><th>#</th><th>Guest</th><th>Sessions</th><th>Pages</th><th>Time</th><th>Locations</th><th>Score</th></tr></thead>
-              <tbody>${highIntentTableRows}</tbody>
-            </table>
-            ${anonymousIntentSection}
-          </div>
+      // Individual cards from the former "deeper analytics" bundle, so each can
+      // live under the tab where it belongs (Marketing / Guests / Content).
+      const campaignCard = `
+        <div class="a-card" style="overflow-x:auto;">
+          <h3 class="a-heading">QR &amp; campaign performance ${helpTip('Each tagged link or QR code you created, and how much traffic + how many returning guests it brought. Untagged walk-ups show as "organic."')}</h3>
+          <p class="a-sub">Which links and QR codes are actually pulling people in.</p>
+          <table class="a-table">
+            <thead><tr><th>#</th><th>Campaign</th><th>Visits</th><th>Visitors</th><th>Returning</th><th>Locations</th><th>Pages</th></tr></thead>
+            <tbody>${campaignTableRows}</tbody>
+          </table>
+        </div>`;
+      const knownGuestsCard = `
+        <div class="a-card" style="overflow-x:auto;">
+          <h3 class="a-heading">Known repeat guests ${helpTip('Guests who gave an email (via feedback, gift-card, newsletter, or an event form) and came back. Emails are masked for privacy.')}</h3>
+          <p class="a-sub">Real people coming back — your most valuable audience.</p>
+          <table class="a-table">
+            <thead><tr><th>#</th><th>Guest</th><th>Range</th><th>Total</th><th>Devices</th><th>Locations</th><th>Feedback</th><th>Events</th><th>Last Seen</th></tr></thead>
+            <tbody>${knownGuestTableRows}</tbody>
+          </table>
+        </div>`;
+      const eventImpactCard = `
+        <div class="a-card" style="overflow-x:auto;">
+          <h3 class="a-heading">Event impact ${helpTip('How many people viewed each event page and how many of them signed up. "Rate" is signups ÷ unique visitors.')}</h3>
+          <p class="a-sub">Which events drew interest and turned views into signups.</p>
+          <table class="a-table">
+            <thead><tr><th>#</th><th>Event</th><th>Views</th><th>Visitors</th><th>Signups</th><th>Rate</th></tr></thead>
+            <tbody>${eventInterestTableRows}</tbody>
+          </table>
+        </div>`;
+      const highIntentCard = `
+        <div class="a-card" style="overflow-x:auto;">
+          <h3 class="a-heading">Known high-intent guests ${helpTip('Known guests showing strong interest — multiple visits, lots of pages, or long time on site. Good people to follow up with.')}</h3>
+          <p class="a-sub">Engaged, identifiable guests worth a personal follow-up.</p>
+          <table class="a-table">
+            <thead><tr><th>#</th><th>Guest</th><th>Visits</th><th>Pages</th><th>Time</th><th>Locations</th><th>Score</th></tr></thead>
+            <tbody>${highIntentTableRows}</tbody>
+          </table>
+          ${anonymousIntentSection}
         </div>`;
 
       // ── Content engagement funnel ──
@@ -2467,6 +2558,31 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
         </details>`;
 
       // ── Assemble page ──
+      // ── Overview: insight strip, headline KPIs, tab nav ──
+      const rangeLabelMap = { today: 'Today', '7d': 'Last 7 days', '30d': 'Last 30 days', custom: 'Selected range' };
+      const rangeLabel = rangeLabelMap[filterRange] || 'This period';
+      const insightItems = buildInsights();
+      const insightStrip = `
+        <div class="a-insight-strip">
+          <div class="a-insight-head">${esc(rangeLabel)} — what to know</div>
+          <ul class="a-insight-list">
+            ${insightItems.map(it => `<li class="a-ins a-ins-${it.tone === 'good' || it.tone === 'warn' ? it.tone : 'info'}">${esc(it.text)}</li>`).join('')}
+          </ul>
+        </div>`;
+      const headlineKpis = [
+        kpiCard('Visits', totalSessions, pctChange(totalSessions, prevTotal), 'Times your pages were opened', 'A visit (session) is one person browsing in a sitting. The same person returning later counts again.'),
+        kpiCard('Unique visitors', uniqueVisitors, pctChange(uniqueVisitors, prevUnique), 'Distinct people (by device)', 'Counts each device once in this range, no matter how many times it came back.'),
+        kpiCard('Return rate', returnRate + '%', pctChange(returnRate, prevReturnRate), 'Share who had visited before', 'Of your unique visitors, the share that had also visited before this range. Higher means more loyalty.'),
+        kpiCard('New guests', newVisitors, undefined, 'First-time visitors', 'Unique visitors with no earlier visit on record.'),
+        kpiCard('From your links', taggedRate + '%', undefined, 'Visits from tagged links/QR', 'Share of visits that arrived through a link or QR code you tagged with ?src=. The rest are walk-ups (organic).'),
+        kpiCard('Avg. time', fmtDur(avgDuration), pctChange(avgDuration, prevAvgDur), 'Typical time per visit', 'Average session length across visits we could measure.'),
+      ].join('');
+      const tabsNav = `
+        <div class="a-tabs" role="tablist" aria-label="Analytics sections">
+          ${[['overview', 'Overview'], ['traffic', 'Traffic'], ['marketing', 'Marketing'], ['guests', 'Guests'], ['engagement', 'Content'], ['details', 'Details']]
+            .map(([id, label], i) => `<button type="button" class="a-tab${i === 0 ? ' is-active' : ''}" data-tab-btn="${id}" role="tab">${label}</button>`).join('')}
+        </div>`;
+
       const content = `
         <style>
           .a-stat { background:#1a1a1d;border:1px solid #2a2a2a;border-radius:12px;padding:14px 10px;text-align:center;min-width:0; }
@@ -2506,68 +2622,138 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
             .anonymous-summary { grid-template-columns:1fr; }
             .tl-grid { grid-template-columns:1fr !important; }
           }
+          /* ── Redesign: tabs, KPIs, tooltips, insight strip ── */
+          .a-sub { color:#9ca3af;font-size:0.8rem;margin:-6px 0 12px;line-height:1.4; }
+          .a-tabs { display:flex;flex-wrap:wrap;gap:4px;border-bottom:1px solid #2a2a2a;margin-bottom:22px; }
+          .a-tab { background:none;border:none;border-bottom:2px solid transparent;color:#9ca3af;padding:10px 15px;font-size:0.92rem;font-weight:700;cursor:pointer;border-radius:6px 6px 0 0; }
+          .a-tab:hover { color:#e5e7eb;background:rgba(255,255,255,0.03); }
+          .a-tab.is-active { color:#d4af37;border-bottom-color:#d4af37; }
+          .tab-panel { display:none; }
+          .tab-panel.is-active { display:block; }
+          .tab-intro { color:#9ca3af;font-size:0.9rem;margin:0 0 18px;line-height:1.5;max-width:760px; }
+          .a-kpi-row { display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:22px; }
+          .a-kpi { background:#1a1a1d;border:1px solid #2a2a2a;border-radius:12px;padding:14px 13px; }
+          .a-kpi-label { font-size:0.72rem;color:#9ca3af;text-transform:uppercase;letter-spacing:0.06em;font-weight:700;display:flex;align-items:center;gap:5px; }
+          .a-kpi-value { font-size:1.7rem;font-weight:800;color:#d4af37;margin-top:6px;line-height:1; }
+          .a-kpi-meaning { font-size:0.74rem;color:#8b949e;margin-top:7px;line-height:1.35; }
+          .a-tip { display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;background:#2a2a2a;color:#cbd5e1;font-size:0.66rem;font-weight:700;cursor:help;position:relative;flex-shrink:0;font-family:inherit; }
+          .a-tip:hover, .a-tip:focus { background:#d4af37;color:#17110a;outline:none; }
+          .a-tip::after { content:attr(data-tip);position:absolute;bottom:135%;left:50%;transform:translateX(-50%);width:240px;max-width:62vw;background:#0d0d0f;border:1px solid #3a3a3a;color:#e5e7eb;font-size:0.76rem;font-weight:400;line-height:1.45;text-transform:none;letter-spacing:0;padding:9px 11px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.55);opacity:0;pointer-events:none;transition:opacity .12s;z-index:60; }
+          .a-tip:hover::after, .a-tip:focus::after { opacity:1; }
+          .a-insight-strip { background:#101114;border:1px solid #283244;border-radius:12px;padding:16px 18px;margin-bottom:22px; }
+          .a-insight-head { color:#93c5fd;font-size:0.78rem;letter-spacing:0.1em;text-transform:uppercase;font-weight:800;margin-bottom:12px; }
+          .a-insight-list { list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px; }
+          .a-ins { padding:10px 12px;border-radius:8px;font-size:0.86rem;line-height:1.45;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);color:#d1d5db;border-left-width:3px;border-left-style:solid; }
+          .a-ins-good { border-left-color:#4ade80; }
+          .a-ins-warn { border-left-color:#fbbf24;background:rgba(251,191,36,0.06); }
+          .a-ins-info { border-left-color:#60a5fa; }
+          @media(max-width:768px) {
+            .a-insight-list { grid-template-columns:1fr; }
+            .a-kpi-row { grid-template-columns:repeat(2,1fr); }
+            .a-tab { padding:9px 11px;font-size:0.86rem; }
+          }
         </style>
         <div class="page-header">
           <div>
             <div class="admin-kicker">QR traffic</div>
             <h1>Analytics</h1>
-            <p class="page-subtitle">Track visits, QR scans, source-tagged links, location performance, and recent sessions.</p>
+            <p class="page-subtitle">See if your marketing is working, whether guests come back, which locations win, and what content lands — in plain English.</p>
           </div>
         </div>
         ${filterForm}
         ${liveBanner}
+        ${tabsNav}
 
-        <div class="a-grid-stats">
-          ${statCard('Sessions', totalSessions, pctChange(totalSessions, prevTotal))}
-          ${statCard('Unique Visitors', uniqueVisitors, pctChange(uniqueVisitors, prevUnique))}
-          ${statCard('Avg Duration', fmtDur(avgDuration), pctChange(avgDuration, prevAvgDur))}
-          ${statCard('Pages / Session', avgPages, pctChange(avgPages, prevAvgPages))}
-          ${statCard('Tagged Sharing', taggedSessions, pctChange(taggedSessions, prevTaggedSessions))}
-          ${statCard('Organic / Direct', organicSessions, pctChange(organicSessions, prevOrganicSessions))}
-          ${statCard('Returning Visitors', returningVisitors)}
-          ${statCard('Return Rate', returnRate + '%', pctChange(returnRate, prevReturnRate))}
-        </div>
-
-        <div class="a-grid-2">
+        <div class="tab-panel is-active" data-tab="overview" role="tabpanel">
+          ${insightStrip}
+          <div class="a-kpi-row">${headlineKpis}</div>
           ${sparkChart}
-          ${heatmapChart}
         </div>
 
-        ${marketingSection}
-        ${conversionSection}
-        ${deeperAnalyticsSection}
-        ${locationSection}
-        ${funnelSection}
-
-        <div class="a-grid-2">
-          <div class="a-card">
-            <h3 class="a-heading">Top Entry Pages</h3>
-            ${entryPagesChart || '<p style="color:#666;font-size:0.85rem;">No data</p>'}
+        <div class="tab-panel" data-tab="traffic" role="tabpanel">
+          <p class="tab-intro">Where your visits come from and when they happen, so you can time posts, staffing, and promos.</p>
+          <div style="margin-bottom:20px;">${heatmapChart}</div>
+          ${locationSection}
+          <div class="a-grid-2">
+            <div class="a-card">
+              <h3 class="a-heading">Top entry pages ${helpTip('The first page each visit landed on. Tells you what your QR codes and links actually point people to.')}</h3>
+              ${entryPagesChart || '<p style="color:#666;font-size:0.85rem;">No data</p>'}
+            </div>
+            <div class="a-card">
+              <h3 class="a-heading">Traffic sources ${helpTip('Where visits came from. "Organic" means a walk-up QR scan or a direct type-in with no tag attached.')}</h3>
+              ${sourceSection}
+              ${nvrSection}
+            </div>
           </div>
-          <div class="a-card">
-            <h3 class="a-heading">Traffic Sources</h3>
+        </div>
+
+        <div class="tab-panel" data-tab="marketing" role="tabpanel">
+          <p class="tab-intro">How your links, QR codes, and campaigns are pulling people in — and where to tighten tracking.</p>
+          ${marketingSection}
+          <div style="margin-bottom:20px;">${campaignCard}</div>
+          <div class="a-card" style="margin-bottom:20px;">
+            <h3 class="a-heading">Traffic sources ${helpTip('Share of visits from each tagged source vs untagged walk-ups (organic).')}</h3>
             ${sourceSection}
+          </div>
+          ${linkBuilderSection}
+        </div>
+
+        <div class="tab-panel" data-tab="guests" role="tabpanel">
+          <p class="tab-intro">New vs returning guests, who keeps coming back, and how well you turn visitors into known guests.</p>
+          ${conversionSection}
+          <div class="a-card" style="margin-bottom:20px;">
+            <h3 class="a-heading">New vs returning ${helpTip('Split of unique visitors who are first-timers vs people who had visited before this range.')}</h3>
             ${nvrSection}
           </div>
+          <div style="margin-bottom:20px;">${knownGuestsCard}</div>
+          ${highIntentCard}
         </div>
 
-        ${linkBuilderSection}
-
-        <div class="a-card" style="margin-top:24px;overflow-x:auto;">
-          <h3 class="a-heading">Recent Sessions</h3>
-          <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
-            <thead><tr style="color:#888;text-align:left;border-bottom:1px solid #2a2a2a;">
-              <th style="padding:6px;">Time</th><th style="padding:6px;">Location</th><th style="padding:6px;">Device</th>
-              <th style="padding:6px;">Source</th><th style="padding:6px;">Entry Page</th>
-              <th style="padding:6px;">Pages</th><th style="padding:6px;">Duration</th>
-            </tr></thead>
-            <tbody style="color:#ccc;">${recentRows || '<tr><td colspan="7" style="padding:12px;color:#666;">No sessions yet</td></tr>'}</tbody>
-          </table>
+        <div class="tab-panel" data-tab="engagement" role="tabpanel">
+          <p class="tab-intro">What content earns attention and turns views into action.</p>
+          <div style="margin-bottom:20px;">${funnelSection}</div>
+          ${eventImpactCard}
         </div>
 
-        ${techSection}
+        <div class="tab-panel" data-tab="details" role="tabpanel">
+          <p class="tab-intro">Devices, browsers, and the raw session log — for digging into specifics or exporting.</p>
+          ${techSection}
+          <div class="a-card" style="margin-top:24px;overflow-x:auto;">
+            <h3 class="a-heading">Recent sessions ${helpTip('The latest individual visits — device, source, entry page, pages viewed, and time on site.')}</h3>
+            <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+              <thead><tr style="color:#888;text-align:left;border-bottom:1px solid #2a2a2a;">
+                <th style="padding:6px;">Time</th><th style="padding:6px;">Location</th><th style="padding:6px;">Device</th>
+                <th style="padding:6px;">Source</th><th style="padding:6px;">Entry Page</th>
+                <th style="padding:6px;">Pages</th><th style="padding:6px;">Duration</th>
+              </tr></thead>
+              <tbody style="color:#ccc;">${recentRows || '<tr><td colspan="7" style="padding:12px;color:#666;">No sessions yet</td></tr>'}</tbody>
+            </table>
+          </div>
+        </div>
 
         <script>
+          (function() {
+            var btns = document.querySelectorAll('.a-tab');
+            var panels = document.querySelectorAll('.tab-panel');
+            function activate(id) {
+              var matched = false;
+              panels.forEach(function(p) { var on = p.getAttribute('data-tab') === id; p.classList.toggle('is-active', on); if (on) matched = true; });
+              if (!matched) { id = 'overview'; panels.forEach(function(p) { p.classList.toggle('is-active', p.getAttribute('data-tab') === id); }); }
+              btns.forEach(function(b) { b.classList.toggle('is-active', b.getAttribute('data-tab-btn') === id); });
+              try { localStorage.setItem('analyticsTab', id); } catch (e) {}
+            }
+            btns.forEach(function(b) {
+              b.addEventListener('click', function() {
+                var id = b.getAttribute('data-tab-btn');
+                activate(id);
+                if (history.replaceState) history.replaceState(null, '', '#' + id);
+              });
+            });
+            var initial = 'overview';
+            if (location.hash && location.hash.length > 1) { initial = location.hash.slice(1); }
+            else { try { var saved = localStorage.getItem('analyticsTab'); if (saved) initial = saved; } catch (e) {} }
+            activate(initial);
+          })();
           function handleRangeChange(sel) {
             var cd = document.getElementById('custom-dates');
             if (sel.value === 'custom') { cd.style.display = 'flex'; } else { cd.style.display = 'none'; sel.form.submit(); }

@@ -72,9 +72,9 @@ async function runScreeningRetry(prisma) {
     const failedEvals = await prisma.jobApplicationAiEvaluation.findMany({
       where: {
         errorDetail: { not: null },
-        updatedAt: { gte: cutoff },
+        createdAt: { gte: cutoff },
       },
-      orderBy: { updatedAt: 'asc' },
+      orderBy: { createdAt: 'asc' },
       take: MAX_RETRIES_PER_RUN,
       include: {
         application: {

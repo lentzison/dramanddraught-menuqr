@@ -17,6 +17,11 @@
 const zlib = require('zlib');
 
 const MAX_TEXT_CHARS = 6000;
+// Hard bounds so a hostile or malformed resume can never burn unbounded CPU on
+// the single-threaded event loop (a stuck extraction once froze the whole site):
+const MAX_PDF_CONTENT_CHARS = 1_500_000; // per decompressed stream fed to the regexes
+const MAX_STREAMS = 400;                 // PDF content streams scanned per file
+const MAX_RESUME_BYTES = 20 * 1024 * 1024;
 
 function printableRatio(s) {
   if (!s || !s.length) return 0;
@@ -47,9 +52,18 @@ function decodePdfString(s) {
 // Pull text-showing operator arguments out of a decompressed PDF content
 // stream: "(...)Tj", "(...)'" and "[(..) -120 (..)]TJ".
 function scrapePdfOperators(content) {
+  // Bound the regex input: catastrophic backtracking only bites on large inputs,
+  // and a resume never needs more than a fraction of this much text.
+  if (content.length > MAX_PDF_CONTENT_CHARS) content = content.slice(0, MAX_PDF_CONTENT_CHARS);
   const parts = [];
-  // TJ arrays — strings interleaved with kerning numbers.
-  const tjArrayRe = /\[((?:\((?:\\.|[^\\()])*\)|[^\]\\]|\\.)*)\]\s*TJ/g;
+  let total = 0;
+  // TJ arrays — strings interleaved with kerning numbers. The bare-character
+  // class excludes "(" and ")" so every character belongs to exactly ONE branch
+  // of the alternation. Previously it was `[^\]\\]`, which also matched "(",
+  // letting both the "(...)" branch and the bare branch start on "(" — an
+  // ambiguity that backtracks exponentially (ReDoS) on a malformed stream and
+  // pinned a CPU core, freezing the whole site.
+  const tjArrayRe = /\[((?:\((?:\\.|[^\\()])*\)|[^\]\\()]|\\.)*)\]\s*TJ/g;
   // Single-string shows.
   const tjRe = /\(((?:\\.|[^\\()])*)\)\s*(?:Tj|')/g;
   let m;
@@ -59,10 +73,14 @@ function scrapePdfOperators(content) {
     let sm;
     const segs = [];
     while ((sm = strRe.exec(inner)) !== null) segs.push(decodePdfString(sm[1]));
-    if (segs.length) parts.push(segs.join(''));
+    if (segs.length) { const s = segs.join(''); parts.push(s); total += s.length; }
+    if (total > MAX_TEXT_CHARS * 2) return parts; // already have plenty
   }
   while ((m = tjRe.exec(content)) !== null) {
-    parts.push(decodePdfString(m[1]));
+    const s = decodePdfString(m[1]);
+    parts.push(s);
+    total += s.length;
+    if (total > MAX_TEXT_CHARS * 2) return parts;
   }
   return parts;
 }
@@ -71,9 +89,12 @@ function extractPdfText(buf) {
   const raw = buf.toString('latin1');
   const parts = [];
   let idx = 0;
-  while (true) {
+  let streams = 0;
+  let acc = 0;
+  while (streams < MAX_STREAMS) {
     const start = raw.indexOf('stream', idx);
     if (start === -1) break;
+    streams++;
     // Stream data begins after "stream" + EOL.
     let dataStart = start + 'stream'.length;
     if (raw[dataStart] === '\r') dataStart++;
@@ -93,7 +114,8 @@ function extractPdfText(buf) {
     }
     if (!content || !/(Tj|TJ)/.test(content)) continue;
     const scraped = scrapePdfOperators(content).join(' ');
-    if (scraped && printableRatio(scraped) > 0.7) parts.push(scraped);
+    if (scraped && printableRatio(scraped) > 0.7) { parts.push(scraped); acc += scraped.length; }
+    if (acc >= MAX_TEXT_CHARS) break; // enough text — stop scanning further streams
   }
   const text = cleanWhitespace(parts.join('\n'));
   return text.length >= 40 ? text : null;
@@ -147,6 +169,7 @@ function extractResumeText(application) {
     if (!m) return null;
     const mime = m[1].toLowerCase();
     const buf = Buffer.from(m[2], 'base64');
+    if (buf.length > MAX_RESUME_BYTES) return null; // implausibly large — don't risk the parse
     const fileName = String(application.resumeFileName || '').toLowerCase();
 
     let text = null;
@@ -166,4 +189,4 @@ function extractResumeText(application) {
   }
 }
 
-module.exports = { extractResumeText, extractPdfText, extractDocxText };
+module.exports = { extractResumeText, extractPdfText, extractDocxText, scrapePdfOperators };

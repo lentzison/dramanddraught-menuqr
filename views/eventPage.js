@@ -619,7 +619,7 @@ function renderCustomFields(event, prevValues = {}) {
 }
 
 function generateEventPage(location, event, signupCount, options = {}) {
-  const { prevValues = {}, errorMessage = '' } = options;
+  const { prevValues = {}, errorMessage = '', resignup = null } = options;
   const status = eventStatus(event, signupCount);
   const canSignup = status.key === 'open';
   const publicPath = `/${location.slug}/events/${event.slug}`;
@@ -756,10 +756,36 @@ function generateEventPage(location, event, signupCount, options = {}) {
     </a>
   ` : '';
 
+  // Returning-signup ("one-tap I'm interested") mode: the visitor arrived from a
+  // series re-invite link and we've already added them back to the new date.
+  // Show a confirmation + a prefilled form so they can optionally update photos
+  // / what they're bringing. Takes precedence over the normal signup/ticket card.
+  const resignupDate = event.startDate
+    ? `${formatEventDate(event.startDate)} · ${formatEventTime(event.startDate)}`
+    : 'the new date';
+  const resignupCard = resignup ? `
+    <aside class="ev-side-card" id="apply">
+      <div style="background:rgba(212,175,55,0.12);border:1px solid rgba(212,175,55,0.4);border-radius:10px;padding:13px 15px;margin-bottom:14px;">
+        <strong style="display:block;color:#d4af37;margin-bottom:5px;">You're on the list for ${escHTML(resignupDate)}!</strong>
+        <span style="font-size:0.9rem;line-height:1.45;">We'll review and let you know. Got new photos or new things to bring this time? Update below and re-save — it's optional.</span>
+      </div>
+      <form method="POST" action="${escHTML(publicPath)}/signup" class="ev-form">
+        <input type="hidden" name="resignupToken" value="${escHTML(resignup.token || '')}" />
+        ${errorMessage ? `<div class="ev-error">${escHTML(errorMessage)}</div>` : ''}
+        ${signupFieldsHtml}
+        <button type="submit" class="ev-submit-btn">Update my submission</button>
+      </form>
+      <div class="ev-side-actions">
+        <a href="${escHTML(eventsPath)}" class="ev-side-link">Browse all events</a>
+        <a href="/${escHTML(location.slug)}" class="ev-side-link ev-side-link-muted">Back to ${escHTML(location.name)}</a>
+      </div>
+    </aside>
+  ` : '';
+
   // When a ticket URL is set, tickets are the primary CTA and the in-page
   // signup form is hidden — showing both made visitors unsure whether to
   // buy on Eventbrite or fill in the form here.
-  const sideCard = ticketUrl ? `
+  const sideCard = resignup ? resignupCard : ticketUrl ? `
     <aside class="ev-side-card" id="apply">
       ${ticketCta}
       <div class="ev-side-actions">

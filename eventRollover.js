@@ -103,23 +103,35 @@ async function ensureUnsubToken(prisma, signup) {
   return token;
 }
 
-function inviteBody({ event, occurrence, firstName, eventUrl, unsubscribeUrl }) {
+function inviteBody({ event, occurrence, firstName, eventUrl, resignupUrl, unsubscribeUrl, signupType }) {
   const when = formatEastern(occurrence.startDate);
   const locName = event.location?.name || 'Dram & Draught';
+  // Vendor / participant events are application-style ("we'll let you know"),
+  // so the invite is a one-tap "I'm interested" rather than "grab your spot".
+  const isApply = signupType === 'vendor' || signupType === 'participant';
   const lines = [
     `Hi ${firstName || 'there'},`,
     '',
-    `${event.title} is happening again — and we'd love to have you back.`,
+    `${event.title} is happening again on a new date — and we'd love to have you back.`,
     '',
     `When: ${when} (Eastern)`,
     `Where: ${locName}`,
     '',
-    `Signups for this date are now open. Grab your spot here:`,
-    eventUrl,
-    '',
-    "Hope to see you there.",
-    '— Dram & Draught',
   ];
+  if (isApply) {
+    lines.push(
+      `Interested in taking part again? Just tap below — we'll add you back to the list and let you know:`,
+      resignupUrl || eventUrl,
+      '',
+      `Got new photos or new things to show this time? You can add them to your submission right after you tap.`,
+    );
+  } else {
+    lines.push(
+      `Signups for this date are now open. Grab your spot here:`,
+      eventUrl,
+    );
+  }
+  lines.push('', 'Hope to see you there.', '— Dram & Draught');
   if (unsubscribeUrl) {
     lines.push('', `Don't want these invites for this event? Opt out: ${unsubscribeUrl}`);
   }
@@ -131,6 +143,8 @@ async function sendSeriesInvites(prisma, event, occurrence) {
   const recipients = await seriesRecipients(prisma, event.id);
   if (!recipients.length) return 0;
   const eventUrl = `${BASE_URL}/${event.location.slug}/events/${event.slug}`;
+  const { effectiveSignupType } = require('./eventSignupTypes');
+  const signupType = effectiveSignupType(event);
 
   let sent = 0;
   for (const r of recipients) {
@@ -138,12 +152,17 @@ async function sendSeriesInvites(prisma, event, occurrence) {
     const unsubscribeUrl = token
       ? `${BASE_URL}/api/public/events/series-unsubscribe?token=${encodeURIComponent(token)}`
       : null;
+    // One-tap "I'm interested" link — carries the signup's token so the public
+    // resignup route can re-add them to the new date using their prior info.
+    const resignupUrl = token
+      ? `${BASE_URL}/${event.location.slug}/events/${event.slug}/resignup?token=${encodeURIComponent(token)}`
+      : null;
     const firstName = (r.name || '').split(/\s+/)[0] || '';
     try {
       await sendEmailViaGoogle({
         to: [r.email],
         subject: `We're doing it again: ${event.title}`,
-        body: inviteBody({ event, occurrence, firstName, eventUrl, unsubscribeUrl }),
+        body: inviteBody({ event, occurrence, firstName, eventUrl, resignupUrl, unsubscribeUrl, signupType }),
       });
       sent++;
     } catch (err) {
@@ -180,7 +199,12 @@ async function rolloverEvent(prisma, event, { trigger = 'auto', manualDate = nul
         currentOccurrenceId: next.id,
         startDate: next.startDate,
         endDate: next.endDate,
-        // Keep the event publicly visible / accepting signups for the new date.
+        // Reopen signups for the new date — a recurring event commonly has
+        // signups turned off once a date passes/fills, and each new occurrence
+        // should start accepting them again (the series invite below tells past
+        // signups it's open).
+        signupsEnabled: true,
+        // Keep the event publicly visible for the new date.
         promoteUntil: next.endDate || next.startDate,
         promoteFrom: null,
       },

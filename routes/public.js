@@ -2113,6 +2113,84 @@ async function handleQuestionnaire(req, res, prisma, applicationId) {
   return true;
 }
 
+// One-tap re-signup from a series re-invite email. The token is the past
+// signup's unsubscribeToken. We add the person back to the current date (a
+// pending signup for vendor/participant events, so it lands in the approval
+// queue — "we'll let you know"), then render a prefilled form so they can
+// optionally add updated photos / details before we review.
+async function handleEventResignup(req, res, prisma, locSlug, eventSlug) {
+  if (!prisma) { sendHTML(res, 500, '<h1>Service unavailable</h1>'); return true; }
+  const token = String((require('url').parse(req.url, true).query.token) || '').trim();
+  const locs = await getLocations(prisma);
+  const location = locs.find((l) => l.slug === locSlug);
+  if (!location) { await send404(req, res, prisma); return true; }
+  const event = await prisma.event.findFirst({ where: { locationId: location.id, slug: eventSlug } }).catch(() => null);
+  if (!event) { await send404(req, res, prisma); return true; }
+
+  const eventUrl = `/${location.slug}/events/${event.slug}`;
+  // Resolve the past signup from the token; if missing/invalid, just send them
+  // to the normal event page to sign up fresh.
+  const prior = token
+    ? await prisma.eventSignup.findFirst({ where: { eventId: event.id, unsubscribeToken: token } }).catch(() => null)
+    : null;
+  if (!prior) { redirect(res, eventUrl); return true; }
+
+  const occId = event.currentOccurrenceId || null;
+  const occWhere = occId ? { occurrenceId: occId } : {};
+  const { needsApproval } = require('../eventSignupTypes');
+  const requiresApproval = needsApproval(event);
+  const crypto = require('crypto');
+
+  // Already on the current date's sheet? Reuse it. Otherwise create the pending
+  // signup from their prior info — this is the "one tap" that re-adds them.
+  let live = null;
+  if (prior.email) {
+    live = await prisma.eventSignup.findFirst({
+      where: { eventId: event.id, email: { equals: prior.email, mode: 'insensitive' }, status: { not: 'rejected' }, ...occWhere },
+    }).catch(() => null);
+  }
+  if (!live) {
+    live = await prisma.eventSignup.create({
+      data: {
+        eventId: event.id,
+        occurrenceId: occId,
+        name: prior.name,
+        email: prior.email,
+        phone: prior.phone,
+        partySize: prior.partySize,
+        notes: prior.notes,
+        customAnswers: prior.customAnswers || null,
+        status: requiresApproval ? 'pending' : 'approved',
+        source: 'reinvite',
+        unsubscribeToken: crypto.randomBytes(20).toString('hex'),
+      },
+    }).catch(() => null);
+  } else if (!live.unsubscribeToken) {
+    const t = crypto.randomBytes(20).toString('hex');
+    await prisma.eventSignup.update({ where: { id: live.id }, data: { unsubscribeToken: t } }).catch(() => {});
+    live.unsubscribeToken = t;
+  }
+  if (!live) { redirect(res, eventUrl); return true; }
+
+  const signupCount = occId
+    ? await prisma.eventSignup.count({ where: { eventId: event.id, status: { notIn: ['waitlisted', 'rejected'] }, ...occWhere } }).catch(() => 0)
+    : 0;
+  const prevValues = {
+    name: live.name || '',
+    email: live.email || '',
+    phone: live.phone || '',
+    partySize: live.partySize || '',
+    notes: live.notes || '',
+    ...(live.customAnswers && typeof live.customAnswers === 'object' ? live.customAnswers : {}),
+  };
+  const sid = await trackPageView(req, res, prisma, location.slug, location.id, `${eventUrl}/resignup`, getQueryString(req));
+  sendHTML(res, 200, injectTracking(
+    generateEventPage(location, event, signupCount, { prevValues, resignup: { token: live.unsubscribeToken } }),
+    sid,
+  ));
+  return true;
+}
+
 async function runAndPersistEvaluation(prisma, application, questionnaire) {
   if (!prisma || !application || !questionnaire) return;
   let evaluation;
@@ -2619,6 +2697,14 @@ async function handlePublic(req, res, pathname, prisma) {
     return handleQuestionnaire(req, res, prisma, questionnaireMatch[1]);
   }
 
+  // One-tap "I'm interested" re-signup from a series re-invite email:
+  // GET /{slug}/events/{eventSlug}/resignup?token=... — adds the past signup
+  // back to the current date and shows a prefilled form to optionally update.
+  const resignupMatch = pathname.match(/^\/([a-z0-9-]+)\/events\/([a-z0-9-]+)\/resignup$/);
+  if (resignupMatch && req.method === 'GET') {
+    return handleEventResignup(req, res, prisma, resignupMatch[1], resignupMatch[2]);
+  }
+
   // Flights page: /{slug}/flights
   const flightsMatch = pathname.match(/^\/([a-z0-9-]+)\/flights$/);
   if (flightsMatch) {
@@ -2687,9 +2773,10 @@ async function handlePublic(req, res, pathname, prisma) {
     // A full event can still collect waitlist signups when the form opts in.
     const waitlistAllowed = status.key === 'full' && event.signupsEnabled !== false && !!event.capacity;
     const isWaitlisting = waitlistAllowed && body.joinWaitlist === '1';
-    if (status.key !== 'open' && !isWaitlisting) {
+    if (status.key !== 'open' && !isWaitlisting && !body.resignupToken) {
       // Re-render the page with the status banner (which shows the waitlist
-      // form when the event is full).
+      // form when the event is full). resignupToken updates bypass this — the
+      // person is already on the list and is only editing their submission.
       const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/events/${event.slug}`, getQueryString(req));
       sendHTML(res, 200, injectTracking(generateEventPage(location, event, signupCount), sid));
       return true;
@@ -2756,6 +2843,33 @@ async function handlePublic(req, res, pathname, prisma) {
         sid,
       ));
       return true;
+    }
+
+    // Returning vendor/participant updating their re-signup submission. The
+    // pending signup was already created when they tapped the email's one-tap
+    // link; here we just apply any photo/detail changes to it — no new signup,
+    // no capacity gate, status untouched.
+    if (body.resignupToken) {
+      const live = await prisma.eventSignup.findFirst({
+        where: { eventId: event.id, unsubscribeToken: String(body.resignupToken), ...occWhere },
+      }).catch(() => null);
+      if (live) {
+        await prisma.eventSignup.update({
+          where: { id: live.id },
+          data: {
+            name: name || live.name,
+            phone,
+            partySize,
+            notes,
+            customAnswers: Object.keys(customAnswers).length > 0 ? customAnswers : null,
+          },
+        }).catch(() => {});
+        const updated = await prisma.eventSignup.findUnique({ where: { id: live.id } }).catch(() => live);
+        const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/events/${event.slug}/signup`, getQueryString(req));
+        sendHTML(res, 200, injectTracking(generateEventConfirmationPage(location, event, updated || live), sid));
+        return true;
+      }
+      // Token didn't resolve — fall through to a normal signup.
     }
 
     // Two-step gate: if the event has any `ackOnly` sections (parking/setup/

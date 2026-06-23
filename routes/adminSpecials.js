@@ -3,8 +3,9 @@ const { requireAuth, isCompanyWide, getUserLocationSlugs, canAccessLocation } = 
 const { specialsDashboard, dayThemeEditor, bottlesList, bottleEditor, DAYS, DAY_LABELS } = require('../views/adminSpecialsViews');
 const { adminLayout } = require('../views/adminLayout');
 const { getSpiritCategories, getSpiritCatalog, getHalfPriceSpirits, getSpiritList } = require('../bartenderDb');
-const { generateSpiritPrintPage, generateSpiritListIndex, generateSpiritEditorPage } = require('../views/spiritPrintPage');
+const { generateSpiritPrintPage, generateSpiritListIndex, generateSpiritEditorPage, generateAbvSyncPage } = require('../views/spiritPrintPage');
 const { shortenName, lookupAbv } = require('../spiritAI');
+const { planAbvSync } = require('../spiritAbvSync');
 const { sendJSON } = require('../helpers');
 const { sanitizeImageSrc } = require('../views/imageUploadWidget');
 const { writeAudit } = require('../auditLog');
@@ -452,7 +453,64 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       ? { isActive: true }
       : { isActive: true, slug: { in: (userSlugs && userSlugs.length) ? userSlugs : ['__none__'] } };
     const locations = await prisma.location.findMany({ where, orderBy: { name: 'asc' }, select: { slug: true, name: true } });
-    sendHTML(res, 200, generateSpiritListIndex(locations, user));
+    sendHTML(res, 200, generateSpiritListIndex(locations, user, { canSync: userIsCompanyWide }));
+    return true;
+  }
+
+  // Cross-location ABV sync: copy ABVs from a source location (default Cary) to
+  // same-named spirits elsewhere that have none. Preview on GET, apply on POST.
+  // Company-wide only — it reads and writes across every location.
+  if (pathname === '/admin/spirit-list/sync-abv') {
+    if (!userIsCompanyWide) { redirect(res, '/admin/spirit-list'); return true; }
+    const q = require('url').parse(req.url, true).query;
+    const allLocs = await prisma.location.findMany({ where: { isActive: true }, orderBy: { name: 'asc' }, select: { slug: true, name: true } });
+    if (!allLocs.length) { redirect(res, '/admin/spirit-list'); return true; }
+    let sourceSlug = String(q.source || '').trim();
+    if (!sourceSlug || !allLocs.some((l) => l.slug === sourceSlug)) {
+      const cary = allLocs.find((l) => l.slug === 'cary' || /cary/i.test(l.name));
+      sourceSlug = cary ? cary.slug : allLocs[0].slug;
+    }
+    const source = allLocs.find((l) => l.slug === sourceSlug);
+
+    // Load a location's spirits + its menuqr-side ABV overrides.
+    const loadLoc = async (slug) => {
+      let items = [];
+      try { const loaded = await getSpiritList(slug); items = loaded.items || []; }
+      catch (err) { console.warn('abv-sync load failed:', slug, err.message); }
+      const pids = items.map((s) => String(s.productId)).filter(Boolean);
+      const rows = pids.length ? await prisma.spiritNote.findMany({ where: { productId: { in: pids } }, select: { productId: true, abv: true } }).catch(() => []) : [];
+      const overrides = {};
+      for (const r of rows) if (r.abv != null) overrides[r.productId] = r.abv;
+      return { items, overrides };
+    };
+
+    const srcData = await loadLoc(sourceSlug);
+    const targets = [];
+    for (const l of allLocs) {
+      if (l.slug === sourceSlug) continue;
+      const d = await loadLoc(l.slug);
+      targets.push({ slug: l.slug, name: l.name, items: d.items, overrides: d.overrides });
+    }
+    const plan = planAbvSync(srcData, targets);
+
+    if (req.method === 'POST') {
+      const ops = [];
+      for (const loc of plan.locations) {
+        for (const f of loc.fills) {
+          ops.push(prisma.spiritNote.upsert({
+            where: { productId: f.productId },
+            update: { abv: f.abv, spiritName: f.name || f.productId, updatedBy: user.email || null },
+            create: { productId: f.productId, spiritName: f.name || f.productId, abv: f.abv, updatedBy: user.email || null },
+          }));
+        }
+      }
+      if (ops.length) await prisma.$transaction(ops).catch((err) => console.warn('abv sync save failed:', err.message));
+      redirect(res, `/admin/spirit-list/sync-abv?source=${encodeURIComponent(sourceSlug)}&msg=${encodeURIComponent(`Filled ${ops.length} ABV${ops.length === 1 ? '' : 's'}`)}`);
+      return true;
+    }
+
+    const flashMsg = getFlashMsg(req.url);
+    sendHTML(res, 200, generateAbvSyncPage({ source, locations: allLocs, plan, sourceSlug }, user, { flashMsg }));
     return true;
   }
   if (pathname === '/admin/spirit-list/print') {

@@ -7,6 +7,7 @@
 
 const { adminLayout } = require('./adminLayout');
 const { escHTML } = require('./escapeHtml');
+const { normalizeName } = require('../spiritAbvSync');
 
 // Category display order: whiskey family first, then common spirit families,
 // everything else alphabetical at the end.
@@ -143,7 +144,7 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
 </body></html>`;
 }
 
-function generateSpiritListIndex(locations = [], user) {
+function generateSpiritListIndex(locations = [], user, opts = {}) {
   const cards = locations.length
     ? locations.map((l) => `
       <div class="sl-card">
@@ -155,12 +156,16 @@ function generateSpiritListIndex(locations = [], user) {
       </div>`).join('')
     : '<p style="color:var(--text-muted,#888);">No locations available.</p>';
 
+  const syncAction = opts.canSync
+    ? '<a class="btn btn-secondary" href="/admin/spirit-list/sync-abv">⚖︎ Sync ABVs across locations</a>'
+    : '';
+
   const content = `
     <div class="page-header"><div>
       <div class="admin-kicker">Spirits</div>
       <h1>Printable Spirit Lists</h1>
       <p class="page-subtitle">Open a location's list, then <strong>Print → Save as PDF</strong> or print on paper. It always reflects the current spirit data, so every reprint stays up to date.</p>
-    </div></div>
+    </div>${syncAction ? `<div class="page-header-actions">${syncAction}</div>` : ''}</div>
     <style>
       .sl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
       .sl-card { background: #1a1a1d; border: 1px solid #2a2a2a; border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
@@ -347,4 +352,80 @@ function generateSpiritEditorPage(location, items = [], notes = {}, user, opts =
   return adminLayout('Edit Spirit Names', content, user, { pathname: '/admin/spirit-list', flashMsg: opts.flashMsg });
 }
 
-module.exports = { generateSpiritPrintPage, generateSpiritListIndex, generateSpiritEditorPage };
+// ── Cross-location ABV sync: preview + apply ──
+// Shows what would be filled (per target location) when copying ABVs from a
+// source location to same-named spirits that are currently missing one.
+function generateAbvSyncPage(data, user, opts = {}) {
+  const { source, locations = [], plan, sourceSlug } = data;
+  const fmt = (n) => (n % 1 === 0 ? String(n) : Number(n).toFixed(1));
+
+  const sourceOptions = locations.map((l) =>
+    `<option value="${escHTML(l.slug)}"${l.slug === sourceSlug ? ' selected' : ''}>${escHTML(l.name)}</option>`).join('');
+
+  const conflictNote = (plan.sourceConflicts && plan.sourceConflicts.length)
+    ? `<div class="sync-warn">⚠︎ ${plan.sourceConflicts.length} spirit name${plan.sourceConflicts.length === 1 ? '' : 's'} at ${escHTML(source.name)} appear more than once with different ABVs — the first value is used. Review: ${escHTML(plan.sourceConflicts.map((c) => `${c.name} (${fmt(c.abv)} vs ${fmt(c.otherAbv)})`).join('; '))}</div>`
+    : '';
+
+  const locSections = plan.locations.map((loc) => {
+    const fillRows = loc.fills.map((f) => {
+      const via = normalizeName(f.name) === normalizeName(f.sourceName)
+        ? '' : ` <span class="sync-via">(matched “${escHTML(f.sourceName)}”)</span>`;
+      return `<tr><td>${escHTML(f.name)}${via}</td><td class="sync-abv">${escHTML(fmt(f.abv))}% ABV</td></tr>`;
+    }).join('');
+    const unmatchedList = loc.unmatched.length
+      ? `<details class="sync-unmatched"><summary>${loc.unmatched.length} blank, no name match (left as-is)</summary><div>${loc.unmatched.map((u) => escHTML(u.name)).join(' · ')}</div></details>`
+      : '';
+    return `<section class="sync-loc">
+      <h2>${escHTML(loc.name)} <span class="sync-count">${loc.fills.length} to fill · ${loc.alreadySet} already set · ${loc.unmatched.length} unmatched</span></h2>
+      ${loc.fills.length ? `<table class="sync-table"><thead><tr><th>Spirit (this location)</th><th>ABV to set</th></tr></thead><tbody>${fillRows}</tbody></table>` : '<p class="sync-none">Nothing to fill here.</p>'}
+      ${unmatchedList}
+    </section>`;
+  }).join('');
+
+  const content = `
+    <div class="page-header"><div>
+      <div class="admin-kicker"><a href="/admin/spirit-list" style="color:inherit;">Spirits</a> › Sync ABVs</div>
+      <h1>Sync ABVs Across Locations</h1>
+      <p class="page-subtitle">Copies ABVs from a source location to same-named spirits elsewhere that are <strong>missing</strong> one. Existing ABVs are never changed. Matches by name (case/spacing/punctuation insensitive). Review below, then apply.</p>
+    </div></div>
+    <style>
+      .sync-bar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:var(--panel,#111); border:1px solid var(--line,#2a2a2a); border-radius:12px; padding:14px 16px; margin-bottom:18px; }
+      .sync-bar label { color:var(--text-muted,#999); font-size:0.9rem; }
+      .sync-bar select { background:rgba(255,255,255,0.04); border:1px solid var(--line,#2a2a2a); border-radius:8px; color:var(--text,#eee); padding:8px 10px; font:inherit; }
+      .sync-summary { font-size:1.02rem; margin:0 0 16px; }
+      .sync-summary strong { color:var(--gold-strong,#d4af37); }
+      .sync-warn { background:rgba(212,175,55,0.08); border:1px solid rgba(212,175,55,0.4); border-radius:10px; padding:10px 14px; margin-bottom:16px; font-size:0.88rem; color:#e8d9a8; }
+      .sync-loc { margin-bottom:22px; }
+      .sync-loc h2 { font-size:1.05rem; border-bottom:1px solid var(--line,#2a2a2a); padding-bottom:6px; margin:0 0 10px; }
+      .sync-count { font-size:0.8rem; font-weight:400; color:var(--text-muted,#8b949e); letter-spacing:0.02em; }
+      .sync-table { width:100%; border-collapse:collapse; }
+      .sync-table th { text-align:left; font-size:0.74rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-muted,#8b949e); padding:4px 8px; }
+      .sync-table td { padding:6px 8px; border-bottom:1px solid rgba(255,255,255,0.05); font-size:0.95rem; }
+      .sync-abv { white-space:nowrap; font-variant-numeric:tabular-nums; color:var(--gold-strong,#d4af37); font-weight:600; }
+      .sync-via { color:var(--text-muted,#8b949e); font-size:0.82rem; }
+      .sync-none { color:var(--text-muted,#8b949e); font-style:italic; margin:4px 0; }
+      .sync-unmatched { margin-top:8px; color:var(--text-muted,#8b949e); font-size:0.85rem; }
+      .sync-unmatched summary { cursor:pointer; }
+      .sync-unmatched div { margin-top:6px; opacity:0.85; line-height:1.6; }
+      .page-header-actions { display:flex; align-items:center; }
+    </style>
+    <form method="GET" action="/admin/spirit-list/sync-abv" class="sync-bar">
+      <label for="src">Source of truth:</label>
+      <select id="src" name="source" onchange="this.form.submit()">${sourceOptions}</select>
+      <span style="color:var(--text-muted,#777);font-size:0.82rem;">change to re-scan</span>
+    </form>
+    ${conflictNote}
+    <p class="sync-summary"><strong>${escHTML(source.name)}</strong> has ${plan.sourceCount} spirit${plan.sourceCount === 1 ? '' : 's'} with an ABV on file. <strong>${plan.totalFills}</strong> blank ABV${plan.totalFills === 1 ? '' : 's'} across the other locations can be filled from it.</p>
+    ${plan.totalFills ? `
+      <form method="POST" action="/admin/spirit-list/sync-abv?source=${encodeURIComponent(sourceSlug)}" onsubmit="return confirm('Fill ${plan.totalFills} ABV${plan.totalFills === 1 ? '' : 's'} from ${escAttr(source.name)}? Existing ABVs are not touched.');" style="margin-bottom:8px;">
+        <button type="submit" class="btn btn-primary">Apply — fill ${plan.totalFills} ABV${plan.totalFills === 1 ? '' : 's'}</button>
+      </form>` : '<p class="sync-none">No blanks to fill — everything that matches a source name already has an ABV.</p>'}
+    ${locSections}`;
+
+  return adminLayout('Sync ABVs', content, user, { pathname: '/admin/spirit-list', flashMsg: opts.flashMsg });
+}
+
+// Minimal attribute-safe escaper for inline JS string literals (confirm dialog).
+function escAttr(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '\\u0027' }[c])); }
+
+module.exports = { generateSpiritPrintPage, generateSpiritListIndex, generateSpiritEditorPage, generateAbvSyncPage };

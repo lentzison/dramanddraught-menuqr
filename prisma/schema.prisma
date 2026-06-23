@@ -903,3 +903,19 @@ model AuditLog {
   @@index([userId, createdAt])
   @@index([locationSlug, createdAt])
 }
+
+// Menuqr-side, per-spirit printed-menu descriptions. The spirit catalog itself
+// lives in the Bartender database (read-only here), so these notes layer on top
+// — keyed by the Bartender SpiritProduct.productId — and are merged into the
+// printable spirit list. Never written back to Bartender. `description` is the
+// curated tasting line; `aiFlags` holds advisory AI fact-check notes.
+model SpiritNote {
+  id          String   @id @default(uuid())
+  productId   String   @unique
+  spiritName  String
+  description String?
+  aiFlags     Json?
+  updatedBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

@@ -43,7 +43,11 @@ async function callOpenAI(prompt, apiKey, system) {
       signal: controller.signal,
       body: JSON.stringify({
         model: OPENAI_MODEL,
-        max_completion_tokens: parseInt(process.env.SPIRIT_AI_MAX_TOKENS || '200', 10),
+        // gpt-5.x is a reasoning model: this budget must cover the hidden
+        // reasoning tokens AND the (tiny) JSON output. 200 starved it — the
+        // reasoning phase used the whole budget, leaving empty content. Keep
+        // generous headroom; the actual output is only a few tokens.
+        max_completion_tokens: parseInt(process.env.SPIRIT_AI_MAX_TOKENS || '2000', 10),
         reasoning_effort: process.env.SPIRIT_AI_EFFORT || 'low',
         messages: [
           { role: 'system', content: system || 'You return precise answers as valid JSON only.' },
@@ -54,8 +58,15 @@ async function callOpenAI(prompt, apiKey, system) {
     });
     if (!res.ok) throw new Error(`OpenAI HTTP ${res.status}`);
     const data = await res.json();
-    const text = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-    return JSON.parse(text || '{}');
+    const choice = data && data.choices && data.choices[0];
+    const text = choice && choice.message && choice.message.content;
+    // Surface a truncated/empty response instead of silently returning {} —
+    // otherwise a token starve looks like "no result found".
+    if (!text) {
+      if (choice && choice.finish_reason === 'length') throw new Error('AI response was cut off — raise SPIRIT_AI_MAX_TOKENS.');
+      throw new Error('AI returned an empty response.');
+    }
+    return JSON.parse(text);
   } finally {
     clearTimeout(timer);
   }

@@ -146,7 +146,7 @@ function generateSpiritListIndex(locations = [], user) {
       <div class="sl-card">
         <div class="sl-card-name">${escHTML(l.name)}</div>
         <div class="sl-card-actions">
-          <a class="btn btn-secondary" href="/admin/spirit-list/editor?location=${encodeURIComponent(l.slug)}">Edit descriptions</a>
+          <a class="btn btn-secondary" href="/admin/spirit-list/editor?location=${encodeURIComponent(l.slug)}">Edit names</a>
           <a class="btn btn-primary" href="/admin/spirit-list/print?location=${encodeURIComponent(l.slug)}" target="_blank" rel="noopener">Print →</a>
         </div>
       </div>`).join('')

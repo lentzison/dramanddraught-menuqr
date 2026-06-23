@@ -4,7 +4,7 @@ const { specialsDashboard, dayThemeEditor, bottlesList, bottleEditor, DAYS, DAY_
 const { adminLayout } = require('../views/adminLayout');
 const { getSpiritCategories, getSpiritCatalog, getHalfPriceSpirits, getSpiritList } = require('../bartenderDb');
 const { generateSpiritPrintPage, generateSpiritListIndex, generateSpiritEditorPage } = require('../views/spiritPrintPage');
-const { draftSpirit } = require('../spiritAI');
+const { shortenName } = require('../spiritAI');
 const { sendJSON } = require('../helpers');
 const { sanitizeImageSrc } = require('../views/imageUploadWidget');
 const { writeAudit } = require('../auditLog');
@@ -465,9 +465,9 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
     catch (err) { console.warn('spirit-list print load failed:', err.message); }
     // Merge curated descriptions (menuqr-side) by productId.
     const pids = items.map((s) => String(s.productId)).filter(Boolean);
-    const noteRows = pids.length ? await prisma.spiritNote.findMany({ where: { productId: { in: pids } }, select: { productId: true, description: true } }).catch(() => []) : [];
+    const noteRows = pids.length ? await prisma.spiritNote.findMany({ where: { productId: { in: pids } }, select: { productId: true, displayName: true } }).catch(() => []) : [];
     const notes = {};
-    for (const n of noteRows) if (n.description) notes[n.productId] = n.description;
+    for (const n of noteRows) if (n.displayName) notes[n.productId] = n.displayName;
     sendHTML(res, 200, generateSpiritPrintPage(location, items, { notes }));
     return true;
   }
@@ -481,7 +481,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
     try { const loaded = await getSpiritList(slug); spirit = (loaded.items || []).find((s) => String(s.productId) === productId) || null; }
     catch (err) { /* fall through */ }
     if (!spirit) { sendJSON(res, 404, { error: 'Spirit not found' }); return true; }
-    const result = await draftSpirit(spirit);
+    const result = await shortenName(spirit);
     sendJSON(res, 200, result);
     return true;
   }
@@ -500,15 +500,18 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       const byId = new Map(items.map((s) => [String(s.productId), s]));
       const ops = [];
       for (const key of Object.keys(body)) {
-        if (!key.startsWith('desc_')) continue;
+        if (!key.startsWith('name_')) continue;
         const pid = key.slice(5);
         const sp = byId.get(pid);
         if (!sp) continue;
-        const description = String(body[key] || '').trim().slice(0, 600) || null;
+        let val = String(body[key] || '').trim().slice(0, 120);
+        // Only store an override when it differs from the source name; otherwise
+        // clear it so the print falls back to the catalog name.
+        const displayName = (!val || val === String(sp.name || '').trim()) ? null : val;
         ops.push(prisma.spiritNote.upsert({
           where: { productId: pid },
-          update: { description, spiritName: sp.name || pid, updatedBy: user.email || null },
-          create: { productId: pid, spiritName: sp.name || pid, description, updatedBy: user.email || null },
+          update: { displayName, spiritName: sp.name || pid, updatedBy: user.email || null },
+          create: { productId: pid, spiritName: sp.name || pid, displayName, updatedBy: user.email || null },
         }));
       }
       if (ops.length) await prisma.$transaction(ops).catch((err) => console.warn('spirit notes save failed:', err.message));
@@ -518,9 +521,9 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
 
     const flashMsg = getFlashMsg(req.url);
     const pids = items.map((s) => String(s.productId)).filter(Boolean);
-    const noteRows = pids.length ? await prisma.spiritNote.findMany({ where: { productId: { in: pids } }, select: { productId: true, description: true } }).catch(() => []) : [];
+    const noteRows = pids.length ? await prisma.spiritNote.findMany({ where: { productId: { in: pids } }, select: { productId: true, displayName: true } }).catch(() => []) : [];
     const notes = {};
-    for (const n of noteRows) if (n.description) notes[n.productId] = n.description;
+    for (const n of noteRows) if (n.displayName) notes[n.productId] = n.displayName;
     sendHTML(res, 200, generateSpiritEditorPage(location, items, notes, user, { flashMsg }));
     return true;
   }

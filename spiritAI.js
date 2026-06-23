@@ -1,9 +1,7 @@
-// AI assist for the printable spirit list. For a single spirit it returns a
-// concise tasting description (for the printed menu) plus advisory "flags" on
-// any provided facts (region / distillery / age / ABV) that look inaccurate or
-// uncertain. The model is assistive, not authoritative — the admin reviews and
-// approves every result before it's saved or printed; nothing here writes to
-// the Bartender catalog.
+// AI assist for the printable spirit list: shorten a spirit's (often long)
+// Bartender catalog name into a short, still-recognizable menu name. The admin
+// reviews/edits every suggestion before saving; nothing here writes to the
+// Bartender catalog.
 //
 // Mirrors the provider plumbing in eventDesignAI.js: OpenAI by default,
 // Anthropic when AI_REVIEW_PROVIDER=anthropic. Never throws.
@@ -13,29 +11,26 @@ const OPENAI_MODEL = process.env.OPENAI_SPIRIT_MODEL || process.env.OPENAI_REVIE
 const ANTHROPIC_MODEL = 'claude-opus-4-8';
 const TIMEOUT_MS = parseInt(process.env.SPIRIT_AI_TIMEOUT_MS || '30000', 10);
 
-function factLine(spirit) {
-  const parts = [];
-  if (spirit.primaryCategory) parts.push(`Category: ${spirit.primaryCategory}`);
-  if (spirit.style) parts.push(`Style: ${spirit.style}`);
-  if (spirit.region) parts.push(`Region: ${spirit.region}`);
-  if (spirit.distillery) parts.push(`Distillery: ${spirit.distillery}`);
-  if (spirit.abv != null && spirit.abv !== '') parts.push(`ABV: ${spirit.abv}%`);
-  return parts.length ? parts.join(' · ') : '(no extra facts on file)';
-}
-
 function buildPrompt(spirit) {
+  const facts = [];
+  if (spirit.primaryCategory) facts.push(`Category: ${spirit.primaryCategory}`);
+  if (spirit.style) facts.push(`Style: ${spirit.style}`);
+  if (spirit.region) facts.push(`Region: ${spirit.region}`);
+  if (spirit.distillery) facts.push(`Distillery: ${spirit.distillery}`);
   return [
-    'You are a spirits expert helping a craft whiskey bar (Dram & Draught) write its printed spirit list.',
+    'You shorten spirit names for a craft whiskey bar\'s printed list.',
     '',
-    `Spirit: ${spirit.name || 'Unknown'}`,
-    `Known facts on file — ${factLine(spirit)}`,
+    `Full catalog name: ${spirit.name || ''}`,
+    facts.length ? `Facts: ${facts.join(' · ')}` : '',
     '',
-    'Do two things:',
-    '1. Write ONE concise tasting description for the printed menu: about 10–18 words, evocative and sensory (aroma/palate/finish), no marketing fluff, no price, no the spirit name repeated at the start. If you are not reasonably sure what this specific bottling tastes like, write a careful, general-but-accurate note for its category/style rather than inventing specifics.',
-    '2. Review the known facts above. List any that appear inaccurate, internally inconsistent, or that you are NOT confident about (e.g. wrong region for that distillery, implausible ABV). Be conservative — only flag genuine concerns. If everything looks fine, return an empty list.',
+    'Return a SHORT, clearly recognizable menu name. Keep the brand and the specific expression or age statement. Drop bottle size (e.g. 750ml), proof/ABV, and generic category words (e.g. "Kentucky Straight Bourbon Whiskey", "Islay Single Malt Scotch") UNLESS they are needed to tell two bottlings apart. Keep it accurate — never invent an expression that isn\'t in the full name.',
+    'Examples:',
+    '  "Buffalo Trace Kentucky Straight Bourbon Whiskey 750ml" -> "Buffalo Trace"',
+    '  "Lagavulin 16 Year Old Islay Single Malt Scotch Whisky" -> "Lagavulin 16"',
+    '  "Angel\'s Envy Port Finished Bourbon" -> "Angel\'s Envy Port Finish"',
     '',
-    'Return ONLY a JSON object: {"description": "<one sentence>", "flags": ["<short concern>", ...]}',
-  ].join('\n');
+    'Return ONLY JSON: {"name": "<short name>"}',
+  ].filter(Boolean).join('\n');
 }
 
 async function callOpenAI(prompt, apiKey) {
@@ -48,10 +43,10 @@ async function callOpenAI(prompt, apiKey) {
       signal: controller.signal,
       body: JSON.stringify({
         model: OPENAI_MODEL,
-        max_completion_tokens: parseInt(process.env.SPIRIT_AI_MAX_TOKENS || '600', 10),
+        max_completion_tokens: parseInt(process.env.SPIRIT_AI_MAX_TOKENS || '200', 10),
         reasoning_effort: process.env.SPIRIT_AI_EFFORT || 'low',
         messages: [
-          { role: 'system', content: 'You are a precise spirits expert. Return only valid JSON.' },
+          { role: 'system', content: 'You shorten product names precisely. Return only valid JSON.' },
           { role: 'user', content: prompt },
         ],
         response_format: { type: 'json_object' },
@@ -71,7 +66,7 @@ async function callAnthropic(prompt, apiKey) {
   const client = new Anthropic({ apiKey });
   const message = await client.messages.create({
     model: ANTHROPIC_MODEL,
-    max_tokens: 700,
+    max_tokens: 200,
     messages: [{ role: 'user', content: prompt + '\n\nReturn ONLY the JSON object, no prose.' }],
   });
   for (const block of message.content || []) {
@@ -83,26 +78,19 @@ async function callAnthropic(prompt, apiKey) {
   return {};
 }
 
-// Returns { description, flags } for one spirit. Never throws; on any failure
-// returns empty values + an error flag so the caller/UI can surface it.
-async function draftSpirit(spirit) {
+// Returns { name } — a short recognizable name — or { name:'', error }.
+async function shortenName(spirit) {
   const apiKey = PROVIDER === 'anthropic' ? process.env.ANTHROPIC_API_KEY : process.env.OPENAI_API_KEY;
-  if (!apiKey || typeof fetch !== 'function') {
-    return { description: '', flags: [], error: 'AI is not configured (no API key).' };
-  }
-  if (!spirit || !spirit.name) return { description: '', flags: [], error: 'Missing spirit.' };
+  if (!apiKey || typeof fetch !== 'function') return { name: '', error: 'AI is not configured (no API key).' };
+  if (!spirit || !spirit.name) return { name: '', error: 'Missing spirit.' };
   try {
     const prompt = buildPrompt(spirit);
     const parsed = PROVIDER === 'anthropic' ? await callAnthropic(prompt, apiKey) : await callOpenAI(prompt, apiKey);
-    const description = (parsed && typeof parsed.description === 'string') ? parsed.description.trim().slice(0, 400) : '';
-    let flags = [];
-    if (parsed && Array.isArray(parsed.flags)) {
-      flags = parsed.flags.filter((f) => typeof f === 'string' && f.trim()).map((f) => f.trim().slice(0, 200)).slice(0, 6);
-    }
-    return { description, flags };
+    const name = (parsed && typeof parsed.name === 'string') ? parsed.name.trim().slice(0, 120) : '';
+    return { name };
   } catch (err) {
-    return { description: '', flags: [], error: err.message || 'AI request failed.' };
+    return { name: '', error: err.message || 'AI request failed.' };
   }
 }
 
-module.exports = { draftSpirit };
+module.exports = { shortenName };

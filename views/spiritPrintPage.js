@@ -51,24 +51,23 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
   for (const c of cats) groups.get(c).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
 
   const spiritRow = (s) => {
-    const meta = [s.region, s.style].map((x) => (x ? String(x).trim() : '')).filter(Boolean);
+    // Short, recognizable name (curated in the editor) falls back to the source.
+    const name = (s.productId && notes[s.productId]) ? String(notes[s.productId]).trim() : (s.name || 'Unnamed');
+    let abv = '';
     if (s.abv != null && s.abv !== '') {
       const a = Number.parseFloat(s.abv);
-      if (Number.isFinite(a)) meta.push(`${a % 1 === 0 ? a : a.toFixed(1)}%`);
+      if (Number.isFinite(a)) abv = `${a % 1 === 0 ? a : a.toFixed(1)}% ABV`;
     }
     // Prices in fixed pour order (1 / 1.5 / 2 oz) — the header legend explains it.
     const prices = [s.oneOzPrice, s.oneHalfOzPrice, s.twoOzPrice]
       .filter((v) => v != null)
       .map((v) => money(v));
-    const desc = s.productId && notes[s.productId] ? String(notes[s.productId]).trim() : '';
     return `<div class="sp-row">
       <div class="sp-line">
-        <span class="sp-name">${escHTML(s.name || 'Unnamed')}</span>
+        <span class="sp-name">${escHTML(name)}${abv ? ` <span class="sp-abv">${escHTML(abv)}</span>` : ''}</span>
         <span class="sp-dots"></span>
         ${prices.length ? `<span class="sp-price">${escHTML(prices.join(' / '))}</span>` : ''}
       </div>
-      ${meta.length ? `<div class="sp-meta">${escHTML(meta.join(' · '))}</div>` : ''}
-      ${desc ? `<div class="sp-desc">${escHTML(desc)}</div>` : ''}
     </div>`;
   };
 
@@ -109,8 +108,7 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
   .sp-name { font-size: 1.06rem; font-weight: 600; line-height: 1.25; color: var(--ink); }
   .sp-dots { flex: 1; margin: 0 7px; border-bottom: 1px dotted #c9bfa8; transform: translateY(-3px); min-width: 12px; }
   .sp-price { white-space: nowrap; font-size: 0.98rem; font-weight: 500; color: var(--ink); font-variant-numeric: tabular-nums; }
-  .sp-meta { font-size: 0.84rem; color: var(--muted); font-style: italic; line-height: 1.3; margin-top: 1px; }
-  .sp-desc { font-size: 0.86rem; color: #4a4338; line-height: 1.35; margin-top: 2px; }
+  .sp-abv { font-size: 0.74rem; color: var(--muted); font-style: italic; font-weight: 400; white-space: nowrap; }
   .sp-empty { text-align: center; color: var(--muted); padding: 56px; font-style: italic; }
   .doc-foot { text-align: center; margin-top: 26px; padding-top: 12px; border-top: 1px solid var(--hair); color: var(--muted); font-size: 0.76rem; font-style: italic; }
   .print-bar { position: fixed; top: 14px; right: 16px; display: flex; gap: 8px; z-index: 10; }
@@ -171,7 +169,7 @@ function generateSpiritListIndex(locations = [], user) {
   return adminLayout('Spirit Lists', content, user, { pathname: '/admin/spirit-list' });
 }
 
-// ── Editor: curate each spirit's printed tasting description, with AI assist ──
+// ── Editor: curate each spirit's short printed name, with AI shorten assist ──
 function generateSpiritEditorPage(location, items = [], notes = {}, user, opts = {}) {
   const groups = new Map();
   for (const it of items) {
@@ -185,23 +183,25 @@ function generateSpiritEditorPage(location, items = [], notes = {}, user, opts =
   });
   for (const c of cats) groups.get(c).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
 
-  const written = items.filter((s) => s.productId && notes[s.productId] && String(notes[s.productId]).trim()).length;
+  const customized = items.filter((s) => s.productId && notes[s.productId] && String(notes[s.productId]).trim()).length;
 
   const row = (s) => {
-    const facts = [s.region, s.style].map((x) => (x ? String(x).trim() : '')).filter(Boolean);
+    const facts = [];
     if (s.abv != null && s.abv !== '') { const a = Number.parseFloat(s.abv); if (Number.isFinite(a)) facts.push(`${a % 1 === 0 ? a : a.toFixed(1)}% ABV`); }
     const prices = [s.oneOzPrice, s.oneHalfOzPrice, s.twoOzPrice].filter((v) => v != null).map((v) => money(v));
+    if (prices.length) facts.push(prices.join(' / '));
     const pid = String(s.productId || '');
-    const desc = (s.productId && notes[s.productId]) ? String(notes[s.productId]) : '';
+    const orig = String(s.name || '');
+    const cur = (s.productId && notes[s.productId]) ? String(notes[s.productId]) : orig;
     return `<div class="sp-ed-row">
       <div class="sp-ed-info">
-        <div class="sp-ed-name">${escHTML(s.name || 'Unnamed')}</div>
-        <div class="sp-ed-facts">${escHTML([facts.join(' · '), prices.join(' / ')].filter(Boolean).join('   ·   ')) || '<span style="opacity:.6">no facts on file</span>'}</div>
+        <div class="sp-ed-src">${escHTML(orig)}</div>
+        <div class="sp-ed-facts">${facts.length ? escHTML(facts.join('  ·  ')) : '<span style="opacity:.6">no facts on file</span>'}</div>
       </div>
       <div class="sp-ed-edit">
-        <textarea name="desc_${escHTML(pid)}" data-pid="${escHTML(pid)}" rows="2" placeholder="Tasting description for the printed list…">${escHTML(desc)}</textarea>
+        <input type="text" class="sp-ed-input" name="name_${escHTML(pid)}" data-pid="${escHTML(pid)}" data-orig="${escHTML(orig)}" value="${escHTML(cur)}" placeholder="Short name for the printed list" />
         <div class="sp-ed-controls">
-          <button type="button" class="btn btn-secondary btn-sm" data-ai="${escHTML(pid)}">✨ AI draft</button>
+          <button type="button" class="btn btn-secondary btn-sm" data-ai="${escHTML(pid)}">✨ Shorten</button>
           <span class="sp-ed-flags" data-flags="${escHTML(pid)}"></span>
         </div>
       </div>
@@ -218,8 +218,8 @@ function generateSpiritEditorPage(location, items = [], notes = {}, user, opts =
   const content = `
     <div class="page-header"><div>
       <div class="admin-kicker">Spirits</div>
-      <h1>Edit Spirit Descriptions &mdash; ${escHTML(location.name)}</h1>
-      <p class="page-subtitle">Write the tasting line that prints under each spirit. <strong>✨ AI draft</strong> suggests a description and fact-checks the details — always review before saving. Descriptions apply to this spirit everywhere it appears. ${written} of ${items.length} have a description.</p>
+      <h1>Edit Spirit Names &mdash; ${escHTML(location.name)}</h1>
+      <p class="page-subtitle">Set the short, recognizable name that prints on the list (the printed list shows just <strong>name · ABV · price</strong>). <strong>✨ Shorten</strong> suggests a tidy name from the full catalog name — review before saving. ${customized} of ${items.length} have a custom name.</p>
     </div></div>
     <style>
       .sp-ed-bar { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--panel, #111); border: 1px solid var(--line, #2a2a2a); border-radius: 12px; padding: 12px 16px; margin-bottom: 18px; }
@@ -227,21 +227,19 @@ function generateSpiritEditorPage(location, items = [], notes = {}, user, opts =
       #ed-bulk-status { color: var(--text-muted, #999); font-size: 0.85rem; }
       .sp-ed-cat { margin-bottom: 22px; }
       .sp-ed-cat-title { font-size: 0.82rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold-strong, #d4af37); border-bottom: 1px solid var(--line, #2a2a2a); padding-bottom: 6px; margin: 0 0 12px; }
-      .sp-ed-row { display: grid; grid-template-columns: minmax(180px, 260px) 1fr; gap: 16px; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
-      .sp-ed-name { font-weight: 700; color: var(--text, #eee); }
-      .sp-ed-facts { font-size: 0.8rem; color: var(--text-muted, #8b949e); margin-top: 3px; line-height: 1.4; }
-      .sp-ed-edit textarea { width: 100%; background: rgba(255,255,255,0.04); border: 1px solid var(--line, #2a2a2a); border-radius: 8px; color: var(--text, #eee); padding: 8px 10px; font: inherit; font-size: 0.92rem; resize: vertical; }
+      .sp-ed-row { display: grid; grid-template-columns: minmax(180px, 320px) 1fr; gap: 16px; padding: 11px 0; border-bottom: 1px solid rgba(255,255,255,0.05); align-items: start; }
+      .sp-ed-src { color: var(--text-muted, #8b949e); font-size: 0.9rem; line-height: 1.3; }
+      .sp-ed-facts { font-size: 0.8rem; color: var(--text-muted, #8b949e); opacity: 0.85; margin-top: 3px; line-height: 1.4; }
+      .sp-ed-input { width: 100%; background: rgba(255,255,255,0.04); border: 1px solid var(--line, #2a2a2a); border-radius: 8px; color: var(--text, #eee); padding: 9px 11px; font: inherit; font-size: 0.98rem; font-weight: 600; }
       .sp-ed-controls { display: flex; align-items: center; gap: 10px; margin-top: 6px; flex-wrap: wrap; }
       .sp-ed-flags { font-size: 0.82rem; line-height: 1.4; }
-      .sp-ed-flags .flag { color: #fbbf24; }
-      .sp-ed-flags .ok { color: #4ade80; }
       .sp-ed-flags .err { color: #f87171; }
       @media (max-width: 700px) { .sp-ed-row { grid-template-columns: 1fr; gap: 6px; } }
     </style>
     <form method="POST" action="/admin/spirit-list/editor?location=${encodeURIComponent(location.slug)}">
       <div class="sp-ed-bar">
         <button type="submit" class="btn btn-primary">Save all</button>
-        <button type="button" class="btn btn-secondary" id="ed-draft-all">✨ Draft all empty</button>
+        <button type="button" class="btn btn-secondary" id="ed-shorten-all">✨ Shorten all</button>
         <span id="ed-bulk-status"></span>
         <span class="grow"></span>
         <a class="btn btn-secondary btn-sm" href="/admin/spirit-list/print?location=${encodeURIComponent(location.slug)}" target="_blank" rel="noopener">Print preview →</a>
@@ -252,51 +250,41 @@ function generateSpiritEditorPage(location, items = [], notes = {}, user, opts =
     <script>
       (function(){
         var LOC = ${JSON.stringify(location.slug)};
-        function findText(pid){ var all = document.querySelectorAll('textarea[data-pid]'); for (var i=0;i<all.length;i++){ if (all[i].getAttribute('data-pid')===pid) return all[i]; } return null; }
+        function findInput(pid){ var all = document.querySelectorAll('input[data-pid]'); for (var i=0;i<all.length;i++){ if (all[i].getAttribute('data-pid')===pid) return all[i]; } return null; }
         function findFlags(pid){ var all = document.querySelectorAll('[data-flags]'); for (var i=0;i<all.length;i++){ if (all[i].getAttribute('data-flags')===pid) return all[i]; } return null; }
-        function showFlags(pid, flags, error){
-          var el = findFlags(pid); if (!el) return;
-          if (error){ el.innerHTML = '<span class="err">' + String(error).replace(/</g,'&lt;') + '</span>'; return; }
-          if (flags && flags.length){ el.innerHTML = '<span class="flag">⚠ ' + flags.map(function(f){ return String(f).replace(/</g,'&lt;'); }).join('; ') + '</span>'; }
-          else { el.innerHTML = '<span class="ok">✓ facts look fine</span>'; }
-        }
-        function draftOne(pid){
+        function showErr(pid, error){ var el = findFlags(pid); if (!el) return; el.innerHTML = error ? '<span class="err">' + String(error).replace(/</g,'&lt;') + '</span>' : ''; }
+        function shortenOne(pid){
           return fetch('/admin/spirit-list/editor/ai', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'location='+encodeURIComponent(LOC)+'&productId='+encodeURIComponent(pid) })
             .then(function(r){ return r.json(); })
-            .then(function(d){
-              var ta = findText(pid);
-              if (ta && d && d.description && !ta.value.trim()) ta.value = d.description;
-              showFlags(pid, d && d.flags, d && d.error);
-              return d;
-            })
-            .catch(function(){ showFlags(pid, [], 'Request failed'); });
+            .then(function(d){ var inp = findInput(pid); if (inp && d && d.name) inp.value = d.name; showErr(pid, d && d.error); return d; })
+            .catch(function(){ showErr(pid, 'Request failed'); });
         }
         document.querySelectorAll('[data-ai]').forEach(function(btn){
           btn.addEventListener('click', function(){
             var pid = btn.getAttribute('data-ai'); var old = btn.textContent; btn.disabled = true; btn.textContent = '…';
-            draftOne(pid).then(function(){ btn.disabled = false; btn.textContent = old; });
+            shortenOne(pid).then(function(){ btn.disabled = false; btn.textContent = old; });
           });
         });
-        var draftAll = document.getElementById('ed-draft-all');
-        if (draftAll) draftAll.addEventListener('click', function(){
-          var empties = Array.prototype.slice.call(document.querySelectorAll('textarea[data-pid]')).filter(function(t){ return !t.value.trim(); });
-          var CAP = 60;
-          if (!empties.length){ alert('Every spirit already has a description.'); return; }
-          if (empties.length > CAP) empties = empties.slice(0, CAP);
-          if (!confirm('Use AI to draft ' + empties.length + ' empty descriptions? Review them before saving.')) return;
-          var status = document.getElementById('ed-bulk-status');
-          draftAll.disabled = true;
+        var allBtn = document.getElementById('ed-shorten-all');
+        if (allBtn) allBtn.addEventListener('click', function(){
+          // Only names you haven't touched yet (still equal to the full catalog name).
+          var todo = Array.prototype.slice.call(document.querySelectorAll('input[data-pid]')).filter(function(t){ return t.value.trim() === (t.getAttribute('data-orig')||'').trim(); });
+          var CAP = 80;
+          if (!todo.length){ alert('Every name has already been shortened or edited.'); return; }
+          if (todo.length > CAP) todo = todo.slice(0, CAP);
+          if (!confirm('Use AI to shorten ' + todo.length + ' names? Review them before saving.')) return;
+          var status = document.getElementById('ed-bulk-status'); allBtn.disabled = true;
           var i = 0;
           (function next(){
-            if (i >= empties.length){ status.textContent = 'Done — review and Save all.'; draftAll.disabled = false; return; }
-            status.textContent = 'Drafting ' + (i+1) + ' of ' + empties.length + '…';
-            var pid = empties[i].getAttribute('data-pid'); i++;
-            draftOne(pid).then(next);
+            if (i >= todo.length){ status.textContent = 'Done — review and Save all.'; allBtn.disabled = false; return; }
+            status.textContent = 'Shortening ' + (i+1) + ' of ' + todo.length + '…';
+            var pid = todo[i].getAttribute('data-pid'); i++;
+            shortenOne(pid).then(next);
           })();
         });
       })();
     </script>`;
-  return adminLayout('Edit Spirit Descriptions', content, user, { pathname: '/admin/spirit-list', flashMsg: opts.flashMsg });
+  return adminLayout('Edit Spirit Names', content, user, { pathname: '/admin/spirit-list', flashMsg: opts.flashMsg });
 }
 
 module.exports = { generateSpiritPrintPage, generateSpiritListIndex, generateSpiritEditorPage };

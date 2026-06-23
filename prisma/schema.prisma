@@ -913,6 +913,7 @@ model SpiritNote {
   id          String   @id @default(uuid())
   productId   String   @unique
   spiritName  String
+  displayName String? // short, recognizable name for the printed list
   description String?
   aiFlags     Json?
   updatedBy   String?

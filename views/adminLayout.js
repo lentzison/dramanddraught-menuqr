@@ -112,31 +112,35 @@ function adminLayout(title, content, user, options = {}) {
           transition: transform 0.16s;
         }
         .skip-link:focus { transform: translateY(0); outline: none; }
+        /* ── Admin shell: grouped left sidebar + content ── */
+        .admin-shell { display: flex; align-items: stretch; min-height: 100vh; }
         .admin-nav {
+          width: 232px;
+          flex-shrink: 0;
           position: sticky;
           top: 0;
+          align-self: flex-start;
+          height: 100vh;
+          overflow-y: auto;
           z-index: 50;
-          background: rgba(16,17,19,0.92);
-          border-bottom: 1px solid var(--line-soft);
-          backdrop-filter: blur(16px);
+          background: rgba(16,17,19,0.96);
+          border-right: 1px solid var(--line-soft);
         }
         .admin-nav-inner {
-          max-width: 1280px;
-          margin: 0 auto;
-          padding: 12px 24px;
           display: flex;
-          align-items: center;
-          gap: 14px;
-          min-height: 64px;
+          flex-direction: column;
+          gap: 2px;
+          padding: 18px 14px 22px;
+          min-height: 100%;
         }
         .admin-nav .brand {
-          display: inline-flex;
-          align-items: center;
-          gap: 10px;
+          display: block;
           font-weight: 800;
-          font-size: 1.1rem;
+          font-size: 1.12rem;
           color: var(--text);
-          margin-right: 4px;
+          padding: 2px 8px 14px;
+          margin-bottom: 6px;
+          border-bottom: 1px solid var(--line-soft);
           white-space: nowrap;
           text-decoration: none;
         }
@@ -156,39 +160,32 @@ function adminLayout(title, content, user, options = {}) {
           font-weight: 800;
           cursor: pointer;
         }
-        .admin-nav-toggle-icon {
-          display: inline-flex;
-          flex-direction: column;
-          gap: 4px;
+        .admin-nav-toggle-icon { display: inline-flex; flex-direction: column; gap: 4px; }
+        .admin-nav-toggle-icon span { display: block; width: 16px; height: 2px; border-radius: 2px; background: currentColor; }
+        .admin-nav-links { display: flex; flex-direction: column; gap: 1px; }
+        .admin-nav-group-label {
+          font-size: 0.65rem;
+          letter-spacing: 0.12em;
+          text-transform: uppercase;
+          color: var(--text-muted);
+          font-weight: 800;
+          opacity: 0.65;
+          padding: 14px 10px 5px;
         }
-        .admin-nav-toggle-icon span {
-          display: block;
-          width: 16px;
-          height: 2px;
-          border-radius: 2px;
-          background: currentColor;
-        }
-        .admin-nav-links {
-          display: flex;
-          align-items: center;
-          gap: 5px;
-          min-width: 0;
-          overflow-x: auto;
-          scrollbar-width: none;
-        }
-        .admin-nav-links::-webkit-scrollbar { display: none; }
         .admin-nav-actions {
           display: flex;
-          align-items: center;
-          gap: 8px;
-          margin-left: auto;
-          white-space: nowrap;
+          flex-direction: column;
+          gap: 3px;
+          margin-top: auto;
+          padding-top: 14px;
+          border-top: 1px solid var(--line-soft);
         }
         .admin-nav a {
+          display: block;
           color: var(--text-muted);
           font-weight: 600;
-          font-size: 0.86rem;
-          padding: 8px 11px;
+          font-size: 0.9rem;
+          padding: 8px 10px;
           border-radius: var(--radius);
           transition: background 0.18s, color 0.18s, border-color 0.18s;
           border: 1px solid transparent;
@@ -210,12 +207,13 @@ function adminLayout(title, content, user, options = {}) {
         .nav-spacer { flex: 1; }
         .nav-user {
           color: var(--text-soft);
-          font-size: 0.82rem;
-          max-width: 180px;
+          font-size: 0.8rem;
+          padding: 5px 10px;
           overflow: hidden;
           text-overflow: ellipsis;
+          white-space: nowrap;
         }
-        .admin-content { max-width: 1240px; margin: 0 auto; padding: 32px 24px 52px; }
+        .admin-content { flex: 1; min-width: 0; max-width: 1240px; margin: 0 auto; padding: 32px 32px 52px; }
         h1 { font-size: clamp(1.55rem, 2.6vw, 2.15rem); line-height: 1.08; margin-bottom: 18px; color: var(--text); letter-spacing: 0; }
         h2 { font-size: 1.08rem; margin: 20px 0 12px; color: var(--gold-strong); letter-spacing: 0; }
         h3 { font-size: 1rem; margin: 16px 0 8px; color: var(--text); }
@@ -758,35 +756,41 @@ function adminLayout(title, content, user, options = {}) {
           .special-meta form { flex: 1 1 auto; }
           .special-meta button.btn-sm { padding: 10px 12px; font-size: 0.85rem; min-height: 40px; }
           .edit-form-inline { margin-left: 0; padding: 16px 14px; }
+          .admin-shell { flex-direction: column; }
+          .admin-nav { width: 100%; height: auto; position: sticky; top: 0; align-self: stretch; overflow: visible; border-right: none; border-bottom: 1px solid var(--line-soft); }
           .admin-nav-inner {
             align-items: center;
             flex-direction: row;
             flex-wrap: wrap;
             gap: 8px;
             padding: 10px 14px;
+            min-height: auto;
           }
-          .admin-nav .brand { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+          .admin-nav .brand { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; border-bottom: none; margin: 0; padding: 4px 6px; }
           .admin-nav-toggle { display: inline-flex; }
-          .admin-nav-links,
+          .admin-nav-links {
+            display: none;
+            width: 100%;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 2px;
+          }
+          .admin-nav.is-open .admin-nav-links { display: flex; }
           .admin-nav-actions {
             display: none;
             width: 100%;
-            margin-left: 0;
+            flex-direction: row;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 8px;
             padding-top: 8px;
-            border-top: 1px solid rgba(255,255,255,0.08);
+            border-top: 1px solid var(--line-soft);
           }
-          .admin-nav.is-open .admin-nav-links,
           .admin-nav.is-open .admin-nav-actions { display: flex; }
-          .admin-nav-links {
-            flex-direction: column;
-            align-items: stretch;
-            gap: 4px;
-            overflow: visible;
-          }
-          .admin-nav-actions { justify-content: space-between; }
-          .admin-nav a { padding: 10px 11px; font-size: 0.9rem; }
+          .admin-nav-group-label { padding: 10px 10px 4px; }
+          .admin-nav a { padding: 10px 11px; font-size: 0.92rem; }
           .admin-nav-links a { width: 100%; }
-          .admin-content { padding: 22px 14px 38px; }
+          .admin-content { padding: 22px 14px 38px; max-width: none; }
           .hours-row { grid-template-columns: 70px 1fr auto 1fr auto; gap: 4px; }
           .link-row { grid-template-columns: 1fr; }
           /* Bigger tap targets for all small buttons in admin */
@@ -830,6 +834,7 @@ function adminLayout(title, content, user, options = {}) {
     </head>
     <body>
       <a class="skip-link" href="#admin-main">Skip to admin content</a>
+      <div class="admin-shell">
       <nav class="admin-nav" aria-label="Admin navigation" id="admin-nav">
         <div class="admin-nav-inner">
           <a class="brand" href="/admin">${BRAND_NAME_SHORT}</a>
@@ -839,16 +844,26 @@ function adminLayout(title, content, user, options = {}) {
           </button>
           <div class="admin-nav-links" id="admin-nav-links">
             <a href="/admin"${pathname === '/admin' || pathname === '/admin/dashboard' ? ' class="active"' : ''}>Dashboard</a>
-            ${isCompanyWide(user) ? `<a href="/admin/locations"${navClass('/admin/locations')}>Locations</a>` : ''}
+
+            <div class="admin-nav-group-label">Content</div>
             <a href="/admin/specials"${navClass('/admin/specials')}>Specials</a>
             <a href="/admin/menu"${navClass('/admin/menu')}>Menu</a>
             <a href="/admin/spirit-list"${navClass('/admin/spirit-list')}>Spirit List</a>
+
+            <div class="admin-nav-group-label">Events &amp; Displays</div>
             <a href="/admin/events"${navClass('/admin/events')}>Events</a>
             <a href="/admin/tv"${navClass('/admin/tv')}>TVs</a>
+
+            <div class="admin-nav-group-label">People</div>
             <a href="/admin/applicants"${navClass('/admin/applicants')}>Applicants</a>
             <a href="/admin/feedback"${navClass('/admin/feedback')}>Feedback</a>
+
+            <div class="admin-nav-group-label">Insights</div>
             <a href="/admin/analytics"${navClass('/admin/analytics')}>Analytics</a>
             ${isCompanyWide(user) ? `<a href="/admin/activity"${navClass('/admin/activity')}>Activity</a>` : ''}
+
+            ${isCompanyWide(user) ? `<div class="admin-nav-group-label">Settings</div>
+            <a href="/admin/locations"${navClass('/admin/locations')}>Locations</a>` : ''}
           </div>
           ${user ? `<div class="admin-nav-actions">
             <a href="/admin/sso/launch?target=bartender" title="Open Bartender app" style="display:inline-flex;align-items:center;gap:4px;">🍸 Bartender</a>
@@ -860,6 +875,7 @@ function adminLayout(title, content, user, options = {}) {
         ${flashHtml}
         ${content}
       </main>
+      </div>
       ${flashHtml ? `<script>
         (function() {
           var el = document.getElementById('admin-flash');

@@ -33,7 +33,7 @@ function buildPrompt(spirit) {
   ].filter(Boolean).join('\n');
 }
 
-async function callOpenAI(prompt, apiKey) {
+async function callOpenAI(prompt, apiKey, system) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
@@ -46,7 +46,7 @@ async function callOpenAI(prompt, apiKey) {
         max_completion_tokens: parseInt(process.env.SPIRIT_AI_MAX_TOKENS || '200', 10),
         reasoning_effort: process.env.SPIRIT_AI_EFFORT || 'low',
         messages: [
-          { role: 'system', content: 'You shorten product names precisely. Return only valid JSON.' },
+          { role: 'system', content: system || 'You return precise answers as valid JSON only.' },
           { role: 'user', content: prompt },
         ],
         response_format: { type: 'json_object' },
@@ -85,7 +85,9 @@ async function shortenName(spirit) {
   if (!spirit || !spirit.name) return { name: '', error: 'Missing spirit.' };
   try {
     const prompt = buildPrompt(spirit);
-    const parsed = PROVIDER === 'anthropic' ? await callAnthropic(prompt, apiKey) : await callOpenAI(prompt, apiKey);
+    const parsed = PROVIDER === 'anthropic'
+      ? await callAnthropic(prompt, apiKey)
+      : await callOpenAI(prompt, apiKey, 'You shorten product names precisely. Return only valid JSON.');
     const name = (parsed && typeof parsed.name === 'string') ? parsed.name.trim().slice(0, 120) : '';
     return { name };
   } catch (err) {
@@ -93,4 +95,42 @@ async function shortenName(spirit) {
   }
 }
 
-module.exports = { shortenName };
+function buildAbvPrompt(spirit) {
+  const facts = [];
+  if (spirit.primaryCategory) facts.push(`Category: ${spirit.primaryCategory}`);
+  if (spirit.style) facts.push(`Style: ${spirit.style}`);
+  if (spirit.region) facts.push(`Region: ${spirit.region}`);
+  if (spirit.distillery) facts.push(`Distillery: ${spirit.distillery}`);
+  return [
+    'You provide the alcohol-by-volume (ABV) for a specific spirit bottling on a craft whiskey bar\'s list.',
+    '',
+    `Bottle: ${spirit.name || ''}`,
+    facts.length ? `Facts: ${facts.join(' · ')}` : '',
+    '',
+    'Give the ABV of THIS exact bottling as a percentage number (e.g. 40, 43, 46.5). Most whiskeys are 40–65%. Use the standard/most-common ABV for this specific expression. If you are not confident of the ABV for this exact bottling, return null instead of guessing — a wrong ABV is worse than a blank one.',
+    'Return ONLY JSON: {"abv": <number or null>}',
+  ].filter(Boolean).join('\n');
+}
+
+// Returns { abv } — a percentage number (or null if unknown) — or { abv:null, error }.
+async function lookupAbv(spirit) {
+  const apiKey = PROVIDER === 'anthropic' ? process.env.ANTHROPIC_API_KEY : process.env.OPENAI_API_KEY;
+  if (!apiKey || typeof fetch !== 'function') return { abv: null, error: 'AI is not configured (no API key).' };
+  if (!spirit || !spirit.name) return { abv: null, error: 'Missing spirit.' };
+  try {
+    const prompt = buildAbvPrompt(spirit);
+    const parsed = PROVIDER === 'anthropic'
+      ? await callAnthropic(prompt, apiKey)
+      : await callOpenAI(prompt, apiKey, 'You report spirit ABV percentages accurately. Return null rather than guess. Return only valid JSON.');
+    let abv = null;
+    if (parsed && parsed.abv != null) {
+      const n = Number.parseFloat(parsed.abv);
+      if (Number.isFinite(n) && n > 0 && n <= 100) abv = Math.round(n * 10) / 10;
+    }
+    return { abv };
+  } catch (err) {
+    return { abv: null, error: err.message || 'AI request failed.' };
+  }
+}
+
+module.exports = { shortenName, lookupAbv };

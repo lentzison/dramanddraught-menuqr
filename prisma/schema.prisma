@@ -275,19 +275,19 @@ model MenuItem {
 }
 
 model Event {
-  id          String    @id @default(uuid())
-  locationId  String
-  slug        String // URL slug, unique per location
-  title       String
-  description String?
+  id                String    @id @default(uuid())
+  locationId        String
+  slug              String // URL slug, unique per location
+  title             String
+  description       String?
   // Admin-only reference: the original (full) imported text from the Dram site /
   // Eventbrite. The AI distills the public `description` down to a concise blurb
   // and moves the detail into Page Builder sections, but we keep the source here
   // so staff can see where the info came from. NEVER rendered on the public page.
-  sourceDescription String? @db.Text
-  startDate   DateTime // When the event happens
-  endDate     DateTime?
-  image       String? // Banner image URL
+  sourceDescription String?   @db.Text
+  startDate         DateTime // When the event happens
+  endDate           DateTime?
+  image             String? // Banner image URL
 
   // How the banner image is used on the public page when one is set:
   //   "hero"     → image fills the header as a full-bleed background with the
@@ -404,7 +404,7 @@ model Event {
   // rows, separate pages/signups) shares a groupKey so the admin list can
   // collapse the siblings into one group. Auto-set on import from the source
   // event id ("src:<publicId>"); editable as a manual override. Null = ungrouped.
-  groupKey      String?
+  groupKey String?
 
   location      Location            @relation(fields: [locationId], references: [id], onDelete: Cascade)
   signups       EventSignup[]
@@ -914,6 +914,7 @@ model SpiritNote {
   productId   String   @unique
   spiritName  String
   displayName String? // short, recognizable name for the printed list
+  abv         Float? // ABV override — filled in (often AI-looked-up) when the Bartender catalog is missing one
   description String?
   aiFlags     Json?
   updatedBy   String?

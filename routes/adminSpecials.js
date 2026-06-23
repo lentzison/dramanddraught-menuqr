@@ -4,7 +4,7 @@ const { specialsDashboard, dayThemeEditor, bottlesList, bottleEditor, DAYS, DAY_
 const { adminLayout } = require('../views/adminLayout');
 const { getSpiritCategories, getSpiritCatalog, getHalfPriceSpirits, getSpiritList } = require('../bartenderDb');
 const { generateSpiritPrintPage, generateSpiritListIndex, generateSpiritEditorPage } = require('../views/spiritPrintPage');
-const { shortenName } = require('../spiritAI');
+const { shortenName, lookupAbv } = require('../spiritAI');
 const { sendJSON } = require('../helpers');
 const { sanitizeImageSrc } = require('../views/imageUploadWidget');
 const { writeAudit } = require('../auditLog');
@@ -463,12 +463,16 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
     let items = [];
     try { const loaded = await getSpiritList(slug); items = loaded.items || []; }
     catch (err) { console.warn('spirit-list print load failed:', err.message); }
-    // Merge curated descriptions (menuqr-side) by productId.
+    // Merge curated names + ABV overrides (menuqr-side) by productId.
     const pids = items.map((s) => String(s.productId)).filter(Boolean);
-    const noteRows = pids.length ? await prisma.spiritNote.findMany({ where: { productId: { in: pids } }, select: { productId: true, displayName: true } }).catch(() => []) : [];
+    const noteRows = pids.length ? await prisma.spiritNote.findMany({ where: { productId: { in: pids } }, select: { productId: true, displayName: true, abv: true } }).catch(() => []) : [];
     const notes = {};
-    for (const n of noteRows) if (n.displayName) notes[n.productId] = n.displayName;
-    sendHTML(res, 200, generateSpiritPrintPage(location, items, { notes }));
+    const abvNotes = {};
+    for (const n of noteRows) {
+      if (n.displayName) notes[n.productId] = n.displayName;
+      if (n.abv != null) abvNotes[n.productId] = n.abv;
+    }
+    sendHTML(res, 200, generateSpiritPrintPage(location, items, { notes, abvNotes }));
     return true;
   }
   // AI draft + fact-check for one spirit (returns JSON; nothing is saved here).
@@ -485,7 +489,21 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
     sendJSON(res, 200, result);
     return true;
   }
-  // Spirit description editor: GET shows the form, POST saves all descriptions.
+  // AI ABV lookup for one spirit (returns JSON; nothing is saved here).
+  if (pathname === '/admin/spirit-list/editor/abv' && req.method === 'POST') {
+    const body = await parseBody(req);
+    const slug = String(body.location || '').trim();
+    const productId = String(body.productId || '').trim();
+    if (!slug || (!userIsCompanyWide && !canAccessLocation(user, slug))) { sendJSON(res, 403, { error: 'Forbidden' }); return true; }
+    let spirit = null;
+    try { const loaded = await getSpiritList(slug); spirit = (loaded.items || []).find((s) => String(s.productId) === productId) || null; }
+    catch (err) { /* fall through */ }
+    if (!spirit) { sendJSON(res, 404, { error: 'Spirit not found' }); return true; }
+    const result = await lookupAbv(spirit);
+    sendJSON(res, 200, result);
+    return true;
+  }
+  // Spirit editor: GET shows the form, POST saves all names + ABV overrides.
   if (pathname === '/admin/spirit-list/editor') {
     const slug = String((require('url').parse(req.url, true).query.location) || '').trim();
     if (!slug || (!userIsCompanyWide && !canAccessLocation(user, slug))) { redirect(res, '/admin/spirit-list'); return true; }
@@ -499,19 +517,25 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       const body = await parseBody(req);
       const byId = new Map(items.map((s) => [String(s.productId), s]));
       const ops = [];
-      for (const key of Object.keys(body)) {
-        if (!key.startsWith('name_')) continue;
-        const pid = key.slice(5);
-        const sp = byId.get(pid);
-        if (!sp) continue;
-        let val = String(body[key] || '').trim().slice(0, 120);
-        // Only store an override when it differs from the source name; otherwise
+      for (const [pid, sp] of byId) {
+        const hasName = Object.prototype.hasOwnProperty.call(body, `name_${pid}`);
+        const hasAbv = Object.prototype.hasOwnProperty.call(body, `abv_${pid}`);
+        if (!hasName && !hasAbv) continue;
+        // Name override: only store when it differs from the source name; otherwise
         // clear it so the print falls back to the catalog name.
+        const val = String(body[`name_${pid}`] || '').trim().slice(0, 120);
         const displayName = (!val || val === String(sp.name || '').trim()) ? null : val;
+        // ABV override: only store when it differs from the catalog ABV; otherwise
+        // clear it so the print falls back to the catalog ABV.
+        const srcAbv = (sp.abv != null && sp.abv !== '') ? Number.parseFloat(sp.abv) : null;
+        const abvRaw = String(body[`abv_${pid}`] || '').replace('%', '').trim();
+        let abvVal = abvRaw === '' ? null : Number.parseFloat(abvRaw);
+        if (abvVal != null && (!Number.isFinite(abvVal) || abvVal <= 0 || abvVal > 100)) abvVal = null;
+        const abv = (abvVal == null || (srcAbv != null && abvVal === srcAbv)) ? null : abvVal;
         ops.push(prisma.spiritNote.upsert({
           where: { productId: pid },
-          update: { displayName, spiritName: sp.name || pid, updatedBy: user.email || null },
-          create: { productId: pid, spiritName: sp.name || pid, displayName, updatedBy: user.email || null },
+          update: { displayName, abv, spiritName: sp.name || pid, updatedBy: user.email || null },
+          create: { productId: pid, spiritName: sp.name || pid, displayName, abv, updatedBy: user.email || null },
         }));
       }
       if (ops.length) await prisma.$transaction(ops).catch((err) => console.warn('spirit notes save failed:', err.message));
@@ -521,10 +545,14 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
 
     const flashMsg = getFlashMsg(req.url);
     const pids = items.map((s) => String(s.productId)).filter(Boolean);
-    const noteRows = pids.length ? await prisma.spiritNote.findMany({ where: { productId: { in: pids } }, select: { productId: true, displayName: true } }).catch(() => []) : [];
+    const noteRows = pids.length ? await prisma.spiritNote.findMany({ where: { productId: { in: pids } }, select: { productId: true, displayName: true, abv: true } }).catch(() => []) : [];
     const notes = {};
-    for (const n of noteRows) if (n.displayName) notes[n.productId] = n.displayName;
-    sendHTML(res, 200, generateSpiritEditorPage(location, items, notes, user, { flashMsg }));
+    const abvNotes = {};
+    for (const n of noteRows) {
+      if (n.displayName) notes[n.productId] = n.displayName;
+      if (n.abv != null) abvNotes[n.productId] = n.abv;
+    }
+    sendHTML(res, 200, generateSpiritEditorPage(location, items, notes, user, { flashMsg, abvNotes }));
     return true;
   }
 

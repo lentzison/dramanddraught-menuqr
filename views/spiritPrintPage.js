@@ -34,7 +34,8 @@ function money(v) {
 }
 
 function generateSpiritPrintPage(location, items = [], opts = {}) {
-  const notes = opts.notes || {}; // { productId: description } curated in the editor
+  const notes = opts.notes || {}; // { productId: displayName } curated in the editor
+  const abvNotes = opts.abvNotes || {}; // { productId: abv } override when the catalog has none
   const updated = opts.updatedAt
     || new Date().toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'long', day: 'numeric', year: 'numeric' });
 
@@ -53,11 +54,13 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
   const spiritRow = (s) => {
     // Short, recognizable name (curated in the editor) falls back to the source.
     const name = (s.productId && notes[s.productId]) ? String(notes[s.productId]).trim() : (s.name || 'Unnamed');
-    let abv = '';
-    if (s.abv != null && s.abv !== '') {
-      const a = Number.parseFloat(s.abv);
-      if (Number.isFinite(a)) abv = `${a % 1 === 0 ? a : a.toFixed(1)}% ABV`;
+    // Effective ABV: catalog value, falling back to the editor override.
+    let abvNum = (s.abv != null && s.abv !== '') ? Number.parseFloat(s.abv) : null;
+    if ((abvNum == null || !Number.isFinite(abvNum)) && s.productId && abvNotes[s.productId] != null) {
+      abvNum = Number.parseFloat(abvNotes[s.productId]);
     }
+    let abv = '';
+    if (abvNum != null && Number.isFinite(abvNum)) abv = `${abvNum % 1 === 0 ? abvNum : abvNum.toFixed(1)}% ABV`;
     // Prices in fixed pour order (1 / 1.5 / 2 oz) — the header legend explains it.
     const prices = [s.oneOzPrice, s.oneHalfOzPrice, s.twoOzPrice]
       .filter((v) => v != null)
@@ -171,6 +174,13 @@ function generateSpiritListIndex(locations = [], user) {
 
 // ── Editor: curate each spirit's short printed name, with AI shorten assist ──
 function generateSpiritEditorPage(location, items = [], notes = {}, user, opts = {}) {
+  const abvNotes = opts.abvNotes || {}; // { productId: abv } override for spirits missing a catalog ABV
+  const fmtAbv = (v) => {
+    if (v == null || v === '') return '';
+    const n = Number.parseFloat(v);
+    if (!Number.isFinite(n)) return '';
+    return n % 1 === 0 ? String(n) : n.toFixed(1);
+  };
   const groups = new Map();
   for (const it of items) {
     const cat = (it.primaryCategory || 'Other').toString().trim() || 'Other';
@@ -186,22 +196,28 @@ function generateSpiritEditorPage(location, items = [], notes = {}, user, opts =
   const customized = items.filter((s) => s.productId && notes[s.productId] && String(notes[s.productId]).trim()).length;
 
   const row = (s) => {
-    const facts = [];
-    if (s.abv != null && s.abv !== '') { const a = Number.parseFloat(s.abv); if (Number.isFinite(a)) facts.push(`${a % 1 === 0 ? a : a.toFixed(1)}% ABV`); }
     const prices = [s.oneOzPrice, s.oneHalfOzPrice, s.twoOzPrice].filter((v) => v != null).map((v) => money(v));
-    if (prices.length) facts.push(prices.join(' / '));
     const pid = String(s.productId || '');
     const orig = String(s.name || '');
     const cur = (s.productId && notes[s.productId]) ? String(notes[s.productId]) : orig;
+    // ABV: catalog value is authoritative; the editor override only fills a gap.
+    const srcAbv = fmtAbv(s.abv);
+    const curAbv = srcAbv || (s.productId && abvNotes[s.productId] != null ? fmtAbv(abvNotes[s.productId]) : '');
+    const abvMissing = !srcAbv; // catalog has no ABV — this is what "look up missing" targets
     return `<div class="sp-ed-row">
       <div class="sp-ed-info">
         <div class="sp-ed-src">${escHTML(orig)}</div>
-        <div class="sp-ed-facts">${facts.length ? escHTML(facts.join('  ·  ')) : '<span style="opacity:.6">no facts on file</span>'}</div>
+        <div class="sp-ed-facts">${prices.length ? escHTML(prices.join('  /  ')) : '<span style="opacity:.6">no price on file</span>'}</div>
       </div>
       <div class="sp-ed-edit">
         <input type="text" class="sp-ed-input" name="name_${escHTML(pid)}" data-pid="${escHTML(pid)}" data-orig="${escHTML(orig)}" value="${escHTML(cur)}" placeholder="Short name for the printed list" />
         <div class="sp-ed-controls">
           <button type="button" class="btn btn-secondary btn-sm" data-ai="${escHTML(pid)}">✨ Shorten</button>
+          <span class="sp-ed-abv-group">
+            <input type="text" class="sp-ed-abv" name="abv_${escHTML(pid)}" data-abv-pid="${escHTML(pid)}" data-orig-abv="${escHTML(srcAbv)}" data-missing="${abvMissing ? '1' : '0'}" value="${escHTML(curAbv)}" placeholder="—" inputmode="decimal" title="ABV %" />
+            <span class="sp-ed-abv-suffix">% ABV</span>
+            <button type="button" class="btn btn-secondary btn-sm" data-abv="${escHTML(pid)}">🔍 Look up</button>
+          </span>
           <span class="sp-ed-flags" data-flags="${escHTML(pid)}"></span>
         </div>
       </div>
@@ -219,7 +235,7 @@ function generateSpiritEditorPage(location, items = [], notes = {}, user, opts =
     <div class="page-header"><div>
       <div class="admin-kicker">Spirits</div>
       <h1>Edit Spirit Names &mdash; ${escHTML(location.name)}</h1>
-      <p class="page-subtitle">Set the short, recognizable name that prints on the list (the printed list shows just <strong>name · ABV · price</strong>). <strong>✨ Shorten</strong> suggests a tidy name from the full catalog name — review before saving. ${customized} of ${items.length} have a custom name.</p>
+      <p class="page-subtitle">Set the short, recognizable name that prints on the list (the printed list shows just <strong>name · ABV · price</strong>). <strong>✨ Shorten</strong> suggests a tidy name from the full catalog name; <strong>🔍 Look up</strong> fills in a missing ABV. Both are AI suggestions — review before saving. ${customized} of ${items.length} have a custom name.</p>
     </div></div>
     <style>
       .sp-ed-bar { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--panel, #111); border: 1px solid var(--line, #2a2a2a); border-radius: 12px; padding: 12px 16px; margin-bottom: 18px; }
@@ -232,14 +248,20 @@ function generateSpiritEditorPage(location, items = [], notes = {}, user, opts =
       .sp-ed-facts { font-size: 0.8rem; color: var(--text-muted, #8b949e); opacity: 0.85; margin-top: 3px; line-height: 1.4; }
       .sp-ed-input { width: 100%; background: rgba(255,255,255,0.04); border: 1px solid var(--line, #2a2a2a); border-radius: 8px; color: var(--text, #eee); padding: 9px 11px; font: inherit; font-size: 0.98rem; font-weight: 600; }
       .sp-ed-controls { display: flex; align-items: center; gap: 10px; margin-top: 6px; flex-wrap: wrap; }
+      .sp-ed-abv-group { display: inline-flex; align-items: center; gap: 6px; }
+      .sp-ed-abv { width: 64px; background: rgba(255,255,255,0.04); border: 1px solid var(--line, #2a2a2a); border-radius: 8px; color: var(--text, #eee); padding: 7px 8px; font: inherit; font-size: 0.92rem; text-align: right; font-variant-numeric: tabular-nums; }
+      .sp-ed-abv[data-missing="1"] { border-color: rgba(212,175,55,0.5); }
+      .sp-ed-abv-suffix { font-size: 0.78rem; color: var(--text-muted, #8b949e); }
       .sp-ed-flags { font-size: 0.82rem; line-height: 1.4; }
       .sp-ed-flags .err { color: #f87171; }
+      .sp-ed-flags .note { color: var(--text-muted, #8b949e); }
       @media (max-width: 700px) { .sp-ed-row { grid-template-columns: 1fr; gap: 6px; } }
     </style>
     <form method="POST" action="/admin/spirit-list/editor?location=${encodeURIComponent(location.slug)}">
       <div class="sp-ed-bar">
         <button type="submit" class="btn btn-primary">Save all</button>
         <button type="button" class="btn btn-secondary" id="ed-shorten-all">✨ Shorten all</button>
+        <button type="button" class="btn btn-secondary" id="ed-abv-all">🔍 Look up missing ABVs</button>
         <span id="ed-bulk-status"></span>
         <span class="grow"></span>
         <a class="btn btn-secondary btn-sm" href="/admin/spirit-list/print?location=${encodeURIComponent(location.slug)}" target="_blank" rel="noopener">Print preview →</a>
@@ -280,6 +302,44 @@ function generateSpiritEditorPage(location, items = [], notes = {}, user, opts =
             status.textContent = 'Shortening ' + (i+1) + ' of ' + todo.length + '…';
             var pid = todo[i].getAttribute('data-pid'); i++;
             shortenOne(pid).then(next);
+          })();
+        });
+
+        // ── ABV lookup (fill a missing ABV from the catalog) ──
+        function findAbv(pid){ var all = document.querySelectorAll('input[data-abv-pid]'); for (var i=0;i<all.length;i++){ if (all[i].getAttribute('data-abv-pid')===pid) return all[i]; } return null; }
+        function lookupAbvOne(pid){
+          return fetch('/admin/spirit-list/editor/abv', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body:'location='+encodeURIComponent(LOC)+'&productId='+encodeURIComponent(pid) })
+            .then(function(r){ return r.json(); })
+            .then(function(d){
+              var inp = findAbv(pid), fl = findFlags(pid);
+              if (d && d.error){ showErr(pid, d.error); }
+              else if (d && d.abv != null){ if (inp){ inp.value = d.abv; inp.setAttribute('data-missing','0'); } if (fl) fl.innerHTML = ''; }
+              else if (fl){ fl.innerHTML = '<span class="note">No ABV found — enter it manually.</span>'; }
+              return d;
+            })
+            .catch(function(){ showErr(pid, 'Request failed'); });
+        }
+        document.querySelectorAll('[data-abv]').forEach(function(btn){
+          btn.addEventListener('click', function(){
+            var pid = btn.getAttribute('data-abv'); var old = btn.textContent; btn.disabled = true; btn.textContent = '…';
+            lookupAbvOne(pid).then(function(){ btn.disabled = false; btn.textContent = old; });
+          });
+        });
+        var abvAllBtn = document.getElementById('ed-abv-all');
+        if (abvAllBtn) abvAllBtn.addEventListener('click', function(){
+          // Only spirits with no ABV filled in yet (blank input).
+          var todo = Array.prototype.slice.call(document.querySelectorAll('input[data-abv-pid]')).filter(function(t){ return t.value.trim() === ''; });
+          var CAP = 80;
+          if (!todo.length){ alert('Every spirit already has an ABV.'); return; }
+          if (todo.length > CAP) todo = todo.slice(0, CAP);
+          if (!confirm('Use AI to look up ' + todo.length + ' missing ABV' + (todo.length === 1 ? '' : 's') + '? Review them before saving.')) return;
+          var status = document.getElementById('ed-bulk-status'); abvAllBtn.disabled = true;
+          var i = 0;
+          (function next(){
+            if (i >= todo.length){ status.textContent = 'Done — review and Save all.'; abvAllBtn.disabled = false; return; }
+            status.textContent = 'Looking up ABV ' + (i+1) + ' of ' + todo.length + '…';
+            var pid = todo[i].getAttribute('data-abv-pid'); i++;
+            lookupAbvOne(pid).then(next);
           })();
         });
       })();

@@ -2,7 +2,8 @@ const { sendHTML, parseBody, redirect, generateCocktailImage, getFlashMsg } = re
 const { requireAuth, isCompanyWide, getUserLocationSlugs, canAccessLocation } = require('../auth');
 const { specialsDashboard, dayThemeEditor, bottlesList, bottleEditor, DAYS, DAY_LABELS } = require('../views/adminSpecialsViews');
 const { adminLayout } = require('../views/adminLayout');
-const { getSpiritCategories, getSpiritCatalog, getHalfPriceSpirits } = require('../bartenderDb');
+const { getSpiritCategories, getSpiritCatalog, getHalfPriceSpirits, getSpiritList } = require('../bartenderDb');
+const { generateSpiritPrintPage, generateSpiritListIndex } = require('../views/spiritPrintPage');
 const { sendJSON } = require('../helpers');
 const { sanitizeImageSrc } = require('../views/imageUploadWidget');
 const { writeAudit } = require('../auditLog');
@@ -443,6 +444,27 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
 
   const userIsCompanyWide = isCompanyWide(user);
   const userSlugs = userIsCompanyWide ? null : getUserLocationSlugs(user);
+
+  // ── Printable spirit lists ──
+  if (pathname === '/admin/spirit-list') {
+    const where = userIsCompanyWide
+      ? { isActive: true }
+      : { isActive: true, slug: { in: (userSlugs && userSlugs.length) ? userSlugs : ['__none__'] } };
+    const locations = await prisma.location.findMany({ where, orderBy: { name: 'asc' }, select: { slug: true, name: true } });
+    sendHTML(res, 200, generateSpiritListIndex(locations, user));
+    return true;
+  }
+  if (pathname === '/admin/spirit-list/print') {
+    const slug = String((require('url').parse(req.url, true).query.location) || '').trim();
+    if (!slug || (!userIsCompanyWide && !canAccessLocation(user, slug))) { redirect(res, '/admin/spirit-list'); return true; }
+    const location = await prisma.location.findFirst({ where: { slug, isActive: true }, select: { slug: true, name: true } });
+    if (!location) { redirect(res, '/admin/spirit-list'); return true; }
+    let items = [];
+    try { const loaded = await getSpiritList(slug); items = loaded.items || []; }
+    catch (err) { console.warn('spirit-list print load failed:', err.message); }
+    sendHTML(res, 200, generateSpiritPrintPage(location, items, {}));
+    return true;
+  }
 
   // Bulk image regeneration — now behind admin auth (was previously reachable
   // without a login) and disabled entirely unless ENABLE_AI_SPECIAL_IMAGES is

@@ -1,10 +1,19 @@
-const { sendHTML, parseBody, redirect, getFlashMsg, uploadImageToMedia } = require('../helpers');
+const { sendHTML, sendJSON, parseBody, redirect, getFlashMsg, uploadImageToMedia } = require('../helpers');
 const { requireAuth, isCompanyWide, getUserLocationSlugs } = require('../auth');
 const { tvBoardsList, tvBoardEditor } = require('../views/adminTvViews');
+const { generateTvBoardPage } = require('../views/tvBoardPage');
+const { isCuratedType } = require('../views/tvModules');
+const { loadTvBoardData } = require('./public');
 const { sanitizeImageSrc } = require('../views/imageUploadWidget');
+const { parseOverrideDate } = require('../dateEastern');
 const { writeAudit } = require('../auditLog');
 
-const VALID_TYPES = new Set(['specials', 'draft', 'events', 'flights', 'bottles', 'picks', 'message']);
+// Boards carry inline base64 images (logo + Image modules, ~1MB each encoded),
+// so the save/preview POST bodies run well past the 4MB parseBody default.
+const BOARD_BODY_LIMIT = { maxBytes: 16 * 1024 * 1024 };
+const BODY_TOO_LARGE_MSG = 'That board is too large to send — remove some uploaded images or use hosted image URLs instead.';
+
+const VALID_TYPES = new Set(['specials', 'draft', 'events', 'flights', 'bottles', 'picks', 'message', 'image']);
 
 function flashRedirect(res, baseUrl, type, text) {
   const sep = baseUrl.includes('?') ? '&' : '?';
@@ -53,6 +62,42 @@ function trimOrUndef(value, max) {
   return v || undefined;
 }
 
+// Optional per-module schedule (dayparting), all fields optional:
+// { days: [0..6], start: "HH:MM", end: "HH:MM", until: "YYYY-MM-DD" } —
+// interpreted in Eastern wall time by isModuleVisibleNow on the display side.
+function parseSchedule(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const out = {};
+  const days = Array.isArray(raw.days)
+    ? [...new Set(raw.days.map((d) => parseInt(d, 10)).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))].sort((a, b) => a - b)
+    : [];
+  if (days.length > 0 && days.length < 7) out.days = days;
+  const hhmm = (v) => {
+    const m = String(v || '').match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+    return m ? `${m[1].padStart(2, '0')}:${m[2]}` : null;
+  };
+  const start = hhmm(raw.start); if (start) out.start = start;
+  // Keep end even when it equals start (display treats that as always-on) so
+  // what the admin typed round-trips instead of silently becoming start-only.
+  const end = hhmm(raw.end); if (end) out.end = end;
+  // parseOverrideDate rejects calendar-impossible dates like 2026-02-31.
+  const until = parseOverrideDate(String(raw.until || '')) ? String(raw.until) : null;
+  if (until) out.until = until;
+  return Object.keys(out).length ? out : null;
+}
+
+// The board-level fields shared by create, update, and preview — one builder
+// so the live preview can never drift from what a save would store.
+function boardFieldsFromBody(body) {
+  return {
+    name: String(body.name || '').trim().slice(0, 80),
+    orientation: body.orientation === 'landscape' ? 'landscape' : 'portrait',
+    rotateSeconds: clampInt(body.rotateSeconds, 4, 120, 15),
+    isActive: body.isActive === 'on',
+    modules: parseModules(body.modulesJson),
+  };
+}
+
 // Parse + validate the client-serialized modules JSON into a clean array.
 function parseModules(raw) {
   let arr;
@@ -67,6 +112,7 @@ function parseModules(raw) {
     const title = trimOrUndef(m.title, 60); if (title) mod.title = title;
     const sec = parseInt(m.seconds, 10); if (Number.isFinite(sec) && sec > 0) mod.seconds = Math.min(120, Math.max(4, sec));
     if (m.pinned && !pinnedUsed) { mod.pinned = true; pinnedUsed = true; }
+    const schedule = parseSchedule(m.schedule); if (schedule) mod.schedule = schedule;
     if (m.type === 'picks') {
       mod.items = (Array.isArray(m.items) ? m.items : [])
         .filter((it) => it && String(it.name || '').trim())
@@ -116,6 +162,22 @@ async function uploadIfDataUrl(src, tags) {
   if (!/^data:/i.test(src)) return src;
   const uploaded = await uploadImageToMedia(src, { collection: 'tv-boards', tags: tags || '' });
   return (uploaded && uploaded.url) ? uploaded.url : src;
+}
+
+// The editor preview re-renders on a short debounce while someone types, but
+// the live feeds (own DB + external bartender DB) can't have changed keystroke
+// to keystroke — cache the loaded data briefly per location + module-type set.
+const PREVIEW_DATA_TTL_MS = 30 * 1000;
+const previewDataCache = new Map();
+
+async function loadPreviewData(prisma, location, board) {
+  const types = [...new Set((board.modules || []).map((m) => m && m.type).filter(Boolean))].sort();
+  const key = `${location.id}:${types.join(',')}`;
+  const hit = previewDataCache.get(key);
+  if (hit && Date.now() - hit.at < PREVIEW_DATA_TTL_MS) return hit.data;
+  const data = await loadTvBoardData(prisma, location, board).catch(() => ({}));
+  previewDataCache.set(key, { at: Date.now(), data });
+  return data;
 }
 
 async function resolveBoardMedia(modules, logoRaw, slug) {
@@ -169,30 +231,111 @@ async function handleAdminTv(req, res, pathname, prisma) {
     return true;
   }
 
+  // ─── Duplicate: POST /admin/tv/:id/duplicate ───
+  // Creates a hidden copy (same location) and opens it in the editor — from
+  // there the location dropdown moves it to another bar if that's the goal.
+  const dupMatch = pathname.match(/^\/admin\/tv\/([0-9a-f-]{8,})\/duplicate$/i);
+  if (dupMatch && req.method === 'POST') {
+    const id = dupMatch[1];
+    const board = await prisma.tvBoard.findUnique({ where: { id } }).catch(() => null);
+    if (!board || (!userIsCompanyWide && !allowedLocationIds.has(board.locationId))) {
+      sendHTML(res, 404, '<h1>Not found</h1>');
+      return true;
+    }
+    const name = `${board.name} (copy)`.slice(0, 80);
+    const slug = await ensureUniqueSlug(prisma, board.locationId, slugify(name) || board.slug, null);
+    const created = await prisma.tvBoard.create({
+      data: {
+        locationId: board.locationId,
+        name,
+        slug,
+        logo: board.logo,
+        orientation: board.orientation,
+        rotateSeconds: board.rotateSeconds,
+        isActive: false, // hidden until reviewed, so it never hits the TV picker half-baked
+        modules: board.modules,
+      },
+    });
+    writeAudit(prisma, req, user, { action: 'create', resourceType: 'tv_board', resourceId: created.id, resourceLabel: `${name} (duplicate of ${board.name})` }).catch(() => {});
+    flashRedirect(res, `/admin/tv/${created.id}`, 'success', 'Board duplicated — it\'s hidden until you activate it. To copy it to another location, switch the location below and save.');
+    return true;
+  }
+
+  // ─── Live preview: POST /admin/tv/preview ───
+  // Renders the full TV page for the editor's current (possibly unsaved) form
+  // state; the editor drops the HTML into an <iframe srcdoc>. Inline data-URL
+  // images are previewed as-is — nothing is uploaded to the media library.
+  if (pathname === '/admin/tv/preview' && req.method === 'POST') {
+    let body;
+    try { body = await parseBody(req, BOARD_BODY_LIMIT); }
+    catch {
+      // 200 with a message page so the iframe shows why instead of silently freezing.
+      sendHTML(res, 200, `<body style="font-family:sans-serif;background:#0d0e10;color:#a7a3a0;padding:40px;font-size:28px">${BODY_TOO_LARGE_MSG}</body>`);
+      return true;
+    }
+    const locationId = String(body.locationId || '').trim();
+    const location = locations.find((l) => l.id === locationId) || locations[0];
+    if (!location) { sendHTML(res, 400, '<p>No location available.</p>'); return true; }
+    const fields = boardFieldsFromBody(body);
+    const board = {
+      id: 'preview',
+      locationId: location.id,
+      slug: 'preview',
+      logo: sanitizeImageSrc(body.logo) || null,
+      ...fields,
+      name: fields.name || 'Preview',
+      isActive: true,
+      updatedAt: new Date(),
+    };
+    const data = await loadPreviewData(prisma, location, board);
+    sendHTML(res, 200, generateTvBoardPage(location, board, data, { portrait: board.orientation !== 'landscape', preview: true }));
+    return true;
+  }
+
+  // ─── Live-data sample: GET /admin/tv/live-sample?location=<id>&type=<type> ───
+  // A peek at what a live module is pulling right now, shown inline in the
+  // editor so nobody has to walk to a TV to sanity-check a feed.
+  if (pathname === '/admin/tv/live-sample') {
+    const url = new URL(req.url, 'http://x');
+    const locationId = String(url.searchParams.get('location') || '');
+    const type = String(url.searchParams.get('type') || '');
+    const location = locations.find((l) => l.id === locationId);
+    // Every non-curated (live) module type has a sample; curated ones store
+    // their own content, so there's nothing to peek at.
+    if (!location || !VALID_TYPES.has(type) || isCuratedType(type)) {
+      sendJSON(res, 400, { ok: false, items: [] });
+      return true;
+    }
+    const data = await loadTvBoardData(prisma, location, { modules: [{ id: 's', type }] }).catch(() => ({}));
+    let items = [];
+    if (type === 'specials') items = ((data.specials && data.specials.items) || []).map((i) => i.name);
+    else if (type === 'draft') items = ((data.draft && data.draft.items) || []).map((i) => i.beerName);
+    else if (type === 'events') items = (data.events || []).map((e) => e.title);
+    else if (type === 'flights') items = (data.flights || []).map((f) => f.theme || 'Flight');
+    else if (type === 'bottles') items = (data.bottles || []).map((b) => b.name);
+    items = items.filter(Boolean).slice(0, 6).map((s) => String(s).slice(0, 60));
+    res.setHeader('Cache-Control', 'no-store');
+    sendJSON(res, 200, { ok: true, type, items });
+    return true;
+  }
+
   // ─── New: GET form, POST create ───
   if (pathname === '/admin/tv/new') {
     if (req.method === 'POST') {
-      const body = await parseBody(req);
-      const name = String(body.name || '').trim().slice(0, 80);
-      if (!name) { flashRedirect(res, '/admin/tv/new', 'error', 'Board name is required.'); return true; }
+      let body;
+      try { body = await parseBody(req, BOARD_BODY_LIMIT); }
+      catch { flashRedirect(res, '/admin/tv/new', 'error', BODY_TOO_LARGE_MSG); return true; }
+      const fields = boardFieldsFromBody(body);
+      if (!fields.name) { flashRedirect(res, '/admin/tv/new', 'error', 'Board name is required.'); return true; }
       const locationId = String(body.locationId || '').trim();
       if (!locationId || !allowedLocationIds.has(locationId)) { flashRedirect(res, '/admin/tv/new', 'error', 'Pick a valid location.'); return true; }
-      const slugBase = slugify(body.slug) || slugify(name);
+      const slugBase = slugify(body.slug) || slugify(fields.name);
       const slug = await ensureUniqueSlug(prisma, locationId, slugBase, null);
-      const { logo, modules } = await resolveBoardMedia(parseModules(body.modulesJson), body.logo, slug);
+      const { logo, modules } = await resolveBoardMedia(fields.modules, body.logo, slug);
       const created = await prisma.tvBoard.create({
-        data: {
-          locationId,
-          name,
-          slug,
-          logo,
-          orientation: body.orientation === 'landscape' ? 'landscape' : 'portrait',
-          rotateSeconds: clampInt(body.rotateSeconds, 4, 120, 15),
-          isActive: body.isActive === 'on',
-          modules,
-        },
+        data: { ...fields, locationId, slug, logo, modules },
       });
-      writeAudit(prisma, req, user, { action: 'create', resourceType: 'tv_board', resourceId: created.id, resourceLabel: name }).catch(() => {});
+      writeAudit(prisma, req, user, { action: 'create', resourceType: 'tv_board', resourceId: created.id, resourceLabel: fields.name }).catch(() => {});
       flashRedirect(res, `/admin/tv/${created.id}`, 'success', 'Board created.');
       return true;
     }
@@ -215,31 +358,24 @@ async function handleAdminTv(req, res, pathname, prisma) {
       return true;
     }
     if (req.method === 'POST') {
-      const body = await parseBody(req);
-      const name = String(body.name || '').trim().slice(0, 80);
-      if (!name) { flashRedirect(res, `/admin/tv/${id}`, 'error', 'Board name is required.'); return true; }
+      let body;
+      try { body = await parseBody(req, BOARD_BODY_LIMIT); }
+      catch { flashRedirect(res, `/admin/tv/${id}`, 'error', BODY_TOO_LARGE_MSG); return true; }
+      const fields = boardFieldsFromBody(body);
+      if (!fields.name) { flashRedirect(res, `/admin/tv/${id}`, 'error', 'Board name is required.'); return true; }
       let locationId = board.locationId;
       if (canPickLocation && body.locationId) {
         const candidate = String(body.locationId).trim();
         if (allowedLocationIds.has(candidate)) locationId = candidate;
       }
-      const slugBase = slugify(body.slug) || slugify(name) || board.slug;
+      const slugBase = slugify(body.slug) || slugify(fields.name) || board.slug;
       const slug = await ensureUniqueSlug(prisma, locationId, slugBase, id);
-      const { logo, modules } = await resolveBoardMedia(parseModules(body.modulesJson), body.logo, slug);
+      const { logo, modules } = await resolveBoardMedia(fields.modules, body.logo, slug);
       await prisma.tvBoard.update({
         where: { id },
-        data: {
-          locationId,
-          name,
-          slug,
-          logo,
-          orientation: body.orientation === 'landscape' ? 'landscape' : 'portrait',
-          rotateSeconds: clampInt(body.rotateSeconds, 4, 120, 15),
-          isActive: body.isActive === 'on',
-          modules,
-        },
+        data: { ...fields, locationId, slug, logo, modules },
       });
-      writeAudit(prisma, req, user, { action: 'update', resourceType: 'tv_board', resourceId: id, resourceLabel: name }).catch(() => {});
+      writeAudit(prisma, req, user, { action: 'update', resourceType: 'tv_board', resourceId: id, resourceLabel: fields.name }).catch(() => {});
       flashRedirect(res, `/admin/tv/${id}`, 'success', 'Saved.');
       return true;
     }

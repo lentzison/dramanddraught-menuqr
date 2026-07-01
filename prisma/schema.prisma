@@ -77,7 +77,12 @@ model TvBoard {
   logo          String? // Optional logo image (media URL) shown in the TV rail
   orientation   String  @default("portrait") // "portrait" (vertical sign) | "landscape"
   rotateSeconds Int     @default(15) // default per-slide duration
-  modules       Json    @default("[]") // ordered [{ id, type, title?, seconds?, pinned?, image?, ... }]
+  modules       Json    @default("[]") // ordered [{ id, type, title?, seconds?, pinned?, image?, schedule?, ... }]
+
+  // Screen heartbeat — stamped (via raw SQL, so @updatedAt isn't bumped) every
+  // time a TV loads or polls this board. Lets the admin list show whether a
+  // screen is actually displaying the board right now.
+  lastSeenAt DateTime?
 
   location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
 

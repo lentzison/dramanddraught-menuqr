@@ -16,6 +16,11 @@ const TV_MODULE_TYPES = [
 
 const TV_MODULE_LABELS = TV_MODULE_TYPES.reduce((acc, m) => { acc[m.type] = m.label; return acc; }, {});
 
+// How often a displaying TV polls ?format=json. The admin list's "screen
+// offline" threshold is derived from this (3 missed polls), so keep them
+// coupled through this constant.
+const TV_POLL_SECONDS = 60;
+
 function isCuratedType(type) {
   const m = TV_MODULE_TYPES.find((t) => t.type === type);
   return !!(m && m.curated);
@@ -47,6 +52,58 @@ function easternParts(value) {
     weekday: get('weekday'), month: get('month'), day: get('day'),
     hour: get('hour'), minute: get('minute'), ampm: (get('dayPeriod') || '').toUpperCase(),
   };
+}
+
+// ── Module scheduling (dayparting) ──
+// A module may carry an optional `schedule` object, all fields optional:
+//   { days: [0..6], start: "HH:MM", end: "HH:MM", until: "YYYY-MM-DD" }
+// Everything is interpreted in Eastern wall time (the business timezone).
+// `days` limits which weekdays it shows (0=Sun..6=Sat; empty = every day),
+// start/end bound the time of day (start > end wraps past midnight, e.g.
+// 21:00–02:00), and `until` is the last Eastern calendar day it shows.
+// Boards re-poll every minute, so schedule flips take effect within ~60s.
+
+// Hoisted: Intl.DateTimeFormat construction is expensive and this runs once
+// per module on every TV render/poll; formatToParts on a shared instance is cheap.
+const EASTERN_NOW_FMT = new Intl.DateTimeFormat('en-US', {
+  timeZone: EASTERN_TZ,
+  year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', hour12: false, weekday: 'short',
+});
+
+function easternNowParts(now) {
+  const parts = EASTERN_NOW_FMT.formatToParts(now || new Date());
+  const get = (t) => { const p = parts.find((x) => x.type === t); return p ? p.value : ''; };
+  const wdMap = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  return {
+    dateStr: `${get('year')}-${get('month')}-${get('day')}`,
+    weekday: wdMap[get('weekday')],
+    // hour12:false can yield "24" for midnight in some ICU versions.
+    minutes: (parseInt(get('hour'), 10) % 24) * 60 + parseInt(get('minute'), 10),
+  };
+}
+
+function parseHHMM(value) {
+  const m = String(value || '').match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const mins = parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+  return (mins >= 0 && mins < 24 * 60) ? mins : null;
+}
+
+function isModuleVisibleNow(mod, now) {
+  const sch = mod && mod.schedule;
+  if (!sch || typeof sch !== 'object') return true;
+  const { dateStr, weekday, minutes } = easternNowParts(now);
+  if (sch.until && /^\d{4}-\d{2}-\d{2}$/.test(sch.until) && dateStr > sch.until) return false;
+  if (Array.isArray(sch.days) && sch.days.length > 0 && sch.days.length < 7 && !sch.days.includes(weekday)) return false;
+  const start = parseHHMM(sch.start);
+  const end = parseHHMM(sch.end);
+  if (start != null && end != null && start !== end) {
+    return start < end ? (minutes >= start && minutes < end) : (minutes >= start || minutes < end);
+  }
+  if (start != null && end == null) return minutes >= start;
+  if (start == null && end != null) return minutes < end;
+  return true;
 }
 
 function fmtTime(value) {
@@ -240,7 +297,9 @@ function renderTvModule(mod, data) {
 module.exports = {
   TV_MODULE_TYPES,
   TV_MODULE_LABELS,
+  TV_POLL_SECONDS,
   isCuratedType,
   moduleTitle,
   renderTvModule,
+  isModuleVisibleNow,
 };

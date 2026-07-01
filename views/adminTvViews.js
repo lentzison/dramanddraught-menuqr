@@ -1,7 +1,16 @@
+const fs = require('fs');
+const path = require('path');
 const { adminLayout } = require('./adminLayout');
 const { escHTML } = require('./escapeHtml');
-const { TV_MODULE_TYPES, TV_MODULE_LABELS } = require('./tvModules');
+const { TV_MODULE_TYPES, TV_MODULE_LABELS, TV_POLL_SECONDS } = require('./tvModules');
 const { imageUploadWidget, imageUploadWidgetCss, imageUploadWidgetScript } = require('./imageUploadWidget');
+
+// Cache-bust the editor script by file mtime (computed once per process —
+// deploys restart the server) instead of a hand-bumped ?v= number.
+let EDITOR_ASSET_V = '5';
+try {
+  EDITOR_ASSET_V = Math.round(fs.statSync(path.join(__dirname, '../assets/tv-board-editor.js')).mtimeMs).toString(36);
+} catch {}
 
 function attr(value) {
   return String(value == null ? '' : value).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
@@ -14,7 +23,27 @@ function moduleCount(board) {
 function moduleSummary(board) {
   const mods = Array.isArray(board.modules) ? board.modules.filter((m) => m && m.type) : [];
   if (!mods.length) return 'No modules yet';
-  return mods.map((m) => (m.title && m.title.trim()) ? m.title.trim() : (TV_MODULE_LABELS[m.type] || m.type)).join(' · ');
+  return mods.map((m) => {
+    const label = (m.title && m.title.trim()) ? m.title.trim() : (TV_MODULE_LABELS[m.type] || m.type);
+    return m.schedule ? `${label} ⏱` : label;
+  }).join(' · ');
+}
+
+// Screen heartbeat status: the display page stamps lastSeenAt on its data poll
+// while a TV is showing the board, so three missed polls means no screen is
+// currently on it.
+const SCREEN_OFFLINE_AFTER_MS = TV_POLL_SECONDS * 3 * 1000;
+
+function screenStatus(board) {
+  if (!board.isActive) return null; // hidden boards aren't expected on a screen
+  if (!board.lastSeenAt) return { live: false, text: 'No screen connected yet' };
+  const ageMs = Date.now() - new Date(board.lastSeenAt).getTime();
+  const mins = Math.floor(ageMs / 60000);
+  if (ageMs < SCREEN_OFFLINE_AFTER_MS) return { live: true, text: 'Screen live' };
+  const ago = mins < 60 ? `${mins}m ago`
+    : mins < 48 * 60 ? `${Math.round(mins / 60)}h ago`
+    : `${Math.round(mins / 1440)}d ago`;
+  return { live: false, text: `Screen offline · last seen ${ago}` };
 }
 
 function tvBoardsList({ boards, locations, filters, user, flashMsg, canSeeMultipleLocations }) {
@@ -30,11 +59,13 @@ function tvBoardsList({ boards, locations, filters, user, flashMsg, canSeeMultip
   const rows = boards.length
     ? boards.map((b) => {
         const displayUrl = `/${escHTML(b.location ? b.location.slug : '')}/tv/${escHTML(b.slug)}`;
+        const screen = screenStatus(b);
         return `<div class="admin-row">
           <div class="admin-row-main">
             <div class="admin-row-title"><a href="/admin/tv/${escHTML(b.id)}">${escHTML(b.name)}</a></div>
             <div class="admin-row-meta">
               <span class="tag ${b.isActive ? 'tag-active' : 'tag-inactive'}">${b.isActive ? 'Active' : 'Hidden'}</span>
+              ${screen ? `<span class="tv-screen-status${screen.live ? ' is-live' : ''}"><span class="tv-screen-dot"></span>${escHTML(screen.text)}</span>` : ''}
               ${b.location ? `<span>${escHTML(b.location.name)}</span>` : ''}
               <span>${moduleCount(b)} module${moduleCount(b) === 1 ? '' : 's'}</span>
               <span>· every ${escHTML(b.rotateSeconds)}s</span>
@@ -44,6 +75,9 @@ function tvBoardsList({ boards, locations, filters, user, flashMsg, canSeeMultip
           <div class="admin-row-actions">
             <a class="btn btn-secondary btn-sm" href="${displayUrl}" target="_blank" rel="noopener">Open TV &nearr;</a>
             <a class="btn btn-secondary btn-sm" href="/admin/tv/${escHTML(b.id)}">Edit</a>
+            <form method="POST" action="/admin/tv/${escHTML(b.id)}/duplicate">
+              <button type="submit" class="btn btn-secondary btn-sm">Duplicate</button>
+            </form>
             <form method="POST" action="/admin/tv/${escHTML(b.id)}/delete" onsubmit="return confirm('Delete this board? This cannot be undone.')">
               <button type="submit" class="btn btn-danger btn-sm">Delete</button>
             </form>
@@ -71,6 +105,12 @@ function tvBoardsList({ boards, locations, filters, user, flashMsg, canSeeMultip
       <noscript><button class="btn btn-secondary btn-sm" type="submit">Filter</button></noscript>
     </form>` : ''}
     <div class="admin-list">${rows}</div>
+    <style>
+      .tv-screen-status { display:inline-flex; align-items:center; gap:6px; font-weight:700; color:var(--text-soft); }
+      .tv-screen-status .tv-screen-dot { width:8px; height:8px; border-radius:50%; background:rgba(255,255,255,0.25); flex:0 0 auto; }
+      .tv-screen-status.is-live { color:#7fca8a; }
+      .tv-screen-status.is-live .tv-screen-dot { background:#4caf50; box-shadow:0 0 8px rgba(76,175,80,0.7); }
+    </style>
   `, user, { pathname: '/admin/tv', flashMsg });
 }
 
@@ -104,6 +144,8 @@ function tvBoardEditor({ board, locations, user, flashMsg, defaultLocationSlug, 
       </div>
     </div>
 
+    <div class="tv-editor-layout">
+    <div class="tv-editor-main">
     <form method="POST" action="${actionUrl}" id="tv-board-form">
       <div class="card">
         <div class="form-row">
@@ -152,7 +194,7 @@ function tvBoardEditor({ board, locations, user, flashMsg, defaultLocationSlug, 
       <div class="section-head">
         <div>
           <h2>Modules</h2>
-          <p>Add the panels this board cycles through. Pin one module to keep it always visible in the side rail (hybrid layout).</p>
+          <p>Add the panels this board cycles through. Drag the ⋮⋮ handle to reorder. Pin one module to keep it always visible in the side rail, and use each module's Schedule to limit it to certain days or hours.</p>
         </div>
         <div class="page-actions">
           <select id="tv-add-type" aria-label="Module type"></select>
@@ -166,11 +208,44 @@ function tvBoardEditor({ board, locations, user, flashMsg, defaultLocationSlug, 
       <div class="sticky-actions">
         <button type="submit" class="btn btn-primary">${isNew ? 'Create board' : 'Save changes'}</button>
         <a href="/admin/tv" class="btn btn-secondary">Cancel</a>
+        ${isNew ? '' : `<span class="field-help" style="margin:0">Screens pick up saved changes within a minute — no need to touch the TV.</span>`}
       </div>
     </form>
+    </div>
+
+    <aside class="tv-editor-side">
+      <div class="card" style="padding:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px">
+          <strong>Live preview</strong>
+          <button type="button" class="btn btn-secondary btn-sm" id="tv-preview-refresh">Refresh</button>
+        </div>
+        <div class="tvp-wrap" id="tv-preview-wrap"><iframe id="tv-preview-frame" title="TV board preview"></iframe></div>
+        <div class="field-help" style="margin-top:8px">Previews your edits before you save, with real data for the selected location. Slides rotate just like on the TV. Modules with a schedule always appear here so you can check them outside their window.</div>
+      </div>
+    </aside>
+    </div>
 
     <style>
+      .tv-editor-layout { display:grid; grid-template-columns:minmax(0,1fr) 380px; gap:20px; align-items:start; }
+      .tv-editor-side { position:sticky; top:16px; }
+      .tvp-wrap { position:relative; overflow:hidden; border-radius:10px; border:1px solid var(--line); background:#000; }
+      #tv-preview-frame { position:absolute; top:0; left:0; border:0; transform-origin:top left; background:#0d0e10; }
+      @media (max-width:1180px){ .tv-editor-layout{grid-template-columns:1fr} .tv-editor-side{position:static} }
       .tvm { border:1px solid var(--line); border-radius:var(--radius); background:rgba(255,255,255,0.025); margin-bottom:12px; }
+      .tvm.tvm-dragging { opacity:0.45; }
+      .tvm.tvm-drop-target { outline:2px dashed var(--gold-strong); outline-offset:2px; }
+      .tvm-drag { cursor:grab; color:var(--text-soft); font-weight:900; letter-spacing:2px; user-select:none; padding:2px 4px; }
+      .tvm-drag:active { cursor:grabbing; }
+      .tvm-live { margin-top:10px; padding:8px 10px; border:1px dashed var(--line); border-radius:8px; color:var(--text-soft); font-size:0.82rem; }
+      .tvm-live strong { color:var(--text-muted); }
+      .tvm-sched { margin-top:12px; border:1px solid rgba(255,255,255,0.07); border-radius:8px; padding:8px 10px; }
+      .tvm-sched summary { cursor:pointer; color:var(--text-muted); font-weight:700; font-size:0.85rem; }
+      .tvm-sched-grid { display:flex; gap:14px; flex-wrap:wrap; align-items:end; margin-top:10px; }
+      .tvm-sched-days { display:flex; gap:4px; }
+      .tvm-sched-days label { display:inline-flex; align-items:center; gap:3px; font-size:0.78rem; font-weight:700; color:var(--text-muted); border:1px solid var(--line); border-radius:6px; padding:4px 6px; cursor:pointer; }
+      .tvm-sched-days input { width:auto; margin:0; }
+      .tvm-sched-grid label.tvm-sched-field { display:block; font-size:0.78rem; color:var(--text-muted); font-weight:700; }
+      .tvm-sched-grid input[type="time"], .tvm-sched-grid input[type="date"] { min-width:120px; }
       .tvm-head { display:flex; align-items:center; gap:10px; padding:12px 14px; border-bottom:1px solid rgba(255,255,255,0.07); flex-wrap:wrap; }
       .tvm-type { font-weight:850; color:var(--gold-strong); font-size:0.95rem; }
       .tvm-badge { font-size:0.7rem; font-weight:800; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-soft); }
@@ -191,7 +266,7 @@ function tvBoardEditor({ board, locations, user, flashMsg, defaultLocationSlug, 
       window.__TV_TYPES__ = ${typeMetaJson};
       window.__TV_MODULES__ = ${modulesJson};
     </script>
-    <script src="/assets/tv-board-editor.js?v=4"></script>
+    <script src="/assets/tv-board-editor.js?v=${EDITOR_ASSET_V}"></script>
     <script>
       (function(){ if (window.initTvBoardEditor) window.initTvBoardEditor(); })();
       ${imageUploadWidgetScript()}

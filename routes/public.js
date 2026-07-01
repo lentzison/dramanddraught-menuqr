@@ -1291,6 +1291,15 @@ async function handleTvBoard(req, res, prisma, slug, boardSlug) {
   const data = await loadTvBoardData(prisma, location, board);
   const parsed = url.parse(req.url, true);
   if (String(parsed.query.format || '') === 'json') {
+    // Screen heartbeat: only the ?format=json poll counts as "a screen is
+    // showing this board" — a crawler or one-off page hit never issues it.
+    // Raw SQL on purpose: prisma.update() would bump @updatedAt, which doubles
+    // as the config version token that tells screens to hard-reload. Throttled
+    // so several screens on one board don't write on every poll.
+    const seenAgeMs = board.lastSeenAt ? Date.now() - new Date(board.lastSeenAt).getTime() : Infinity;
+    if (seenAgeMs > 45 * 1000) {
+      prisma.$executeRaw`UPDATE "TvBoard" SET "lastSeenAt" = NOW() WHERE "id" = ${board.id}`.catch(() => {});
+    }
     res.setHeader('Cache-Control', 'no-store');
     sendJSON(res, 200, renderBoardPayload(location, board, data));
     return true;
@@ -3194,4 +3203,5 @@ async function handlePublic(req, res, pathname, prisma) {
   return false;
 }
 
-module.exports = { handlePublic };
+// loadTvBoardData is shared with the admin TV editor (live preview + samples).
+module.exports = { handlePublic, loadTvBoardData };

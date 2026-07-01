@@ -1,11 +1,16 @@
 const { escHTML } = require('./escapeHtml');
-const { renderTvModule, moduleTitle } = require('./tvModules');
+const { renderTvModule, moduleTitle, isModuleVisibleNow, TV_POLL_SECONDS } = require('./tvModules');
 
 // Resolve a board's modules into a persistent (pinned) module + the rotating
 // slide deck. Shared by the full page render and the JSON refresh endpoint so
-// both stay in lockstep.
-function buildBoardView(location, board, data) {
-  const mods = (Array.isArray(board.modules) ? board.modules : []).filter((m) => m && m.type);
+// both stay in lockstep. Modules outside their schedule window (dayparting)
+// are dropped here, so the poll picks up schedule flips automatically — except
+// in the admin editor preview (ignoreSchedule), which must show every module
+// so a Friday-night slide can still be QA'd on a Tuesday afternoon.
+function buildBoardView(location, board, data, opts = {}) {
+  const mods = (Array.isArray(board.modules) ? board.modules : [])
+    .filter((m) => m && m.type)
+    .filter((m) => opts.ignoreSchedule || isModuleVisibleNow(m));
   const pinned = mods.find((m) => m && m.pinned) || null;
   let rotating = mods.filter((m) => m !== pinned);
   // If everything is pinned (or there's nothing left to rotate), let the deck
@@ -40,11 +45,20 @@ function slidesDomHtml(slides) {
     </div>`).join('');
 }
 
+// Config version token: changes on every admin save (the screen heartbeat
+// writes lastSeenAt via raw SQL precisely so it does NOT bump updatedAt).
+// The client hard-reloads when this changes, picking up orientation, logo,
+// CSS and script changes without anyone touching the TV.
+function boardVersion(board) {
+  return board.updatedAt ? new Date(board.updatedAt).toISOString() : '';
+}
+
 // JSON payload for the periodic client refresh.
 function renderBoardPayload(location, board, data) {
   const view = buildBoardView(location, board, data);
   return {
     ok: true,
+    version: boardVersion(board),
     railHtml: view.railModuleHtml,
     pinned: view.pinned,
     slides: view.slides.map((s) => ({ id: s.id, title: s.title, seconds: s.seconds, full: !!s.full, html: s.html })),
@@ -54,7 +68,7 @@ function renderBoardPayload(location, board, data) {
 }
 
 function generateTvBoardPage(location, board, data, opts = {}) {
-  const view = buildBoardView(location, board, data);
+  const view = buildBoardView(location, board, data, { ignoreSchedule: !!opts.preview });
   const locName = escHTML(location.name || 'Dram & Draught');
   const boardName = escHTML(board.name || 'Menu Board');
   const portrait = !!opts.portrait;
@@ -128,6 +142,9 @@ function generateTvBoardPage(location, board, data, opts = {}) {
     }
     .tv-body-norail { display: block; }
     .tv-body-norail .tv-stage { height: 100%; }
+    /* The rail element is always in the DOM (a scheduled pinned module may
+       appear mid-day via the JSON poll); it's hidden whenever it's empty. */
+    .tv-body-norail .tv-rail { display: none; }
     /* ── Persistent rail (holds the pinned module) ── */
     .tv-rail {
       display: flex; flex-direction: column;
@@ -355,10 +372,10 @@ function generateTvBoardPage(location, board, data, opts = {}) {
         <div class="tv-date" id="tv-date"></div>
       </div>
     </header>
-    <div class="tv-body${view.pinned ? '' : ' tv-body-norail'}">
-      ${view.pinned ? `<aside class="tv-rail">
-        <div class="tv-rail-modules" id="tv-rail-modules"><div class="tv-fit">${view.railModuleHtml}</div></div>
-      </aside>` : ''}
+    <div class="tv-body${view.pinned ? '' : ' tv-body-norail'}" id="tv-body">
+      <aside class="tv-rail">
+        <div class="tv-rail-modules" id="tv-rail-modules">${view.pinned ? `<div class="tv-fit">${view.railModuleHtml}</div>` : ''}</div>
+      </aside>
       <main class="tv-stage">
         <div class="tv-progress" id="tv-progress"></div>
         <div class="tv-slides" id="tv-slides">${slidesDomHtml(view.slides)}</div>
@@ -371,6 +388,10 @@ function generateTvBoardPage(location, board, data, opts = {}) {
     var stage = document.getElementById('tv-slides');
     var progress = document.getElementById('tv-progress');
     var idx = 0, timer = null;
+    // Bumped on every admin save; when the poll sees a new value the page
+    // hard-reloads so config changes reach the screen without touching the TV.
+    var boardVersion = ${JSON.stringify(boardVersion(board))};
+    var isPreview = ${opts.preview ? 'true' : 'false'};
 
     function slides() { return Array.prototype.slice.call(stage.querySelectorAll('.tv-slide')); }
 
@@ -424,7 +445,13 @@ function generateTvBoardPage(location, board, data, opts = {}) {
 
     function show(i) {
       var s = slides();
-      if (!s.length) return;
+      if (!s.length) {
+        // Everything scheduled off: stop the rotation cleanly so a mid-slide
+        // progress animation doesn't sit frozen over the empty stage.
+        clearTimeout(timer);
+        if (progress) { progress.style.transition = 'none'; progress.style.width = '0%'; }
+        return;
+      }
       idx = ((i % s.length) + s.length) % s.length;
       s.forEach(function(el, j) { el.classList.toggle('is-active', j === idx); });
       fitBox(s[idx]);
@@ -455,6 +482,10 @@ function generateTvBoardPage(location, board, data, opts = {}) {
         .then(function(r) { return r.ok ? r.json() : null; })
         .then(function(data) {
           if (!data || !data.ok || !Array.isArray(data.slides)) return;
+          if (data.version && boardVersion && data.version !== boardVersion) {
+            location.reload();
+            return;
+          }
           var cur = slides();
           var curId = cur[idx] ? cur[idx].getAttribute('data-id') : null;
           stage.innerHTML = data.slides.map(function(s) {
@@ -470,6 +501,9 @@ function generateTvBoardPage(location, board, data, opts = {}) {
           }
           var railMods = document.getElementById('tv-rail-modules');
           if (railMods && typeof data.railHtml === 'string') railMods.innerHTML = data.railHtml ? '<div class="tv-fit">' + data.railHtml + '</div>' : '';
+          // A scheduled pinned module may come and go mid-day — toggle the rail.
+          var body = document.getElementById('tv-body');
+          if (body) body.classList.toggle('tv-body-norail', !data.pinned);
           var all = slides();
           var start = -1;
           for (var k = 0; k < all.length; k++) { if (all[k].getAttribute('data-id') === curId) { start = k; break; } }
@@ -478,7 +512,8 @@ function generateTvBoardPage(location, board, data, opts = {}) {
         })
         .catch(function() {});
     }
-    setInterval(refresh, 60000);
+    // The admin editor preview renders via srcdoc (no real URL to poll).
+    if (!isPreview) setInterval(refresh, ${TV_POLL_SECONDS * 1000});
 
     show(0);
     fitAll();

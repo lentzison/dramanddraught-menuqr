@@ -95,15 +95,29 @@ function renderSpecials(mod, data) {
 
 function renderDraft(mod, data) {
   const d = (data && data.draft) || {};
-  const items = (Array.isArray(d.items) ? d.items : []).filter((t) => t && t.beerName);
-  if (items.length === 0) {
+  const taps = (Array.isArray(d.items) ? d.items : []).filter((t) => t && t.beerName);
+  // Curated can/bottle beers typed in the board editor. They aren't in the live
+  // tap feed, so they're stored on the module config and shown under the taps.
+  const cans = (Array.isArray(mod && mod.cans) ? mod.cans : []).filter((c) => c && c.name);
+  if (taps.length === 0 && cans.length === 0) {
     return head('', moduleTitle(mod)) + emptyBody('No taps to show right now.');
   }
-  const rows = items.slice(0, 12).map((t) => {
-    const meta = [t.brewery, t.style, t.abv ? `${t.abv}% ABV` : null].filter(Boolean).join(' · ');
-    return priceRow(t.beerName, meta, t.price || '');
-  }).join('');
-  return head('', moduleTitle(mod)) + `<ul class="tv-list tv-list-2col">${rows}</ul>`;
+  let body = '';
+  if (taps.length) {
+    const rows = taps.slice(0, 12).map((t) => {
+      const meta = [t.brewery, t.style, t.abv ? `${t.abv}% ABV` : null].filter(Boolean).join(' · ');
+      return priceRow(t.beerName, meta, t.price || '');
+    }).join('');
+    body += `<ul class="tv-list tv-list-2col">${rows}</ul>`;
+  }
+  if (cans.length) {
+    const rows = cans.slice(0, 20).map((c) => {
+      const meta = [c.brewery, c.style, c.abv ? `${c.abv}% ABV` : null].filter(Boolean).join(' · ');
+      return priceRow(c.name, meta, c.price || '');
+    }).join('');
+    body += `<div class="tv-subhead">Cans &amp; Bottles</div><ul class="tv-list tv-list-2col">${rows}</ul>`;
+  }
+  return head('', moduleTitle(mod)) + body;
 }
 
 function renderEvents(mod, data) {
@@ -163,12 +177,16 @@ function renderPicks(mod) {
   if (items.length === 0) {
     return head("Bartender's", moduleTitle(mod)) + emptyBody('Add some picks in the board editor.');
   }
-  const rows = items.slice(0, 10).map((it) => {
+  // Show every pick (no silent cap) and pack them into two columns once the
+  // list gets long, so a big roster still fits the slide after auto-scaling
+  // rather than running off the bottom.
+  const rows = items.map((it) => {
     // Drink is the headline; the bartender (and optional note) sit beneath it.
     const sub = [it.by ? `${it.by}'s pick` : '', it.description || ''].filter(Boolean).join(' · ');
     return priceRow(it.name, sub, it.price || '');
   }).join('');
-  return head("Bartender's", moduleTitle(mod)) + `<ul class="tv-list">${rows}</ul>`;
+  const listClass = items.length > 6 ? 'tv-list tv-list-2col' : 'tv-list';
+  return head("Bartender's", moduleTitle(mod)) + `<ul class="${listClass}">${rows}</ul>`;
 }
 
 function renderImage(mod) {

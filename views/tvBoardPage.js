@@ -229,6 +229,15 @@ function generateTvBoardPage(location, board, data, opts = {}) {
       line-height: 1.02; letter-spacing: 0.01em;
     }
     .tv-mod-sub { color: var(--muted); font-size: clamp(1rem,1.4vw,1.6rem); margin-bottom: 12px; }
+    /* Sub-section divider inside a module (e.g. "Cans & Bottles" under taps). */
+    .tv-subhead {
+      color: var(--gold); font-family: var(--display);
+      text-transform: uppercase; letter-spacing: 0.14em;
+      font-size: clamp(0.9rem, 1.2vw, 1.35rem);
+      margin: clamp(14px,2vh,26px) 0 clamp(8px,1.2vh,14px);
+      padding-top: clamp(8px,1.2vh,14px);
+      border-top: 1px solid var(--line);
+    }
     .tv-empty { color: var(--muted); font-size: clamp(1.2rem,1.8vw,2rem); margin: auto 0; }
     .tv-list { list-style: none; display: flex; flex-direction: column; gap: clamp(8px,1.4vh,18px); }
     .tv-list-2col {

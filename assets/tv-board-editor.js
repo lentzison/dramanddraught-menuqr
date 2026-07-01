@@ -18,6 +18,7 @@
       m = m || {};
       if (!m.id) m.id = uid();
       if (m.type === 'picks' && !Array.isArray(m.items)) m.items = [];
+      if (m.type === 'draft' && !Array.isArray(m.cans)) m.cans = [];
       return m;
     });
 
@@ -42,6 +43,7 @@
     function newModule(type) {
       var m = { id: uid(), type: type };
       if (type === 'picks') m.items = [{ name: '', description: '', by: '', price: '' }];
+      if (type === 'draft') m.cans = [];
       if (type === 'message') { m.heading = ''; m.body = ''; }
       if (type === 'image') { m.image = ''; m.caption = ''; m.fit = 'contain'; }
       return m;
@@ -55,6 +57,18 @@
         '<input type="text" placeholder="Note (optional)" data-act="pf" data-mi="' + mi + '" data-pi="' + pi + '" data-pf="description" value="' + esc(item.description) + '" />' +
         '<input type="text" placeholder="Price" data-act="pf" data-mi="' + mi + '" data-pi="' + pi + '" data-pf="price" value="' + esc(item.price) + '" />' +
         '<button type="button" class="btn btn-danger btn-sm tvm-icon-btn" data-act="rmpick" data-mi="' + mi + '" data-pi="' + pi + '" aria-label="Remove pick">&times;</button>' +
+        '</div>';
+    }
+
+    function canRowHtml(mi, ci, item) {
+      return '' +
+        '<div class="tvm-can">' +
+        '<input type="text" placeholder="Beer name" data-act="cf" data-mi="' + mi + '" data-ci="' + ci + '" data-cf="name" value="' + esc(item.name) + '" />' +
+        '<input type="text" placeholder="Brewery (optional)" data-act="cf" data-mi="' + mi + '" data-ci="' + ci + '" data-cf="brewery" value="' + esc(item.brewery) + '" />' +
+        '<input type="text" placeholder="Style (optional)" data-act="cf" data-mi="' + mi + '" data-ci="' + ci + '" data-cf="style" value="' + esc(item.style) + '" />' +
+        '<input type="text" placeholder="ABV" data-act="cf" data-mi="' + mi + '" data-ci="' + ci + '" data-cf="abv" value="' + esc(item.abv) + '" />' +
+        '<input type="text" placeholder="Price" data-act="cf" data-mi="' + mi + '" data-ci="' + ci + '" data-cf="price" value="' + esc(item.price) + '" />' +
+        '<button type="button" class="btn btn-danger btn-sm tvm-icon-btn" data-act="rmcan" data-mi="' + mi + '" data-ci="' + ci + '" aria-label="Remove can">&times;</button>' +
         '</div>';
     }
 
@@ -99,6 +113,12 @@
           '<option value="cover"' + (m.fit === 'cover' ? ' selected' : '') + '>Cover (fill screen, may crop)</option>' +
           '</select></div></div>' +
           '</div>';
+      } else if (m.type === 'draft') {
+        var cans = Array.isArray(m.cans) ? m.cans : [];
+        var canRows = cans.map(function (it, ci) { return canRowHtml(mi, ci, it || {}); }).join('');
+        rows += '<p class="field-help" style="margin-top:10px">Draught taps pull in live from the bartender system. Add can &amp; bottle beers below to list them beneath the taps.</p>' +
+          '<div style="margin-top:8px"><label>Cans &amp; Bottles <span style="font-weight:400;color:var(--text-soft)">(optional)</span></label>' + canRows +
+          '<button type="button" class="btn btn-secondary btn-sm" data-act="addcan" data-mi="' + mi + '">+ Add can / bottle</button></div>';
       } else {
         rows += '<p class="field-help" style="margin-top:10px">Pulls live data automatically when the board is shown.</p>';
       }
@@ -150,6 +170,13 @@
         if (!modules[mi2] || !modules[mi2].items || !modules[mi2].items[pi]) return;
         modules[mi2].items[pi][pf] = t.value;
         sync();
+      } else if (act === 'cf') {
+        var mic = +t.getAttribute('data-mi');
+        var ci = +t.getAttribute('data-ci');
+        var cf = t.getAttribute('data-cf');
+        if (!modules[mic] || !modules[mic].cans || !modules[mic].cans[ci]) return;
+        modules[mic].cans[ci][cf] = t.value;
+        sync();
       } else if (act === 'imgurl') {
         var mi3 = +t.getAttribute('data-mi');
         if (!modules[mi3]) return;
@@ -196,6 +223,8 @@
       else if (act === 'down' && mi < modules.length - 1) { var b = modules[mi]; modules[mi] = modules[mi + 1]; modules[mi + 1] = b; render(); }
       else if (act === 'addpick') { if (modules[mi]) { modules[mi].items = modules[mi].items || []; modules[mi].items.push({ name: '', description: '', by: '', price: '' }); render(); } }
       else if (act === 'rmpick') { var pi = +btn.getAttribute('data-pi'); if (modules[mi] && modules[mi].items) { modules[mi].items.splice(pi, 1); render(); } }
+      else if (act === 'addcan') { if (modules[mi]) { modules[mi].cans = modules[mi].cans || []; modules[mi].cans.push({ name: '', brewery: '', style: '', abv: '', price: '' }); render(); } }
+      else if (act === 'rmcan') { var ci = +btn.getAttribute('data-ci'); if (modules[mi] && modules[mi].cans) { modules[mi].cans.splice(ci, 1); render(); } }
       else if (act === 'imgclear') { if (modules[mi]) { modules[mi].image = ''; render(); } }
     });
 

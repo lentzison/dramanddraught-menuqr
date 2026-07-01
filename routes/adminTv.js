@@ -70,7 +70,7 @@ function parseModules(raw) {
     if (m.type === 'picks') {
       mod.items = (Array.isArray(m.items) ? m.items : [])
         .filter((it) => it && String(it.name || '').trim())
-        .slice(0, 12)
+        .slice(0, 30)
         .map((it) => {
           const item = { name: String(it.name).trim().slice(0, 80) };
           const d = trimOrUndef(it.description, 160); if (d) item.description = d;
@@ -78,6 +78,21 @@ function parseModules(raw) {
           const price = trimOrUndef(it.price, 20); if (price) item.price = price;
           return item;
         });
+    }
+    if (m.type === 'draft') {
+      // Curated can/bottle beers shown beneath the live draught taps.
+      const cans = (Array.isArray(m.cans) ? m.cans : [])
+        .filter((c) => c && String(c.name || '').trim())
+        .slice(0, 20)
+        .map((c) => {
+          const item = { name: String(c.name).trim().slice(0, 80) };
+          const brewery = trimOrUndef(c.brewery, 60); if (brewery) item.brewery = brewery;
+          const style = trimOrUndef(c.style, 60); if (style) item.style = style;
+          const abv = trimOrUndef(c.abv, 10); if (abv) item.abv = abv;
+          const price = trimOrUndef(c.price, 20); if (price) item.price = price;
+          return item;
+        });
+      if (cans.length) mod.cans = cans;
     }
     if (m.type === 'message') {
       const heading = trimOrUndef(m.heading, 80); if (heading) mod.heading = heading;

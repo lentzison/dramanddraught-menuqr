@@ -27,26 +27,38 @@ function moduleTitle(mod) {
   return TV_MODULE_LABELS[mod && mod.type] || 'Module';
 }
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+// Events are stored as UTC timestamps but the business runs on Eastern wall
+// time, and the server runs in UTC — so every date/time shown here is formatted
+// in America/New_York. Using getHours()/getDay() would render in the server's
+// UTC zone and shift everything 4–5 hours.
+const EASTERN_TZ = 'America/New_York';
+
+function easternParts(value) {
+  if (!value) return null;
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: EASTERN_TZ,
+    weekday: 'short', month: 'short', day: 'numeric',
+    hour: 'numeric', minute: '2-digit', hour12: true,
+  }).formatToParts(d);
+  const get = (t) => { const p = parts.find((x) => x.type === t); return p ? p.value : ''; };
+  return {
+    weekday: get('weekday'), month: get('month'), day: get('day'),
+    hour: get('hour'), minute: get('minute'), ampm: (get('dayPeriod') || '').toUpperCase(),
+  };
+}
 
 function fmtTime(value) {
-  if (!value) return '';
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '';
-  let h = d.getHours();
-  const m = d.getMinutes();
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  h = h % 12;
-  if (h === 0) h = 12;
-  return m === 0 ? `${h} ${ampm}` : `${h}:${String(m).padStart(2, '0')} ${ampm}`;
+  const p = easternParts(value);
+  if (!p) return '';
+  return p.minute === '00' ? `${p.hour} ${p.ampm}` : `${p.hour}:${p.minute} ${p.ampm}`;
 }
 
 function fmtEventWhen(start, end) {
-  if (!start) return '';
-  const d = new Date(start);
-  if (Number.isNaN(d.getTime())) return '';
-  const datePart = `${WEEKDAYS[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}`;
+  const p = easternParts(start);
+  if (!p) return '';
+  const datePart = `${p.weekday}, ${p.month} ${p.day}`;
   const startTime = fmtTime(start);
   const endTime = end ? fmtTime(end) : '';
   const timePart = startTime ? (endTime ? `${startTime} – ${endTime}` : startTime) : '';

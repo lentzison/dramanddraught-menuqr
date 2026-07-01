@@ -198,7 +198,10 @@ function generateTvBoardPage(location, board, data, opts = {}) {
       position: absolute; inset: 0;
       display: flex; flex-direction: column;
       padding: clamp(28px, 4vh, 64px) clamp(28px, 3.4vw, 70px);
-      transform-origin: center center;
+      /* Content is top-aligned, so when it's scaled down to fit we anchor the
+         scale to the top — a center origin leaves a gap up top and still clips
+         the overflowing bottom (e.g. a long draught + cans list in the rail). */
+      transform-origin: top center;
       will-change: transform;
     }
     /* Image / promo slides fill edge-to-edge (not scaled). */

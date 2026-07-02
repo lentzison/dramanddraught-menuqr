@@ -181,7 +181,7 @@ function beerMeta(item) {
 }
 
 function beerSection(label, rowsHtml) {
-  return `<div class="tv-beer-sec"><div class="tv-beer-label">${label}</div><ul class="tv-beer-list">${rowsHtml}</ul></div>`;
+  return `<div class="tv-beer-sec">${label ? `<div class="tv-beer-label">${label}</div>` : ''}<ul class="tv-beer-list">${rowsHtml}</ul></div>`;
 }
 
 function draftParts(mod, data) {
@@ -319,16 +319,16 @@ function renderPicks(mod) {
   if (items.length === 0) {
     return head("Bartender's", moduleTitle(mod)) + emptyBody('Add some picks in the board editor.');
   }
-  // Show every pick (no silent cap) and pack them into two columns once the
-  // list gets long, so a big roster still fits the slide after auto-scaling
-  // rather than running off the bottom.
-  const rows = items.map((it) => {
-    // Drink is the headline; the bartender (and optional note) sit beneath it.
-    const sub = [it.by ? `${it.by}'s pick` : '', it.description || ''].filter(Boolean).join(' · ');
-    return priceRow(it.name, sub, it.price || '');
-  }).join('');
-  const listClass = items.length > 6 ? 'tv-list tv-list-2col' : 'tv-list';
-  return head("Bartender's", moduleTitle(mod)) + `<ul class="${listClass}">${rows}</ul>`;
+  // Same one-line table language as the beer menu: drink bold, "X's pick"
+  // (plus any note) muted on the same line, price on the shared right edge.
+  const rows = items.map((it) => beerRow(
+    it.name,
+    [it.by ? `${it.by}'s pick` : '', it.description || ''].filter(Boolean).join(' · '),
+    it.price || '',
+  )).join('');
+  // Big slide title like the other rotating sections; the table brings only
+  // its rows here, not its small gold section label.
+  return head("Bartender's", moduleTitle(mod)) + `<div class="tv-beer-menu">${beerSection('', rows)}</div>`;
 }
 
 function renderImage(mod) {

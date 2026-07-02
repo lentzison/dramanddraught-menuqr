@@ -366,8 +366,10 @@ function generateTvBoardPage(location, board, data, opts = {}) {
       border: 1px solid var(--line); border-radius: 16px; overflow: hidden;
       background: rgba(255,255,255,0.02);
     }
-    /* Full-width banner image on top, details below — reads like an event poster. */
-    .tv-event-img { width: 100%; height: clamp(150px, 22vh, 300px); flex: 0 0 auto; background-size: cover; background-position: center; }
+    /* Full-width banner image on top, details below — reads like an event
+       poster. The box matches the served rendition's aspect ratio (1000x560)
+       so the artwork shows in full instead of being cropped to a strip. */
+    .tv-event-img { width: 100%; aspect-ratio: 1000 / 560; flex: 0 0 auto; background-size: cover; background-position: center; }
     .tv-event-body { padding: clamp(14px,1.8vh,24px); }
     .tv-event-when { color: var(--gold); font-family: var(--display); text-transform: uppercase; letter-spacing: 0.08em; font-size: clamp(0.85rem,1.05vw,1.2rem); }
     .tv-event-title { color: var(--cream); font-weight: 700; font-size: clamp(1.2rem,1.7vw,2rem); line-height: 1.1; margin-top: 6px; }

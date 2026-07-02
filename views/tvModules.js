@@ -181,13 +181,17 @@ function renderDraft(mod, data) {
   if (taps.length === 0 && cans.length === 0) {
     return head('', moduleTitle(mod)) + emptyBody('No taps to show right now.');
   }
-  let body = '';
+  // Taps and cans render as sections inside a tv-draft-cols wrapper: stacked
+  // by default, but the wide pinned rail lays them out side by side so the
+  // whole beer menu needs half the height and the type stays large.
+  const sections = [];
   if (taps.length) {
-    body += `<ul class="tv-list tv-list-2col">${taps.slice(0, 12).map(draftTapRow).join('')}</ul>`;
+    sections.push(`<div class="tv-draft-sec"><ul class="tv-list tv-list-2col">${taps.slice(0, 12).map(draftTapRow).join('')}</ul></div>`);
   }
   if (cans.length) {
-    body += `<div class="tv-subhead">Cans &amp; Bottles</div><ul class="tv-list tv-list-2col">${cans.slice(0, 20).map(draftCanRow).join('')}</ul>`;
+    sections.push(`<div class="tv-draft-sec"><div class="tv-subhead">Cans &amp; Bottles</div><ul class="tv-list tv-list-2col">${cans.slice(0, 20).map(draftCanRow).join('')}</ul></div>`);
   }
+  const body = `<div class="tv-draft-cols${sections.length > 1 ? ' tv-draft-cols-2' : ''}">${sections.join('')}</div>`;
   return head('', moduleTitle(mod)) + body;
 }
 

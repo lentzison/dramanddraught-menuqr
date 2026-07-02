@@ -33,7 +33,11 @@ function buildBoardView(location, board, data, opts = {}) {
   });
 
   const railModuleHtml = pinned ? renderTvModule(pinned, data) : '';
-  return { slides, railModuleHtml, pinned: !!pinned };
+  // A pinned beer menu is dense (taps + cans with meta lines), so it gets a
+  // wider rail than the default 30% column — otherwise it's the smallest text
+  // on the screen despite being the main attraction.
+  const railWide = !!pinned && pinned.type === 'draft';
+  return { slides, railModuleHtml, pinned: !!pinned, railWide };
 }
 
 function tickerHtml(slides) {
@@ -76,6 +80,7 @@ function renderBoardPayload(location, board, data) {
     version: boardVersion(board),
     railHtml: view.railModuleHtml,
     pinned: view.pinned,
+    railWide: view.railWide,
     slides: view.slides.map((s) => ({ id: s.id, title: s.title, seconds: s.seconds, full: !!s.full, html: s.html })),
     ticker: view.slides.map((s) => ({ id: s.id, title: s.title })),
     refreshedAt: new Date().toISOString(),
@@ -155,6 +160,8 @@ function generateTvBoardPage(location, board, data, opts = {}) {
       display: grid; grid-template-columns: 30% 1fr;
       gap: clamp(16px, 2vw, 34px);
     }
+    /* Dense pinned content (the beer menu) gets a wider rail. */
+    .tv-body.tv-rail-wide { grid-template-columns: 44% 1fr; }
     .tv-body-norail { display: block; }
     .tv-body-norail .tv-stage { height: 100%; }
     /* The rail element is always in the DOM (a scheduled pinned module may
@@ -185,7 +192,7 @@ function generateTvBoardPage(location, board, data, opts = {}) {
     }
     .tv-rail-modules { position: relative; min-height: 0; overflow: hidden; flex: 1 1 auto; }
     .tv-rail-modules > .tv-fit { position: absolute; inset: 0; padding: 0; }
-    .tv-rail-modules .tv-mod-title { font-size: clamp(1.2rem, 1.9vw, 1.9rem); }
+    .tv-rail-modules .tv-mod-title { font-size: clamp(1.3rem, 2.2vw, 2.4rem); }
     /* Section toggle: a compact, centered strip along the very bottom. */
     .tv-foot { flex: 0 0 auto; padding-top: clamp(4px,0.8vh,10px); }
     .tv-ticker { list-style: none; display: flex; flex-direction: row; flex-wrap: wrap; gap: 6px 16px; justify-content: center; }
@@ -301,9 +308,16 @@ function generateTvBoardPage(location, board, data, opts = {}) {
        full row width and never clips against the edge. */
     .tv-rail-modules .tv-list-2col { grid-template-columns: 1fr; gap: clamp(6px,1vh,12px); }
     .tv-rail-modules .tv-item { gap: 12px; }
-    .tv-rail-modules .tv-item-name { font-size: clamp(1rem, 1.4vw, 1.5rem); }
-    .tv-rail-modules .tv-item-price { font-size: clamp(1rem, 1.4vw, 1.5rem); }
-    .tv-rail-modules .tv-item-note { font-size: clamp(0.78rem, 1vw, 1.05rem); }
+    .tv-rail-modules .tv-item-name { font-size: clamp(1.05rem, 1.8vw, 2.1rem); }
+    .tv-rail-modules .tv-item-price { font-size: clamp(1.05rem, 1.8vw, 2.1rem); }
+    .tv-rail-modules .tv-item-note { font-size: clamp(0.85rem, 1.2vw, 1.4rem); }
+    .tv-rail-modules .tv-subhead { font-size: clamp(0.95rem, 1.35vw, 1.55rem); }
+    /* Draft sections (taps / cans & bottles) stack by default; in the wide
+       rail they sit side by side so the beer menu needs half the height and
+       the fit-scaler never has to shrink the type. */
+    .tv-draft-cols { display: grid; grid-template-columns: 1fr; min-height: 0; }
+    .tv-rail-wide .tv-rail-modules .tv-draft-cols-2 { grid-template-columns: 1fr 1fr; gap: 0 clamp(22px, 2vw, 44px); align-items: start; }
+    .tv-rail-wide .tv-rail-modules .tv-draft-cols-2 .tv-subhead { margin-top: 0; padding-top: 0; border-top: 0; margin-bottom: clamp(8px,1.2vh,14px); }
     /* events */
     .tv-events { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: clamp(14px,1.8vw,28px); align-content: start; }
     .tv-event {
@@ -331,9 +345,11 @@ function generateTvBoardPage(location, board, data, opts = {}) {
     .tv-message { margin: auto 0; }
     .tv-message-heading { font-family: var(--display); color: var(--gold-bright); font-size: clamp(2.6rem,5.5vw,6rem); line-height: 1.02; }
     .tv-message-body { color: var(--text); font-size: clamp(1.3rem,2.4vw,2.8rem); margin-top: clamp(14px,2vh,28px); line-height: 1.3; }
-    /* Portrait / small screens: stack the rail above the stage. */
+    /* Portrait / small screens: stack the rail above the stage.
+       (.tv-body.tv-rail-wide is repeated so the wide-rail rule can't win the
+       cascade and put columns back on a portrait screen.) */
     @media (max-aspect-ratio: 1/1), (max-width: 820px) {
-      .tv-body { grid-template-columns: 1fr; grid-template-rows: minmax(0, 0.9fr) 1fr; }
+      .tv-body, .tv-body.tv-rail-wide { grid-template-columns: 1fr; grid-template-rows: minmax(0, 0.9fr) 1fr; }
       .tv-clock { font-size: clamp(1.6rem, 7vw, 2.6rem); }
       .tv-list-2col, .tv-events { grid-template-columns: 1fr; }
     }
@@ -360,6 +376,9 @@ function generateTvBoardPage(location, board, data, opts = {}) {
     body.tv-portrait .tv-rail-modules .tv-list-2col {
       grid-template-columns: 1fr 1fr; gap: clamp(6px,1vh,12px) clamp(20px,4vw,48px);
     }
+    /* ...but when the draft sections already sit side by side (taps | cans),
+       keep each section's list single-column so the band isn't 4-up. */
+    body.tv-portrait .tv-rail-modules .tv-draft-cols-2 .tv-list-2col { grid-template-columns: 1fr; }
     body.tv-portrait .tv-rail-modules .tv-mod-title { font-size: clamp(1.4rem, 3vw, 2.4rem); }
     body.tv-portrait .tv-rail-modules .tv-item-name,
     body.tv-portrait .tv-rail-modules .tv-item-price { font-size: clamp(1.1rem, 2.4vw, 1.8rem); }
@@ -387,7 +406,7 @@ function generateTvBoardPage(location, board, data, opts = {}) {
         <div class="tv-date" id="tv-date"></div>
       </div>
     </header>
-    <div class="tv-body${view.pinned ? '' : ' tv-body-norail'}" id="tv-body">
+    <div class="tv-body${view.pinned ? '' : ' tv-body-norail'}${view.railWide ? ' tv-rail-wide' : ''}" id="tv-body">
       <aside class="tv-rail">
         <div class="tv-rail-modules" id="tv-rail-modules">${view.pinned ? `<div class="tv-fit">${view.railModuleHtml}</div>` : ''}</div>
       </aside>
@@ -518,7 +537,10 @@ function generateTvBoardPage(location, board, data, opts = {}) {
           if (railMods && typeof data.railHtml === 'string') railMods.innerHTML = data.railHtml ? '<div class="tv-fit">' + data.railHtml + '</div>' : '';
           // A scheduled pinned module may come and go mid-day — toggle the rail.
           var body = document.getElementById('tv-body');
-          if (body) body.classList.toggle('tv-body-norail', !data.pinned);
+          if (body) {
+            body.classList.toggle('tv-body-norail', !data.pinned);
+            body.classList.toggle('tv-rail-wide', !!data.railWide);
+          }
           var all = slides();
           var start = -1;
           for (var k = 0; k < all.length; k++) { if (all[k].getAttribute('data-id') === curId) { start = k; break; } }

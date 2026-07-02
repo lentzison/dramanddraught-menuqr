@@ -1,5 +1,5 @@
 const { escHTML } = require('./escapeHtml');
-const { renderTvModule, renderTvModuleSlides, moduleTitle, isModuleVisibleNow, TV_POLL_SECONDS } = require('./tvModules');
+const { renderTvModule, renderTvModuleSlides, renderTvRailModule, moduleTitle, isModuleVisibleNow, TV_POLL_SECONDS } = require('./tvModules');
 
 // Resolve a board's modules into a persistent (pinned) module + the rotating
 // slide deck. Shared by the full page render and the JSON refresh endpoint so
@@ -32,7 +32,7 @@ function buildBoardView(location, board, data, opts = {}) {
     }));
   });
 
-  const railModuleHtml = pinned ? renderTvModule(pinned, data) : '';
+  const railModuleHtml = pinned ? renderTvRailModule(pinned, data) : '';
   // A pinned beer menu is dense (taps + cans with meta lines), so it gets a
   // wider rail than the default 30% column — otherwise it's the smallest text
   // on the screen despite being the main attraction.
@@ -313,19 +313,46 @@ function generateTvBoardPage(location, board, data, opts = {}) {
     .tv-rail-modules .tv-item-price { font-size: clamp(1.1rem, 2vw, 2.3rem); }
     .tv-rail-modules .tv-item-note { font-size: clamp(0.9rem, 1.3vw, 1.5rem); }
     .tv-rail-modules .tv-subhead { font-size: clamp(1rem, 1.5vw, 1.7rem); }
-    .tv-rail-wide .tv-rail-modules .tv-mod-title { font-size: clamp(1.4rem, 2.4vw, 2.6rem); }
-    /* Roomier rows in the beer panel — tight rows read as crammed on a TV. */
-    .tv-rail-wide .tv-rail-modules .tv-list { gap: clamp(10px, 1.6vh, 20px); }
-    .tv-rail-wide .tv-rail-modules .tv-item { padding-bottom: clamp(8px, 1.3vh, 16px); }
-    /* Draft sections (taps / cans & bottles) stack by default; in the wide
-       rail they sit side by side so the beer menu needs half the height and
-       the fit-scaler never has to shrink the type. */
+    /* Draft sections stack on the rotating combined slide. */
     .tv-draft-cols { display: grid; grid-template-columns: 1fr; min-height: 0; }
-    .tv-rail-wide .tv-rail-modules .tv-draft-cols-2 { grid-template-columns: 1.15fr 1fr; gap: 0 clamp(26px, 2.4vw, 52px); align-items: start; }
-    .tv-rail-wide .tv-rail-modules .tv-draft-cols-2 .tv-draft-sec + .tv-draft-sec {
-      border-left: 1px solid var(--line); padding-left: clamp(24px, 2.2vw, 48px);
+    .tv-draft-cols-2 .tv-draft-sec + .tv-draft-sec { margin-top: clamp(18px, 2.6vh, 36px); }
+    /* ── Pinned beer menu (taproom-board table) ──
+       One line per beer: bold name, muted style info, price on a shared right
+       edge. Sections flow as one aligned list under small gold labels — no
+       competing giant headers, no ragged columns, no dead space. */
+    /* margin:auto centers vertically when the list is short, but unlike
+       justify-content:center it never clips the top when content overflows
+       (and scrollHeight stays honest so the fit-scaler can do its job). */
+    .tv-beer-menu { display: flex; flex-direction: column; margin: auto 0; gap: clamp(18px, 3vh, 40px); }
+    .tv-beer-label {
+      color: var(--gold); font-family: var(--display);
+      text-transform: uppercase; letter-spacing: 0.18em;
+      font-size: clamp(0.85rem, 1.25vw, 1.45rem);
+      margin-bottom: clamp(8px, 1.4vh, 18px);
     }
-    .tv-rail-wide .tv-rail-modules .tv-draft-cols-2 .tv-subhead { margin-top: 0; padding-top: 0; border-top: 0; margin-bottom: clamp(10px,1.6vh,18px); }
+    .tv-beer-list { list-style: none; display: flex; flex-direction: column; }
+    .tv-beer-row {
+      display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: baseline; gap: clamp(10px, 1.2vw, 24px);
+      padding: clamp(7px, 1.15vh, 15px) 0;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .tv-beer-list > .tv-beer-row:last-child { border-bottom: 0; }
+    .tv-beer-name {
+      color: var(--cream); font-weight: 700; white-space: nowrap;
+      font-size: clamp(1.15rem, 1.9vw, 2.2rem); line-height: 1.1;
+    }
+    .tv-beer-meta {
+      color: #b3aeaa; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      font-size: clamp(0.85rem, 1.2vw, 1.4rem);
+    }
+    .tv-beer-price {
+      color: var(--gold); font-weight: 800; font-family: var(--display);
+      font-size: clamp(1.15rem, 1.9vw, 2.2rem); white-space: nowrap; text-align: right;
+    }
+    /* Portrait band: the two beer sections sit side by side in the wide,
+       short band instead of one tall stack. */
+    body.tv-portrait .tv-beer-menu { display: grid; grid-template-columns: 1fr 1fr; gap: 0 clamp(24px, 4vw, 56px); align-items: start; }
     /* events */
     .tv-events { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: clamp(14px,1.8vw,28px); align-content: start; }
     .tv-event {

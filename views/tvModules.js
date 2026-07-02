@@ -181,18 +181,66 @@ function renderDraft(mod, data) {
   if (taps.length === 0 && cans.length === 0) {
     return head('', moduleTitle(mod)) + emptyBody('No taps to show right now.');
   }
-  // Taps and cans render as sections inside a tv-draft-cols wrapper: stacked
-  // by default, but the wide pinned rail lays them out side by side so the
-  // whole beer menu needs half the height and the type stays large.
+  // Taps and cans render as equal titled sections inside a tv-draft-cols
+  // wrapper: stacked by default, side by side in the wide pinned rail. Both
+  // headers use the module-title style so "Cans & Bottles" reads like a real
+  // section, not a footnote under the taps.
   const sections = [];
   if (taps.length) {
-    sections.push(`<div class="tv-draft-sec"><ul class="tv-list tv-list-2col">${taps.slice(0, 12).map(draftTapRow).join('')}</ul></div>`);
+    sections.push(`<div class="tv-draft-sec">${head('', moduleTitle(mod))}<ul class="tv-list tv-list-2col">${taps.slice(0, 12).map(draftTapRow).join('')}</ul></div>`);
   }
   if (cans.length) {
-    sections.push(`<div class="tv-draft-sec"><div class="tv-subhead">Cans &amp; Bottles</div><ul class="tv-list tv-list-2col">${cans.slice(0, 20).map(draftCanRow).join('')}</ul></div>`);
+    sections.push(`<div class="tv-draft-sec">${head('', taps.length ? 'Cans & Bottles' : moduleTitle(mod))}<ul class="tv-list tv-list-2col tv-list-cans">${cans.slice(0, 20).map(draftCanRow).join('')}</ul></div>`);
   }
-  const body = `<div class="tv-draft-cols${sections.length > 1 ? ' tv-draft-cols-2' : ''}">${sections.join('')}</div>`;
-  return head('', moduleTitle(mod)) + body;
+  return `<div class="tv-draft-cols${sections.length > 1 ? ' tv-draft-cols-2' : ''}">${sections.join('')}</div>`;
+}
+
+// ── Pinned-rail beer menu ──
+// The persistent beer panel gets its own dedicated layout instead of the
+// generic module rows: one line per beer (name — style info — price on a
+// shared right edge), small gold section labels, no ragged columns. This is
+// the classic taproom-board table and it's what stays readable across a bar.
+
+function beerRailRow(name, meta, price) {
+  return `<li class="tv-beer-row">
+    <span class="tv-beer-name">${escHTML(name)}</span>
+    <span class="tv-beer-meta">${escHTML(meta || '')}</span>
+    ${price ? `<span class="tv-beer-price">${escHTML(price)}</span>` : '<span class="tv-beer-price"></span>'}
+  </li>`;
+}
+
+function renderDraftRail(mod, data) {
+  const d = (data && data.draft) || {};
+  const taps = (Array.isArray(d.items) ? d.items : []).filter((t) => t && t.beerName);
+  const cans = (Array.isArray(mod && mod.cans) ? mod.cans : []).filter((c) => c && c.name);
+  if (taps.length === 0 && cans.length === 0) {
+    return head('', moduleTitle(mod)) + emptyBody('No taps to show right now.');
+  }
+  const sections = [];
+  if (taps.length) {
+    const rows = taps.slice(0, 12).map((t) => beerRailRow(
+      t.beerName,
+      [t.brewery, t.style, t.abv ? `${t.abv}%` : null].filter(Boolean).join(' · '),
+      t.price || '',
+    )).join('');
+    sections.push(`<div class="tv-beer-sec"><div class="tv-beer-label">${escHTML(moduleTitle(mod))}</div><ul class="tv-beer-list">${rows}</ul></div>`);
+  }
+  if (cans.length) {
+    const rows = cans.slice(0, 20).map((c) => beerRailRow(
+      c.name,
+      [c.brewery, c.style, c.abv ? `${c.abv}%` : null].filter(Boolean).join(' · '),
+      c.price || '',
+    )).join('');
+    sections.push(`<div class="tv-beer-sec"><div class="tv-beer-label">${taps.length ? 'Cans &amp; Bottles' : escHTML(moduleTitle(mod))}</div><ul class="tv-beer-list">${rows}</ul></div>`);
+  }
+  return `<div class="tv-beer-menu">${sections.join('')}</div>`;
+}
+
+// Module render for the persistent rail — the beer menu gets its dedicated
+// table layout; every other type uses the standard slide renderer.
+function renderTvRailModule(mod, data) {
+  if (mod && mod.type === 'draft') return renderDraftRail(mod, data);
+  return renderTvModule(mod, data);
 }
 
 // ── Multi-slide rendering ──
@@ -359,5 +407,6 @@ module.exports = {
   moduleTitle,
   renderTvModule,
   renderTvModuleSlides,
+  renderTvRailModule,
   isModuleVisibleNow,
 };

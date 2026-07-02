@@ -162,84 +162,54 @@ function renderSpecials(mod, data) {
     + `<ul class="tv-list">${rows}</ul>`;
 }
 
-function draftTapRow(t) {
-  const meta = [t.brewery, t.style, t.abv ? `${t.abv}% ABV` : null].filter(Boolean).join(' · ');
-  return priceRow(t.beerName, meta, t.price || '');
-}
+// ── Beer menu (shared taproom-board table) ──
+// The beer menu renders the same way everywhere it appears — pinned rail or
+// full-screen slide: one line per beer (bold name, muted brewery/style/ABV,
+// price on a shared right edge) under small gold section labels. Context CSS
+// only changes the type scale and whether sections sit side by side.
 
-function draftCanRow(c) {
-  const meta = [c.brewery, c.style, c.abv ? `${c.abv}% ABV` : null].filter(Boolean).join(' · ');
-  return priceRow(c.name, meta, c.price || '');
-}
-
-function renderDraft(mod, data) {
-  const d = (data && data.draft) || {};
-  const taps = (Array.isArray(d.items) ? d.items : []).filter((t) => t && t.beerName);
-  // Curated can/bottle beers typed in the board editor. They aren't in the live
-  // tap feed, so they're stored on the module config and shown under the taps.
-  const cans = (Array.isArray(mod && mod.cans) ? mod.cans : []).filter((c) => c && c.name);
-  if (taps.length === 0 && cans.length === 0) {
-    return head('', moduleTitle(mod)) + emptyBody('No taps to show right now.');
-  }
-  // Taps and cans render as equal titled sections inside a tv-draft-cols
-  // wrapper: stacked by default, side by side in the wide pinned rail. Both
-  // headers use the module-title style so "Cans & Bottles" reads like a real
-  // section, not a footnote under the taps.
-  const sections = [];
-  if (taps.length) {
-    sections.push(`<div class="tv-draft-sec">${head('', moduleTitle(mod))}<ul class="tv-list tv-list-2col">${taps.slice(0, 12).map(draftTapRow).join('')}</ul></div>`);
-  }
-  if (cans.length) {
-    sections.push(`<div class="tv-draft-sec">${head('', taps.length ? 'Cans & Bottles' : moduleTitle(mod))}<ul class="tv-list tv-list-2col tv-list-cans">${cans.slice(0, 20).map(draftCanRow).join('')}</ul></div>`);
-  }
-  return `<div class="tv-draft-cols${sections.length > 1 ? ' tv-draft-cols-2' : ''}">${sections.join('')}</div>`;
-}
-
-// ── Pinned-rail beer menu ──
-// The persistent beer panel gets its own dedicated layout instead of the
-// generic module rows: one line per beer (name — style info — price on a
-// shared right edge), small gold section labels, no ragged columns. This is
-// the classic taproom-board table and it's what stays readable across a bar.
-
-function beerRailRow(name, meta, price) {
+function beerRow(name, meta, price) {
   return `<li class="tv-beer-row">
     <span class="tv-beer-name">${escHTML(name)}</span>
     <span class="tv-beer-meta">${escHTML(meta || '')}</span>
-    ${price ? `<span class="tv-beer-price">${escHTML(price)}</span>` : '<span class="tv-beer-price"></span>'}
+    <span class="tv-beer-price">${price ? escHTML(price) : ''}</span>
   </li>`;
 }
 
-function renderDraftRail(mod, data) {
+function beerMeta(item) {
+  return [item.brewery, item.style, item.abv ? `${item.abv}%` : null].filter(Boolean).join(' · ');
+}
+
+function beerSection(label, rowsHtml) {
+  return `<div class="tv-beer-sec"><div class="tv-beer-label">${label}</div><ul class="tv-beer-list">${rowsHtml}</ul></div>`;
+}
+
+function draftParts(mod, data) {
   const d = (data && data.draft) || {};
-  const taps = (Array.isArray(d.items) ? d.items : []).filter((t) => t && t.beerName);
-  const cans = (Array.isArray(mod && mod.cans) ? mod.cans : []).filter((c) => c && c.name);
+  return {
+    taps: (Array.isArray(d.items) ? d.items : []).filter((t) => t && t.beerName),
+    cans: (Array.isArray(mod && mod.cans) ? mod.cans : []).filter((c) => c && c.name),
+  };
+}
+
+function renderDraft(mod, data) {
+  const { taps, cans } = draftParts(mod, data);
   if (taps.length === 0 && cans.length === 0) {
     return head('', moduleTitle(mod)) + emptyBody('No taps to show right now.');
   }
   const sections = [];
   if (taps.length) {
-    const rows = taps.slice(0, 12).map((t) => beerRailRow(
-      t.beerName,
-      [t.brewery, t.style, t.abv ? `${t.abv}%` : null].filter(Boolean).join(' · '),
-      t.price || '',
-    )).join('');
-    sections.push(`<div class="tv-beer-sec"><div class="tv-beer-label">${escHTML(moduleTitle(mod))}</div><ul class="tv-beer-list">${rows}</ul></div>`);
+    sections.push(beerSection(escHTML(moduleTitle(mod)), taps.slice(0, 12).map((t) => beerRow(t.beerName, beerMeta(t), t.price || '')).join('')));
   }
   if (cans.length) {
-    const rows = cans.slice(0, 20).map((c) => beerRailRow(
-      c.name,
-      [c.brewery, c.style, c.abv ? `${c.abv}%` : null].filter(Boolean).join(' · '),
-      c.price || '',
-    )).join('');
-    sections.push(`<div class="tv-beer-sec"><div class="tv-beer-label">${taps.length ? 'Cans &amp; Bottles' : escHTML(moduleTitle(mod))}</div><ul class="tv-beer-list">${rows}</ul></div>`);
+    sections.push(beerSection(taps.length ? 'Cans &amp; Bottles' : escHTML(moduleTitle(mod)), cans.slice(0, 20).map((c) => beerRow(c.name, beerMeta(c), c.price || '')).join('')));
   }
-  return `<div class="tv-beer-menu">${sections.join('')}</div>`;
+  return `<div class="tv-beer-menu${sections.length > 1 ? ' tv-beer-cols-2' : ''}">${sections.join('')}</div>`;
 }
 
-// Module render for the persistent rail — the beer menu gets its dedicated
-// table layout; every other type uses the standard slide renderer.
+// Module render for the persistent rail — same renderers as the slides (the
+// beer menu is context-styled by CSS, not re-rendered differently).
 function renderTvRailModule(mod, data) {
-  if (mod && mod.type === 'draft') return renderDraftRail(mod, data);
   return renderTvModule(mod, data);
 }
 
@@ -259,9 +229,7 @@ function chunkRows(arr, size) {
 }
 
 function draftSlides(mod, data) {
-  const d = (data && data.draft) || {};
-  const taps = (Array.isArray(d.items) ? d.items : []).filter((t) => t && t.beerName);
-  const cans = (Array.isArray(mod && mod.cans) ? mod.cans : []).filter((c) => c && c.name);
+  const { taps, cans } = draftParts(mod, data);
   const title = moduleTitle(mod);
   // Small programs still read fine combined on one slide.
   if (taps.length + cans.length <= DRAFT_ROWS_PER_SLIDE) {
@@ -273,7 +241,7 @@ function draftSlides(mod, data) {
     slides.push({
       idSuffix: i > 0 ? `taps${i + 1}` : '',
       title: t,
-      html: head('', t) + `<ul class="tv-list tv-list-2col">${group.map(draftTapRow).join('')}</ul>`,
+      html: `<div class="tv-beer-menu">${beerSection(escHTML(t), group.map((x) => beerRow(x.beerName, beerMeta(x), x.price || '')).join(''))}</div>`,
     });
   });
   chunkRows(cans, DRAFT_ROWS_PER_SLIDE).forEach((group, i, all) => {
@@ -281,7 +249,7 @@ function draftSlides(mod, data) {
     slides.push({
       idSuffix: `cans${i > 0 ? i + 1 : ''}`,
       title: t,
-      html: head('', t) + `<ul class="tv-list tv-list-2col">${group.map(draftCanRow).join('')}</ul>`,
+      html: `<div class="tv-beer-menu">${beerSection(escHTML(t), group.map((x) => beerRow(x.name, beerMeta(x), x.price || '')).join(''))}</div>`,
     });
   });
   return slides;

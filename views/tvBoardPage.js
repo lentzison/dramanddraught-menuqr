@@ -313,10 +313,7 @@ function generateTvBoardPage(location, board, data, opts = {}) {
     .tv-rail-modules .tv-item-price { font-size: clamp(1.1rem, 2vw, 2.3rem); }
     .tv-rail-modules .tv-item-note { font-size: clamp(0.9rem, 1.3vw, 1.5rem); }
     .tv-rail-modules .tv-subhead { font-size: clamp(1rem, 1.5vw, 1.7rem); }
-    /* Draft sections stack on the rotating combined slide. */
-    .tv-draft-cols { display: grid; grid-template-columns: 1fr; min-height: 0; }
-    .tv-draft-cols-2 .tv-draft-sec + .tv-draft-sec { margin-top: clamp(18px, 2.6vh, 36px); }
-    /* ── Pinned beer menu (taproom-board table) ──
+    /* ── Beer menu (taproom-board table) ──
        One line per beer: bold name, muted style info, price on a shared right
        edge. Sections flow as one aligned list under small gold labels — no
        competing giant headers, no ragged columns, no dead space. */
@@ -350,9 +347,17 @@ function generateTvBoardPage(location, board, data, opts = {}) {
       color: var(--gold); font-weight: 800; font-family: var(--display);
       font-size: clamp(1.15rem, 1.9vw, 2.2rem); white-space: nowrap; text-align: right;
     }
-    /* Portrait band: the two beer sections sit side by side in the wide,
-       short band instead of one tall stack. */
-    body.tv-portrait .tv-beer-menu { display: grid; grid-template-columns: 1fr 1fr; gap: 0 clamp(24px, 4vw, 56px); align-items: start; }
+    /* Full-screen beer slides: same table at a bigger scale, sections side
+       by side (there's width to spare on a full slide). */
+    .tv-slides .tv-beer-menu.tv-beer-cols-2 { display: grid; grid-template-columns: 1.15fr 1fr; gap: 0 clamp(40px, 4vw, 90px); align-items: start; }
+    .tv-slides .tv-beer-label { font-size: clamp(1rem, 1.6vw, 1.9rem); }
+    .tv-slides .tv-beer-name, .tv-slides .tv-beer-price { font-size: clamp(1.4rem, 2.5vw, 3rem); }
+    .tv-slides .tv-beer-meta { font-size: clamp(1rem, 1.5vw, 1.8rem); }
+    .tv-slides .tv-beer-row { padding: clamp(10px, 1.8vh, 24px) 0; }
+    /* Portrait: the wide short rail band runs the two sections side by side;
+       a tall portrait stage stacks them. */
+    body.tv-portrait .tv-rail-modules .tv-beer-cols-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 clamp(24px, 4vw, 56px); align-items: start; }
+    body.tv-portrait .tv-slides .tv-beer-menu.tv-beer-cols-2 { grid-template-columns: 1fr; }
     /* events */
     .tv-events { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: clamp(14px,1.8vw,28px); align-content: start; }
     .tv-event {

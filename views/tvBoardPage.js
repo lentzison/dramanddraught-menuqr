@@ -1,5 +1,5 @@
 const { escHTML } = require('./escapeHtml');
-const { renderTvModule, moduleTitle, isModuleVisibleNow, TV_POLL_SECONDS } = require('./tvModules');
+const { renderTvModule, renderTvModuleSlides, moduleTitle, isModuleVisibleNow, TV_POLL_SECONDS } = require('./tvModules');
 
 // Resolve a board's modules into a persistent (pinned) module + the rotating
 // slide deck. Shared by the full page render and the JSON refresh endpoint so
@@ -18,13 +18,19 @@ function buildBoardView(location, board, data, opts = {}) {
   if (rotating.length === 0) rotating = mods;
 
   const defaultSeconds = Math.max(4, parseInt(board.rotateSeconds, 10) || 15);
-  const slides = rotating.map((m, i) => ({
-    id: String(m.id || `m${i}`),
-    title: moduleTitle(m),
-    seconds: Math.max(4, parseInt(m.seconds, 10) || defaultSeconds),
-    full: m.type === 'image', // image slides go edge-to-edge (no slide padding)
-    html: renderTvModule(m, data),
-  }));
+  // A module can paginate into several slides (a long beer list splits into
+  // full-size pages instead of being shrunk to fit one slide).
+  const slides = rotating.flatMap((m, i) => {
+    const baseId = String(m.id || `m${i}`);
+    const seconds = Math.max(4, parseInt(m.seconds, 10) || defaultSeconds);
+    return renderTvModuleSlides(m, data).map((part) => ({
+      id: part.idSuffix ? `${baseId}_${part.idSuffix}` : baseId,
+      title: part.title || moduleTitle(m),
+      seconds,
+      full: m.type === 'image', // image slides go edge-to-edge (no slide padding)
+      html: part.html,
+    }));
+  });
 
   const railModuleHtml = pinned ? renderTvModule(pinned, data) : '';
   return { slides, railModuleHtml, pinned: !!pinned };
@@ -45,12 +51,21 @@ function slidesDomHtml(slides) {
     </div>`).join('');
 }
 
-// Config version token: changes on every admin save (the screen heartbeat
-// writes lastSeenAt via raw SQL precisely so it does NOT bump updatedAt).
-// The client hard-reloads when this changes, picking up orientation, logo,
-// CSS and script changes without anyone touching the TV.
+// Version token the screens reload on. Two parts:
+//  - board.updatedAt: changes on every admin save (the screen heartbeat writes
+//    lastSeenAt via raw SQL precisely so it does NOT bump updatedAt), and
+//  - a hash of this file: changes when a deploy alters the TV page's own
+//    CSS/markup/script, so styling fixes reach screens without re-saving
+//    every board or touching a TV.
+const PAGE_CODE_VERSION = (() => {
+  try {
+    return require('crypto').createHash('sha1').update(require('fs').readFileSync(__filename)).digest('hex').slice(0, 10);
+  } catch { return '0'; }
+})();
+
 function boardVersion(board) {
-  return board.updatedAt ? new Date(board.updatedAt).toISOString() : '';
+  const saved = board.updatedAt ? new Date(board.updatedAt).toISOString() : '';
+  return `${saved}|${PAGE_CODE_VERSION}`;
 }
 
 // JSON payload for the periodic client refresh.
@@ -271,15 +286,15 @@ function generateTvBoardPage(location, board, data, opts = {}) {
     .tv-item-main { min-width: 0; }
     .tv-item-name {
       display: block; color: var(--cream); font-weight: 700;
-      font-size: clamp(1.2rem, 1.9vw, 2.2rem); line-height: 1.12;
+      font-size: clamp(1.35rem, 2.1vw, 2.4rem); line-height: 1.12;
     }
     .tv-item-note {
-      display: block; color: var(--muted);
-      font-size: clamp(0.92rem, 1.15vw, 1.35rem); margin-top: 3px; line-height: 1.25;
+      display: block; color: #bdb8b3;
+      font-size: clamp(1.05rem, 1.3vw, 1.5rem); margin-top: 3px; line-height: 1.25;
     }
     .tv-item-price {
       color: var(--gold); font-weight: 800; white-space: nowrap;
-      font-size: clamp(1.2rem, 1.9vw, 2.2rem); font-family: var(--display);
+      font-size: clamp(1.35rem, 2.1vw, 2.4rem); font-family: var(--display);
       flex: 0 0 auto;
     }
     /* In the narrow rail, force single-column lists so the price always has

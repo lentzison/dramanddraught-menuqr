@@ -162,6 +162,16 @@ function renderSpecials(mod, data) {
     + `<ul class="tv-list">${rows}</ul>`;
 }
 
+function draftTapRow(t) {
+  const meta = [t.brewery, t.style, t.abv ? `${t.abv}% ABV` : null].filter(Boolean).join(' · ');
+  return priceRow(t.beerName, meta, t.price || '');
+}
+
+function draftCanRow(c) {
+  const meta = [c.brewery, c.style, c.abv ? `${c.abv}% ABV` : null].filter(Boolean).join(' · ');
+  return priceRow(c.name, meta, c.price || '');
+}
+
 function renderDraft(mod, data) {
   const d = (data && data.draft) || {};
   const taps = (Array.isArray(d.items) ? d.items : []).filter((t) => t && t.beerName);
@@ -173,20 +183,63 @@ function renderDraft(mod, data) {
   }
   let body = '';
   if (taps.length) {
-    const rows = taps.slice(0, 12).map((t) => {
-      const meta = [t.brewery, t.style, t.abv ? `${t.abv}% ABV` : null].filter(Boolean).join(' · ');
-      return priceRow(t.beerName, meta, t.price || '');
-    }).join('');
-    body += `<ul class="tv-list tv-list-2col">${rows}</ul>`;
+    body += `<ul class="tv-list tv-list-2col">${taps.slice(0, 12).map(draftTapRow).join('')}</ul>`;
   }
   if (cans.length) {
-    const rows = cans.slice(0, 20).map((c) => {
-      const meta = [c.brewery, c.style, c.abv ? `${c.abv}% ABV` : null].filter(Boolean).join(' · ');
-      return priceRow(c.name, meta, c.price || '');
-    }).join('');
-    body += `<div class="tv-subhead">Cans &amp; Bottles</div><ul class="tv-list tv-list-2col">${rows}</ul>`;
+    body += `<div class="tv-subhead">Cans &amp; Bottles</div><ul class="tv-list tv-list-2col">${cans.slice(0, 20).map(draftCanRow).join('')}</ul>`;
   }
   return head('', moduleTitle(mod)) + body;
+}
+
+// ── Multi-slide rendering ──
+// The stage auto-shrinks slide content to fit, so a full beer program (a
+// dozen taps plus a case of cans) squeezed onto one slide ends up unreadably
+// small from across the bar. Instead, a draft module paginates: taps and
+// cans/bottles become separate full-size slides, chunked when long. Only the
+// rotating stage paginates — the pinned rail still uses the compact
+// single-render (renderDraft) since nothing rotates there.
+const DRAFT_ROWS_PER_SLIDE = 12;
+
+function chunkRows(arr, size) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+function draftSlides(mod, data) {
+  const d = (data && data.draft) || {};
+  const taps = (Array.isArray(d.items) ? d.items : []).filter((t) => t && t.beerName);
+  const cans = (Array.isArray(mod && mod.cans) ? mod.cans : []).filter((c) => c && c.name);
+  const title = moduleTitle(mod);
+  // Small programs still read fine combined on one slide.
+  if (taps.length + cans.length <= DRAFT_ROWS_PER_SLIDE) {
+    return [{ idSuffix: '', title, html: renderDraft(mod, data) }];
+  }
+  const slides = [];
+  chunkRows(taps, DRAFT_ROWS_PER_SLIDE).forEach((group, i, all) => {
+    const t = all.length > 1 ? `${title} · ${i + 1} of ${all.length}` : title;
+    slides.push({
+      idSuffix: i > 0 ? `taps${i + 1}` : '',
+      title: t,
+      html: head('', t) + `<ul class="tv-list tv-list-2col">${group.map(draftTapRow).join('')}</ul>`,
+    });
+  });
+  chunkRows(cans, DRAFT_ROWS_PER_SLIDE).forEach((group, i, all) => {
+    const t = all.length > 1 ? `Cans & Bottles · ${i + 1} of ${all.length}` : 'Cans & Bottles';
+    slides.push({
+      idSuffix: `cans${i > 0 ? i + 1 : ''}`,
+      title: t,
+      html: head('', t) + `<ul class="tv-list tv-list-2col">${group.map(draftCanRow).join('')}</ul>`,
+    });
+  });
+  return slides;
+}
+
+// One module → one or more rotating slides. Draft paginates; everything else
+// stays a single slide.
+function renderTvModuleSlides(mod, data) {
+  if (mod && mod.type === 'draft') return draftSlides(mod, data);
+  return [{ idSuffix: '', title: moduleTitle(mod), html: renderTvModule(mod, data) }];
 }
 
 function renderEvents(mod, data) {
@@ -301,5 +354,6 @@ module.exports = {
   isCuratedType,
   moduleTitle,
   renderTvModule,
+  renderTvModuleSlides,
   isModuleVisibleNow,
 };

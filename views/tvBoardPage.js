@@ -160,8 +160,9 @@ function generateTvBoardPage(location, board, data, opts = {}) {
       display: grid; grid-template-columns: 30% 1fr;
       gap: clamp(16px, 2vw, 34px);
     }
-    /* Dense pinned content (the beer menu) gets a wider rail. */
-    .tv-body.tv-rail-wide { grid-template-columns: 44% 1fr; }
+    /* When the pinned module is the beer menu, it IS the main event: it gets
+       the majority of the screen and the rotating deck takes the smaller side. */
+    .tv-body.tv-rail-wide { grid-template-columns: 56% 1fr; }
     .tv-body-norail { display: block; }
     .tv-body-norail .tv-stage { height: 100%; }
     /* The rail element is always in the DOM (a scheduled pinned module may
@@ -308,16 +309,23 @@ function generateTvBoardPage(location, board, data, opts = {}) {
        full row width and never clips against the edge. */
     .tv-rail-modules .tv-list-2col { grid-template-columns: 1fr; gap: clamp(6px,1vh,12px); }
     .tv-rail-modules .tv-item { gap: 12px; }
-    .tv-rail-modules .tv-item-name { font-size: clamp(1.05rem, 1.8vw, 2.1rem); }
-    .tv-rail-modules .tv-item-price { font-size: clamp(1.05rem, 1.8vw, 2.1rem); }
-    .tv-rail-modules .tv-item-note { font-size: clamp(0.85rem, 1.2vw, 1.4rem); }
-    .tv-rail-modules .tv-subhead { font-size: clamp(0.95rem, 1.35vw, 1.55rem); }
+    .tv-rail-modules .tv-item-name { font-size: clamp(1.1rem, 2vw, 2.3rem); }
+    .tv-rail-modules .tv-item-price { font-size: clamp(1.1rem, 2vw, 2.3rem); }
+    .tv-rail-modules .tv-item-note { font-size: clamp(0.9rem, 1.3vw, 1.5rem); }
+    .tv-rail-modules .tv-subhead { font-size: clamp(1rem, 1.5vw, 1.7rem); }
+    .tv-rail-wide .tv-rail-modules .tv-mod-title { font-size: clamp(1.4rem, 2.4vw, 2.6rem); }
+    /* Roomier rows in the beer panel — tight rows read as crammed on a TV. */
+    .tv-rail-wide .tv-rail-modules .tv-list { gap: clamp(10px, 1.6vh, 20px); }
+    .tv-rail-wide .tv-rail-modules .tv-item { padding-bottom: clamp(8px, 1.3vh, 16px); }
     /* Draft sections (taps / cans & bottles) stack by default; in the wide
        rail they sit side by side so the beer menu needs half the height and
        the fit-scaler never has to shrink the type. */
     .tv-draft-cols { display: grid; grid-template-columns: 1fr; min-height: 0; }
-    .tv-rail-wide .tv-rail-modules .tv-draft-cols-2 { grid-template-columns: 1fr 1fr; gap: 0 clamp(22px, 2vw, 44px); align-items: start; }
-    .tv-rail-wide .tv-rail-modules .tv-draft-cols-2 .tv-subhead { margin-top: 0; padding-top: 0; border-top: 0; margin-bottom: clamp(8px,1.2vh,14px); }
+    .tv-rail-wide .tv-rail-modules .tv-draft-cols-2 { grid-template-columns: 1.15fr 1fr; gap: 0 clamp(26px, 2.4vw, 52px); align-items: start; }
+    .tv-rail-wide .tv-rail-modules .tv-draft-cols-2 .tv-draft-sec + .tv-draft-sec {
+      border-left: 1px solid var(--line); padding-left: clamp(24px, 2.2vw, 48px);
+    }
+    .tv-rail-wide .tv-rail-modules .tv-draft-cols-2 .tv-subhead { margin-top: 0; padding-top: 0; border-top: 0; margin-bottom: clamp(10px,1.6vh,18px); }
     /* events */
     .tv-events { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: clamp(14px,1.8vw,28px); align-content: start; }
     .tv-event {

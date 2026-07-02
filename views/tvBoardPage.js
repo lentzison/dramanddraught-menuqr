@@ -160,9 +160,10 @@ function generateTvBoardPage(location, board, data, opts = {}) {
       display: grid; grid-template-columns: 30% 1fr;
       gap: clamp(16px, 2vw, 34px);
     }
-    /* When the pinned module is the beer menu, it IS the main event: it gets
-       the majority of the screen and the rotating deck takes the smaller side. */
-    .tv-body.tv-rail-wide { grid-template-columns: 56% 1fr; }
+    /* Balanced split (the layout Cary chose): the pinned beer menu holds a
+       wide permanent panel while the rotating stage keeps enough width for
+       specials/picks/events to render without squeezing. */
+    .tv-body.tv-rail-wide { grid-template-columns: 46% 1fr; }
     .tv-body-norail { display: block; }
     .tv-body-norail .tv-stage { height: 100%; }
     /* The rail element is always in the DOM (a scheduled pinned module may

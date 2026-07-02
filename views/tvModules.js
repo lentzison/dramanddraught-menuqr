@@ -152,11 +152,13 @@ function renderSpecials(mod, data) {
   if (items.length === 0) {
     return head(kicker, title) + emptyBody('No specials set for today.');
   }
-  const rows = items.slice(0, 10).map((it) => priceRow(
-    it.name,
-    it.description || it.note || '',
-    it.price ? (String(it.price).startsWith('$') ? it.price : `$${it.price}`) : '',
-  )).join('');
+  const rows = items.slice(0, 10).map((it) => {
+    // Only prepend "$" to bare numeric prices ("10" → "$10") — text like
+    // "50% OFF" or "BOGO" passes through untouched.
+    const rawPrice = String(it.price || '').trim();
+    const price = /^\d+(\.\d+)?$/.test(rawPrice) ? `$${rawPrice}` : rawPrice;
+    return priceRow(it.name, it.description || it.note || '', price);
+  }).join('');
   return head(kicker, title)
     + (sp.tagline ? `<p class="tv-mod-sub">${escHTML(sp.tagline)}</p>` : '')
     + `<ul class="tv-list">${rows}</ul>`;

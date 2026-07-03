@@ -34,6 +34,16 @@ function money(v) {
   return n % 1 === 0 ? `$${n}` : `$${n.toFixed(2)}`;
 }
 
+// Bare pour price (no $) — the printed list shows "6 · 9 · 12" per row and
+// the masthead legend explains the units once, which keeps rows compact and
+// lets long spirit names fit on one line.
+function pour(v) {
+  if (v == null || v === '') return '';
+  const n = Number.parseFloat(String(v));
+  if (!Number.isFinite(n)) return '';
+  return n % 1 === 0 ? String(n) : n.toFixed(2);
+}
+
 // Major spirit families — each becomes a full-width section on the printed
 // sheet, with the catalog's primaryCategory values nested as sub-sections.
 const SPIRIT_FAMILIES = [
@@ -91,15 +101,18 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
     }
     let abv = '';
     if (abvNum != null && Number.isFinite(abvNum)) abv = `${abvNum % 1 === 0 ? abvNum : abvNum.toFixed(1)}%`;
-    // Prices in fixed pour order (1 / 1.5 / 2 oz) — the header legend explains it.
+    // Prices in fixed pour order (1 / 1.5 / 2 oz), bare numbers — the
+    // masthead legend explains the units once.
     const prices = [s.oneOzPrice, s.oneHalfOzPrice, s.twoOzPrice]
       .filter((v) => v != null)
-      .map((v) => money(v));
+      .map((v) => pour(v));
+    // The ABV tag lives inside the name span (joined with a thin space) so it
+    // hugs the last word of the name instead of orphan-wrapping on its own line.
     return `<div class="sp-row">
       <div class="sp-line">
-        <span class="sp-name">${escHTML(name)}</span>${abv ? `<span class="sp-abv">${escHTML(abv)}</span>` : ''}
+        <span class="sp-name">${escHTML(name)}${abv ? `<i class="sp-abv">&thinsp;${escHTML(abv)}</i>` : ''}</span>
         <span class="sp-dots"></span>
-        ${prices.length ? `<span class="sp-price">${escHTML(prices.join('  ·  '))}</span>` : ''}
+        ${prices.length ? `<span class="sp-price">${escHTML(prices.join(' · '))}</span>` : ''}
       </div>
     </div>`;
   };
@@ -140,7 +153,7 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
   .sheet { max-width: 8.5in; margin: 24px auto; background: var(--paper); padding: 0.72in 0.85in 0.55in; box-shadow: 0 10px 44px rgba(40,30,12,0.22); border-top: 3px solid var(--gold); }
 
   /* ── Masthead ── */
-  .mast { text-align: center; margin-bottom: 30px; }
+  .mast { text-align: center; margin-bottom: 22px; }
   .mast-brand { font-family: 'Mostra One', Georgia, serif; font-weight: 700; font-size: 0.95rem; letter-spacing: 0.5em; text-transform: uppercase; color: var(--gold); margin-left: 0.5em; }
   .mast-div { display: flex; align-items: center; justify-content: center; gap: 13px; margin: 13px auto 15px; max-width: 360px; color: var(--gold-lt); }
   .mast-div::before, .mast-div::after { content: ''; height: 1px; flex: 1; background: linear-gradient(90deg, transparent, var(--gold-lt)); }
@@ -152,26 +165,29 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
   .mast-legend { font-size: 0.82rem; color: var(--muted); font-style: italic; margin-top: 3px; }
 
   /* ── Columns ── */
-  .cols { column-count: 2; column-gap: 44px; }
+  .cols { column-count: 2; column-gap: 38px; }
   @media (max-width: 640px) { .cols { column-count: 1; } }
 
   /* ── Family section header (spans both columns) ── */
-  .sp-fam { column-span: all; -webkit-column-span: all; break-after: avoid; text-align: center; font-family: 'Mostra One', Georgia, serif; font-weight: 700; font-size: 1.18rem; letter-spacing: 0.24em; text-transform: uppercase; color: var(--ink); margin: 30px 0 17px; display: flex; align-items: center; justify-content: center; gap: 17px; }
+  .sp-fam { column-span: all; -webkit-column-span: all; break-after: avoid; text-align: center; font-family: 'Mostra One', Georgia, serif; font-weight: 700; font-size: 1.18rem; letter-spacing: 0.24em; text-transform: uppercase; color: var(--ink); margin: 24px 0 13px; display: flex; align-items: center; justify-content: center; gap: 17px; }
   .sp-fam:first-child { margin-top: 2px; }
   .sp-fam::before, .sp-fam::after { content: ''; width: 54px; height: 2px; background: var(--gold); }
   .sp-fam span { padding-bottom: 2px; }
 
   /* ── Sub-category ── */
   .sp-sub { break-inside: avoid-column; -webkit-column-break-inside: avoid; page-break-inside: avoid; margin: 0 0 15px; }
-  .sp-sub-title { font-weight: 600; font-size: 0.76rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold); margin: 2px 0 9px; padding-bottom: 5px; border-bottom: 1px solid var(--hair); }
+  .sp-sub-title { font-weight: 600; font-size: 0.76rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold); margin: 2px 0 7px; padding-bottom: 4px; border-bottom: 1px solid var(--hair); }
 
-  /* ── Spirit rows ── */
-  .sp-row { break-inside: avoid; -webkit-column-break-inside: avoid; margin: 0 0 8px; }
+  /* ── Spirit rows ──
+     Roomy names + compact bare-number price trio ("6 · 9 · 12") so almost
+     every row fits one line; the ABV rides inside the name span as a tiny
+     muted tag. Chosen from rendered options against the full Cary list. */
+  .sp-row { break-inside: avoid; -webkit-column-break-inside: avoid; margin: 0 0 5.5px; }
   .sp-line { display: flex; align-items: baseline; }
-  .sp-name { font-size: 1.04rem; font-weight: 600; line-height: 1.22; color: var(--ink); }
-  .sp-abv { font-size: 0.68rem; color: var(--muted); font-style: italic; white-space: nowrap; margin-left: 7px; letter-spacing: 0.02em; }
-  .sp-dots { flex: 1; margin: 0 8px; border-bottom: 1px dotted #cbbfa3; transform: translateY(-3px); min-width: 12px; }
-  .sp-price { white-space: nowrap; font-size: 0.95rem; font-weight: 500; color: var(--soft); font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }
+  .sp-name { font-size: 0.94rem; font-weight: 500; line-height: 1.22; color: var(--ink); }
+  .sp-abv { font-size: 0.6rem; color: #b0a68e; font-style: normal; white-space: nowrap; letter-spacing: 0.02em; }
+  .sp-dots { flex: 1; margin: 0 7px; border-bottom: 1px dotted #d5c9ab; transform: translateY(-3px); min-width: 14px; }
+  .sp-price { white-space: nowrap; font-size: 0.86rem; font-weight: 500; color: #4c4436; font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }
   .sp-empty { text-align: center; color: var(--muted); padding: 60px; font-style: italic; }
 
   /* ── Footer ── */
@@ -202,7 +218,7 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
       <h1 class="mast-title">Spirit List</h1>
       <div class="mast-loc">${escHTML(location.name)}</div>
       <div class="mast-sub">${count} Pour${count === 1 ? '' : 's'} &middot; Updated ${escHTML(updated)}</div>
-      <div class="mast-legend">Priced by the pour — 1 oz &middot; 1.5 oz &middot; 2 oz</div>
+      <div class="mast-legend">Prices in dollars per pour — 1 oz &middot; 1.5 oz &middot; 2 oz</div>
     </header>
     <main class="cols">${body}</main>
     <div class="doc-foot">Dram &amp; Draught &middot; ${escHTML(location.name)} &middot; Prices subject to change</div>

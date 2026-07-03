@@ -88,6 +88,24 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
     if (!catMap.has(cat)) catMap.set(cat, []);
     catMap.get(cat).push(it);
   }
+  // Fold near-duplicate catalog categories into one section: a generic name
+  // whose word appears inside exactly one bigger sibling category merges into
+  // it ("Liqueur" → "Amaro/Liqueur", "Rye" → "Rye Whiskey"). The count guard
+  // keeps a large generic bucket (e.g. "Rum") from being mislabeled under a
+  // smaller specific one (e.g. "Spiced Rum").
+  for (const catMap of families.values()) {
+    for (const cat of [...catMap.keys()]) {
+      const norm = cat.trim().toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const wordRe = new RegExp(`(^|[^a-z])${norm}([^a-z]|$)`);
+      const supersets = [...catMap.keys()].filter((o) =>
+        o !== cat && wordRe.test(o.trim().toLowerCase()) && catMap.get(o).length > catMap.get(cat).length);
+      if (supersets.length === 1) {
+        catMap.get(supersets[0]).push(...catMap.get(cat));
+        catMap.delete(cat);
+      }
+    }
+  }
+
   const orderedFamilies = [...families.keys()].sort((a, b) => {
     const ia = FAMILY_ORDER.indexOf(a); const ib = FAMILY_ORDER.indexOf(b);
     return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib) || a.localeCompare(b);
@@ -103,21 +121,20 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
     }
     let abv = '';
     if (abvNum != null && Number.isFinite(abvNum)) abv = `${abvNum % 1 === 0 ? abvNum : abvNum.toFixed(1)}%`;
-    // Prices in fixed pour order (1 / 1.5 / 2 oz), bare numbers — the
-    // masthead legend explains the units once.
-    const prices = [s.oneOzPrice, s.oneHalfOzPrice, s.twoOzPrice]
-      .filter((v) => v != null)
-      .map((v) => pour(v));
-    // The ABV tag lives inside the name span (joined with a thin space) so it
-    // hugs the last word of the name instead of orphan-wrapping on its own line.
+    // Ledger columns: name | ABV | 1 oz | 1.5 oz | 2 oz. Positional — a
+    // missing price leaves its cell empty so the other pours stay aligned
+    // under the right header.
+    const prices = [s.oneOzPrice, s.oneHalfOzPrice, s.twoOzPrice].map((v) => pour(v));
     return `<div class="sp-row">
-      <div class="sp-line">
-        <span class="sp-name">${escHTML(name)}${abv ? `<i class="sp-abv">&thinsp;${escHTML(abv)}</i>` : ''}</span>
-        <span class="sp-dots"></span>
-        ${prices.length ? `<span class="sp-price">${escHTML(prices.join(' · '))}</span>` : ''}
-      </div>
+      <span class="sp-name">${escHTML(name)}</span>
+      <span class="sp-cell sp-abv">${abv ? escHTML(abv) : ''}</span>
+      ${prices.map((p) => `<span class="sp-cell">${escHTML(p)}</span>`).join('')}
     </div>`;
   };
+
+  // Column header row — repeated at the top of every sub-section so a guest
+  // always knows which price is which pour.
+  const colHead = `<div class="sp-cols-head"><span></span><span>abv</span><span>1 oz</span><span>1.5 oz</span><span>2 oz</span></div>`;
 
   // One "page" section per spirit family — on paper each family starts on a
   // fresh page (break-before), so a guest flips straight to Whiskey, Agave,
@@ -136,6 +153,7 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
       const showSub = !(famCats.length === 1 && c.trim().toLowerCase() === fam.trim().toLowerCase());
       return `<section class="sp-sub">
         ${showSub ? `<h3 class="sp-sub-title"><span>${escHTML(c)}</span></h3>` : ''}
+        ${colHead}
         ${catMap.get(c).map(spiritRow).join('')}
       </section>`;
     }).join('');
@@ -144,7 +162,7 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
         <div class="fam-eyebrow">Dram &amp; Draught &mdash; ${escHTML(location.name)}</div>
         <h2 class="fam-title">${escHTML(fam)}</h2>
         <div class="fam-rule"><span class="fam-dia">&#9670;</span></div>
-        <div class="fam-legend">${famCount} pour${famCount === 1 ? '' : 's'} &middot; priced in dollars &mdash; 1 oz &middot; 1.5 oz &middot; 2 oz</div>
+        <div class="fam-legend">${famCount} pour${famCount === 1 ? '' : 's'}</div>
       </header>
       <div class="cols">${subs}</div>
     </section>`;
@@ -208,16 +226,18 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
   .sp-sub-title::before, .sp-sub-title::after { content: ''; height: 1px; flex: 1; background: var(--hair); }
   .sp-sub-title span { flex: none; }
 
-  /* ── Spirit rows ──
-     Roomy names + compact bare-number price trio ("6 · 9 · 12") so almost
-     every row fits one line; the ABV rides inside the name span as a tiny
-     muted tag. Chosen from rendered options against the full Cary list. */
-  .sp-row { break-inside: avoid; -webkit-column-break-inside: avoid; margin: 0 0 5.5px; }
-  .sp-line { display: flex; align-items: baseline; }
-  .sp-name { font-size: 0.94rem; font-weight: 500; line-height: 1.22; color: var(--ink); }
-  .sp-abv { font-size: 0.6rem; color: #b0a68e; font-style: normal; white-space: nowrap; letter-spacing: 0.02em; }
-  .sp-dots { flex: 1; margin: 0 7px; border-bottom: 1px dotted #d5c9ab; transform: translateY(-3px); min-width: 14px; }
-  .sp-price { white-space: nowrap; font-size: 0.86rem; font-weight: 500; color: #4c4436; font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }
+  /* ── Spirit rows: ledger grid ──
+     Shared columns for the header row and every spirit row so ABVs and the
+     three pour prices align straight down the page. Bare numbers under
+     explicit "1 oz / 1.5 oz / 2 oz" headers. */
+  .sp-row, .sp-cols-head { display: grid; grid-template-columns: 1fr 2.5em 3em 3.4em 3em; gap: 0 7px; align-items: baseline; }
+  .sp-cols-head { padding: 0 0 3px; border-bottom: 1px solid #d9cfb8; margin-bottom: 3px; }
+  .sp-cols-head span { text-align: right; font-size: 0.58rem; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: #a2977f; }
+  .sp-row { break-inside: avoid; -webkit-column-break-inside: avoid; margin: 0; padding: 3px 0; border-bottom: 1px solid #f3edde; }
+  .sp-sub .sp-row:last-of-type { border-bottom: none; }
+  .sp-name { font-size: 0.9rem; font-weight: 500; line-height: 1.2; color: var(--ink); }
+  .sp-cell { text-align: right; font-size: 0.85rem; font-weight: 500; color: #4c4436; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .sp-abv { font-size: 0.62rem; font-weight: 400; color: #b0a68e; letter-spacing: 0.02em; }
   .sp-empty { text-align: center; color: var(--muted); padding: 60px; font-style: italic; }
 
   /* ── Screen-only print bar ── */
@@ -260,7 +280,7 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
       <div class="mast-loc">${escHTML(location.name)}</div>
       <div class="mast-div"><span class="mast-dia">◆ ◆ ◆</span></div>
       <div class="mast-sub">${count} Pour${count === 1 ? '' : 's'} &middot; Updated ${escHTML(updated)}</div>
-      <div class="mast-legend">Every spirit is priced in dollars by the pour — 1 oz &middot; 1.5 oz &middot; 2 oz</div>
+      <div class="mast-legend">Priced by the pour — 1 oz &middot; 1.5 oz &middot; 2 oz</div>
       <div class="mast-note">Ask your bartender about anything on these pages — flights, recommendations, and allocated pours included. Prices subject to change.</div>
     </section>
     ${items.length ? famPages : emptyPage}

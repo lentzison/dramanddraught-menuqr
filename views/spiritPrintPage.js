@@ -125,7 +125,7 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
     // missing price leaves its cell empty so the other pours stay aligned
     // under the right header.
     const prices = [s.oneOzPrice, s.oneHalfOzPrice, s.twoOzPrice].map((v) => pour(v));
-    return `<div class="sp-row">
+    return `<div class="sp-row blk">
       <span class="sp-name">${escHTML(name)}</span>
       <span class="sp-cell sp-abv">${abv ? escHTML(abv) : ''}</span>
       ${prices.map((p) => `<span class="sp-cell">${escHTML(p)}</span>`).join('')}
@@ -136,10 +136,15 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
   // always knows which price is which pour.
   const colHead = `<div class="sp-cols-head"><span></span><span>abv</span><span>1 oz</span><span>1.5 oz</span><span>2 oz</span></div>`;
 
-  // One "page" section per spirit family — on paper each family starts on a
-  // fresh page (break-before), so a guest flips straight to Whiskey, Agave,
-  // Rum & Cane… like chapters in a book.
-  const famPages = orderedFamilies.map((fam) => {
+  // Source content for the client-side paginator: one hidden .fam block per
+  // family holding a flat run of blocks — a head-blk (sub-category title +
+  // column headers) followed by its rows. A script on the page measures these
+  // and deals them into exact 8.5×11in page boxes, each with its own gold
+  // frame, footer, and page number, so screen and paper look identical.
+  // (Chrome no longer repeats position:fixed chrome on every printed page,
+  // and CSS multicol fragmentation makes a mess of page breaks — explicit
+  // page boxes are the only way to get clean letter pages.)
+  const famSrc = orderedFamilies.map((fam) => {
     const catMap = families.get(fam);
     const famCats = [...catMap.keys()].sort((a, b) => {
       const r = catRank(a) - catRank(b);
@@ -147,28 +152,16 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
     });
     for (const c of famCats) catMap.get(c).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
     let famCount = 0;
-    const subs = famCats.map((c) => {
-      famCount += catMap.get(c).length;
+    const blocks = famCats.map((c) => {
+      const rows = catMap.get(c);
+      famCount += rows.length;
       // Skip a redundant sub-header when the only category equals the family.
       const showSub = !(famCats.length === 1 && c.trim().toLowerCase() === fam.trim().toLowerCase());
-      return `<section class="sp-sub">
-        ${showSub ? `<h3 class="sp-sub-title"><span>${escHTML(c)}</span></h3>` : ''}
-        ${colHead}
-        ${catMap.get(c).map(spiritRow).join('')}
-      </section>`;
+      return `<div class="blk head-blk">${showSub ? `<h3 class="sp-sub-title"><span>${escHTML(c)}</span></h3>` : ''}${colHead}</div>`
+        + rows.map(spiritRow).join('');
     }).join('');
-    return `<section class="page fam-page">
-      <header class="fam-head">
-        <div class="fam-eyebrow">Dram &amp; Draught &mdash; ${escHTML(location.name)}</div>
-        <h2 class="fam-title">${escHTML(fam)}</h2>
-        <div class="fam-rule"><span class="fam-dia">&#9670;</span></div>
-        <div class="fam-legend">${famCount} pour${famCount === 1 ? '' : 's'}</div>
-      </header>
-      <div class="cols">${subs}</div>
-    </section>`;
+    return `<div class="fam" data-title="${escHTML(fam)}" data-legend="${famCount} pour${famCount === 1 ? '' : 's'}">${blocks}</div>`;
   }).join('');
-
-  const emptyPage = `<section class="page fam-page"><p class="sp-empty">No spirits found for this location yet.</p></section>`;
 
   const count = items.length;
   return `<!DOCTYPE html>
@@ -184,16 +177,17 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: #211d18; color: var(--ink); font-family: 'EB Garamond', Georgia, serif; -webkit-font-smoothing: antialiased; }
 
-  /* ── Pages ──
-     Each section renders as its own cream sheet with a double gold frame
-     (on screen); on paper every family starts a fresh page and a fixed
-     frame + running footer repeat on every printed page. */
-  .page { position: relative; max-width: 8.5in; margin: 26px auto; background: var(--paper); padding: 0.62in 0.68in 0.55in; box-shadow: 0 14px 44px rgba(0,0,0,0.45); }
-  .page::before { content: ''; position: absolute; inset: 0.24in; border: 1.5px solid rgba(156,123,50,0.6); pointer-events: none; }
-  .page::after { content: ''; position: absolute; inset: 0.3in; border: 1px solid rgba(156,123,50,0.28); pointer-events: none; }
+  /* ── Pages: real 8.5in × 11in boxes, identical on screen and paper ── */
+  .pg { position: relative; width: 8.5in; height: 11in; margin: 26px auto; background: var(--paper); box-shadow: 0 14px 44px rgba(0,0,0,0.45); overflow: hidden; }
+  .pg::before { content: ''; position: absolute; inset: 0.28in; border: 1.5px solid rgba(156,123,50,0.6); pointer-events: none; }
+  .pg::after { content: ''; position: absolute; inset: 0.325in; border: 1px solid rgba(156,123,50,0.28); pointer-events: none; }
+  .pg-inner { position: absolute; top: 0.55in; left: 0.62in; right: 0.62in; bottom: 0.68in; display: flex; flex-direction: column; }
+  .pg-cols { flex: 1; min-height: 0; display: flex; gap: 34px; }
+  .pg-col { flex: 1 1 0; min-width: 0; overflow: hidden; }
+  .pg-foot { position: absolute; left: 0; right: 0; bottom: 0.155in; text-align: center; font-size: 0.58rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--muted); }
 
   /* ── Cover ── */
-  .cover { min-height: 10.4in; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  .cover .pg-inner { align-items: center; justify-content: center; text-align: center; }
   .mast-est { font-size: 0.72rem; letter-spacing: 0.42em; text-transform: uppercase; color: var(--muted); margin-bottom: 16px; margin-left: 0.42em; }
   .mast-brand { font-family: 'Mostra One', Georgia, serif; font-weight: 700; font-size: 1.28rem; letter-spacing: 0.5em; text-transform: uppercase; color: var(--gold); margin-left: 0.5em; }
   .mast-div { display: flex; align-items: center; justify-content: center; gap: 13px; margin: 22px auto; width: 100%; max-width: 380px; color: var(--gold-lt); }
@@ -207,22 +201,24 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
   .mast-note { font-size: 0.78rem; color: var(--muted); font-style: italic; margin-top: 34px; max-width: 4.6in; line-height: 1.5; }
 
   /* ── Family page header ── */
-  .fam-head { text-align: center; margin-bottom: 20px; }
+  .fam-head { text-align: center; margin-bottom: 18px; }
   .fam-eyebrow { font-size: 0.68rem; letter-spacing: 0.3em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
   .fam-title { font-family: 'Mostra One', Georgia, serif; font-weight: 400; font-size: 2.1rem; letter-spacing: 0.06em; line-height: 1.05; margin: 0; color: var(--ink); }
+  .fam-title .cont { font-family: 'EB Garamond', Georgia, serif; font-style: italic; font-size: 1.05rem; color: var(--muted); letter-spacing: 0.02em; }
   .fam-rule { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 12px auto 10px; max-width: 300px; color: var(--gold-lt); }
   .fam-rule::before, .fam-rule::after { content: ''; height: 1px; flex: 1; background: linear-gradient(90deg, transparent, var(--gold-lt)); }
   .fam-rule::after { background: linear-gradient(90deg, var(--gold-lt), transparent); }
   .fam-dia { font-size: 0.56rem; transform: translateY(-1px); }
   .fam-legend { font-size: 0.8rem; color: var(--muted); font-style: italic; }
-
-  /* ── Columns ── */
-  .cols { column-count: 2; column-gap: 40px; }
-  @media (max-width: 640px) { .cols { column-count: 1; } }
+  /* Continuation pages get a slim header so the columns gain room. */
+  .fam-cont { margin-bottom: 12px; }
+  .fam-cont .fam-title { font-size: 1.35rem; }
+  .fam-cont .fam-eyebrow { margin-bottom: 7px; }
 
   /* ── Sub-category: centered small caps with flanking hairlines ── */
-  .sp-sub { break-inside: avoid-column; -webkit-column-break-inside: avoid; page-break-inside: avoid; margin: 0 0 16px; }
-  .sp-sub-title { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 0.74rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--gold); margin: 2px 0 8px; text-align: center; }
+  .head-blk { margin: 12px 0 3px; }
+  .pg-col > .head-blk:first-child { margin-top: 0; }
+  .sp-sub-title { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 0.74rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--gold); margin: 0 0 8px; text-align: center; }
   .sp-sub-title::before, .sp-sub-title::after { content: ''; height: 1px; flex: 1; background: var(--hair); }
   .sp-sub-title span { flex: none; }
 
@@ -233,8 +229,7 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
   .sp-row, .sp-cols-head { display: grid; grid-template-columns: 1fr 2.5em 3em 3.4em 3em; gap: 0 7px; align-items: baseline; }
   .sp-cols-head { padding: 0 0 3px; border-bottom: 1px solid #d9cfb8; margin-bottom: 3px; }
   .sp-cols-head span { text-align: right; font-size: 0.58rem; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: #a2977f; }
-  .sp-row { break-inside: avoid; -webkit-column-break-inside: avoid; margin: 0; padding: 3px 0; border-bottom: 1px solid #f3edde; }
-  .sp-sub .sp-row:last-of-type { border-bottom: none; }
+  .sp-row { margin: 0; padding: 3px 0; border-bottom: 1px solid #f3edde; }
   .sp-name { font-size: 0.9rem; font-weight: 500; line-height: 1.2; color: var(--ink); }
   .sp-cell { text-align: right; font-size: 0.85rem; font-weight: 500; color: #4c4436; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .sp-abv { font-size: 0.62rem; font-weight: 400; color: #b0a68e; letter-spacing: 0.02em; }
@@ -246,45 +241,150 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
   .print-bar button { background: var(--gold); color: #fff; }
   .print-bar a { background: #fff; color: var(--ink); }
 
-  /* Print-only chrome: a gold frame + running footer that repeat on every
-     printed page (position:fixed repeats per page in print). Hidden on screen,
-     where each .page draws its own frame instead. */
-  .print-frame, .print-foot { display: none; }
-
   @media print {
     html, body { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .print-bar { display: none !important; }
-    @page { size: letter; margin: 0.42in 0.5in 0.66in; }
-    .page { max-width: none; margin: 0; box-shadow: none; padding: 0.3in 0.34in 0.2in; break-after: page; page-break-after: always; }
-    .page:last-of-type { break-after: auto; page-break-after: auto; }
-    /* Per-sheet screen frames off — the fixed frame below handles paper. */
-    .page::before, .page::after { display: none; }
-    .cover { min-height: 9.2in; }
-    .print-frame { display: block; position: fixed; top: 0; left: 0; right: 0; bottom: 0.24in; border: 1.5px solid rgba(156,123,50,0.75); pointer-events: none; }
-    .print-frame::after { content: ''; position: absolute; inset: 4px; border: 0.5px solid rgba(156,123,50,0.45); }
-    .print-foot { display: block; position: fixed; bottom: 0; left: 0; right: 0; text-align: center; font-size: 0.6rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--muted); }
+    /* Zero page margins: each .pg IS the full letter sheet, so the browser
+       adds nothing around it and the gold frame lands identically on paper. */
+    @page { size: letter; margin: 0; }
+    .pg { margin: 0; box-shadow: none; break-after: page; page-break-after: always; }
+    .pg:last-of-type { break-after: auto; page-break-after: auto; }
   }
 </style></head><body>
   <div class="print-bar">
     <a href="/admin/spirit-list">← Back</a>
     <button type="button" onclick="window.print()">Print / Save PDF</button>
   </div>
-  <div class="print-frame"></div>
-  <div class="print-foot">Dram &amp; Draught &middot; ${escHTML(location.name)} &middot; Prices subject to change</div>
-  <div class="book">
-    <section class="page cover">
-      <div class="mast-est">North Carolina</div>
-      <div class="mast-brand">Dram &amp; Draught</div>
-      <div class="mast-div"><span class="mast-dia">◆ ◆ ◆</span></div>
-      <h1 class="mast-title">Spirit List</h1>
-      <div class="mast-loc">${escHTML(location.name)}</div>
-      <div class="mast-div"><span class="mast-dia">◆ ◆ ◆</span></div>
-      <div class="mast-sub">${count} Pour${count === 1 ? '' : 's'} &middot; Updated ${escHTML(updated)}</div>
-      <div class="mast-legend">Priced by the pour — 1 oz &middot; 1.5 oz &middot; 2 oz</div>
-      <div class="mast-note">Ask your bartender about anything on these pages — flights, recommendations, and allocated pours included. Prices subject to change.</div>
+  <div id="book">
+    <section class="pg cover">
+      <div class="pg-inner">
+        <div class="mast-est">North Carolina</div>
+        <div class="mast-brand">Dram &amp; Draught</div>
+        <div class="mast-div"><span class="mast-dia">◆ ◆ ◆</span></div>
+        <h1 class="mast-title">Spirit List</h1>
+        <div class="mast-loc">${escHTML(location.name)}</div>
+        <div class="mast-div"><span class="mast-dia">◆ ◆ ◆</span></div>
+        <div class="mast-sub">${count} Pour${count === 1 ? '' : 's'} &middot; Updated ${escHTML(updated)}</div>
+        <div class="mast-legend">Priced by the pour — 1 oz &middot; 1.5 oz &middot; 2 oz</div>
+        <div class="mast-note">Ask your bartender about anything on these pages — flights, recommendations, and allocated pours included. Prices subject to change.</div>
+      </div>
+      <div class="pg-foot"></div>
     </section>
-    ${items.length ? famPages : emptyPage}
+    ${items.length ? '' : '<section class="pg"><div class="pg-inner"><p class="sp-empty">No spirits found for this location yet.</p></div></section>'}
   </div>
+  <div id="src" style="display:none">${famSrc}</div>
+  <script>
+  (function () {
+    var LOC = ${JSON.stringify(location.name)};
+    var book = document.getElementById('book');
+    var src = document.getElementById('src');
+    var done = false;
+
+    function newPage(title, legend, cont) {
+      var pg = document.createElement('section');
+      pg.className = 'pg';
+      var inner = document.createElement('div');
+      inner.className = 'pg-inner';
+      var head = document.createElement('header');
+      head.className = 'fam-head' + (cont ? ' fam-cont' : '');
+      var eyebrow = document.createElement('div');
+      eyebrow.className = 'fam-eyebrow';
+      eyebrow.textContent = 'Dram & Draught — ' + LOC;
+      head.appendChild(eyebrow);
+      var h2 = document.createElement('h2');
+      h2.className = 'fam-title';
+      h2.textContent = title;
+      if (cont) {
+        var c = document.createElement('span');
+        c.className = 'cont';
+        c.textContent = ' · continued';
+        h2.appendChild(c);
+      }
+      head.appendChild(h2);
+      if (!cont) {
+        var rule = document.createElement('div');
+        rule.className = 'fam-rule';
+        rule.innerHTML = '<span class="fam-dia">\\u25c6</span>';
+        head.appendChild(rule);
+        if (legend) {
+          var lg = document.createElement('div');
+          lg.className = 'fam-legend';
+          lg.textContent = legend;
+          head.appendChild(lg);
+        }
+      }
+      inner.appendChild(head);
+      var cols = document.createElement('div');
+      cols.className = 'pg-cols';
+      cols.innerHTML = '<div class="pg-col"></div><div class="pg-col"></div>';
+      inner.appendChild(cols);
+      pg.appendChild(inner);
+      var foot = document.createElement('div');
+      foot.className = 'pg-foot';
+      pg.appendChild(foot);
+      book.appendChild(pg);
+      return pg;
+    }
+
+    function paginate() {
+      if (done) return;
+      done = true;
+      var fams = src.querySelectorAll('.fam');
+      Array.prototype.forEach.call(fams, function (fam) {
+        var title = fam.getAttribute('data-title') || '';
+        var legend = fam.getAttribute('data-legend') || '';
+        var blocks = Array.prototype.slice.call(fam.children);
+        var pg = newPage(title, legend, false);
+        var cols = pg.querySelectorAll('.pg-col');
+        var ci = 0;
+        function fits(col) { return col.scrollHeight <= col.clientHeight + 1; }
+        function advance() {
+          ci++;
+          if (ci >= 2) {
+            pg = newPage(title, legend, true);
+            cols = pg.querySelectorAll('.pg-col');
+            ci = 0;
+          }
+        }
+        blocks.forEach(function (b) {
+          var col = cols[ci];
+          col.appendChild(b);
+          if (!fits(col)) {
+            var moved = [b];
+            col.removeChild(b);
+            // Never strand a section header at the bottom of a column —
+            // carry it forward with the row that overflowed.
+            var last = col.lastElementChild;
+            if (last && last.className.indexOf('head-blk') !== -1) {
+              col.removeChild(last);
+              moved.unshift(last);
+            }
+            advance();
+            col = cols[ci];
+            moved.forEach(function (m) { col.appendChild(m); });
+          }
+        });
+      });
+      src.parentNode.removeChild(src);
+      // Footers: brand line on the cover, brand + page number on the rest.
+      var pages = book.querySelectorAll('.pg');
+      Array.prototype.forEach.call(pages, function (p, i) {
+        var f = p.querySelector('.pg-foot');
+        if (!f) return;
+        f.textContent = i === 0
+          ? 'Dram & Draught · ' + LOC
+          : 'Dram & Draught · ' + LOC + ' · Page ' + i + ' of ' + (pages.length - 1);
+      });
+    }
+
+    // Measure only after fonts load (Garamond metrics shift line wraps);
+    // the timer is a safety net so the list never stays blank.
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(function () { setTimeout(paginate, 30); });
+    }
+    setTimeout(paginate, 2500);
+  })();
+  </script>
 </body></html>`;
 }
 

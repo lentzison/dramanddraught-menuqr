@@ -3066,7 +3066,9 @@ async function handlePublic(req, res, pathname, prisma) {
         if (requiresApproval) {
           bodyLines.push('', 'Review & approve: https://menuqr.apps.dramanddraught.com/admin/events/' + event.id + '/signups');
         } else {
-          bodyLines.push('', `Total signups: ${signupCount + 1}${event.capacity ? ' / ' + event.capacity : ''}`);
+          // Recount so concurrent submissions don't make this read low.
+          const totalNow = await prisma.eventSignup.count({ where: CAP_WHERE }).catch(() => signupCount + 1);
+          bodyLines.push('', `Total signups: ${totalNow}${event.capacity ? ' / ' + event.capacity : ''}`);
         }
         await sendEmailViaGoogle({
           to: Array.from(recipients),

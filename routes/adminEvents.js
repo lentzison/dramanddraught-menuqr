@@ -5,6 +5,7 @@ const {
   eventEditor,
   eventSignupsView,
   eventSignupDecisionView,
+  eventBulkEmailView,
   eventResultsView,
 } = require('../views/adminEventsViews');
 const { sanitizeImageSrc } = require('../views/imageUploadWidget');
@@ -196,35 +197,113 @@ function formatEventDateForEmail(event) {
     : '';
 }
 
-function buildVendorDecisionEmail(event, signup, decision, rejectionReason = '') {
-  const isApprove = decision === 'approve';
+// Default email drafted for each decision. The admin edits it on the compose
+// screen before anything is sent; wording adapts to the event's signup type
+// (vendor application vs. competition entry vs. plain guest signup).
+const DECISION_TYPES = ['approve', 'reject', 'waitlist', 'promote'];
+
+function buildDecisionEmail(event, signup, decision, rejectionReason = '') {
   const dateStr = formatEventDateForEmail(event);
-  const subject = isApprove
-    ? `You're confirmed: ${event.title}`
-    : `Update on your application: ${event.title}`;
-  const bodyLines = isApprove
-    ? [
-        `Hi ${signup?.name || 'there'},`,
+  const sType = effectiveSignupType(event);
+  const isVendorType = sType === 'vendor';
+  const isParticipantType = sType === 'participant';
+  const locName = event.location?.name || '';
+  const signoff = `— Dram & Draught ${locName}`;
+  const hi = `Hi ${signup?.name || 'there'},`;
+
+  if (decision === 'approve') {
+    return {
+      subject: isParticipantType ? `You're in: ${event.title}` : `You're confirmed: ${event.title}`,
+      body: [
+        hi,
         '',
-        `Great news — your application for "${event.title}" at ${event.location?.name || ''} has been approved.`,
+        isParticipantType
+          ? `Great news — your entry for "${event.title}" at ${locName} has been accepted. You're in!`
+          : `Great news — your application for "${event.title}" at ${locName} has been approved.`,
         dateStr ? `Event: ${dateStr}` : null,
         '',
-        "We'll be in touch with load-in details closer to the date.",
+        isParticipantType
+          ? "We'll follow up with the details you need before the event."
+          : "We'll be in touch with load-in details closer to the date.",
         '',
-        `— Dram & Draught ${event.location?.name || ''}`,
-      ].filter(Boolean)
-    : [
-        `Hi ${signup?.name || 'there'},`,
+        signoff,
+      ].filter(Boolean).join('\n'),
+    };
+  }
+
+  if (decision === 'waitlist') {
+    return {
+      subject: `You're on our list: ${event.title}`,
+      body: [
+        hi,
         '',
-        `Thanks for applying to be a vendor at "${event.title}". Unfortunately we're not able to include you in this event.`,
-        rejectionReason ? '' : null,
-        rejectionReason ? `Notes from our team: ${rejectionReason}` : null,
+        isVendorType
+          ? `Thanks for applying to "${event.title}" at ${locName}. We're full at this time, but you're on our list — we'll reach out about the next market we have.`
+          : isParticipantType
+            ? `Thanks for entering "${event.title}" at ${locName}. We're full at this time, but you're on our list — we'll reach out about the next one.`
+            : `Thanks for signing up for "${event.title}" at ${locName}. We're full at this time, but you're on the waitlist — we'll reach out if a spot opens up.`,
         '',
-        "We appreciate your interest and hope to work with you at a future event.",
+        signoff,
+      ].join('\n'),
+    };
+  }
+
+  if (decision === 'promote') {
+    return {
+      subject: `A spot opened up: ${event.title}`,
+      body: [
+        hi,
         '',
-        `— Dram & Draught ${event.location?.name || ''}`,
-      ].filter(Boolean);
-  return { subject, body: bodyLines.join('\n') };
+        `Good news — a spot just opened up for "${event.title}" and you're confirmed off the waitlist.`,
+        dateStr ? `Event: ${dateStr}` : null,
+        '',
+        signoff,
+      ].filter(Boolean).join('\n'),
+    };
+  }
+
+  // reject
+  return {
+    subject: isParticipantType
+      ? `Update on your entry: ${event.title}`
+      : `Update on your application: ${event.title}`,
+    body: [
+      hi,
+      '',
+      isParticipantType
+        ? `Thanks for entering "${event.title}". Unfortunately we're not able to include you this time.`
+        : `Thanks for applying to be a vendor at "${event.title}". Unfortunately we're not able to include you in this event.`,
+      rejectionReason ? '' : null,
+      rejectionReason ? `Notes from our team: ${rejectionReason}` : null,
+      '',
+      isParticipantType
+        ? 'We appreciate you throwing your hat in and hope you\'ll enter the next one.'
+        : 'We appreciate your interest and hope to work with you at a future event.',
+      '',
+      signoff,
+    ].filter(Boolean).join('\n'),
+  };
+}
+
+// Default draft for the bulk "email everyone who wasn't picked" send. {name}
+// is replaced per-recipient with each person's name at send time.
+function buildNonFinalistEmail(event) {
+  const sType = effectiveSignupType(event);
+  const locName = event.location?.name || '';
+  return {
+    subject: `Update on your ${sType === 'vendor' ? 'application' : 'entry'}: ${event.title}`,
+    body: [
+      'Hi {name},',
+      '',
+      sType === 'vendor'
+        ? `Thanks for applying to "${event.title}" at ${locName}. We had a great pool this time and weren't able to include everyone — unfortunately we couldn't fit you in for this one.`
+        : `Thanks for entering "${event.title}" at ${locName}. We had a great pool of entries and could only pick a handful of finalists — unfortunately you weren't selected this time.`,
+      '',
+      "We'd love to see you back for the next one.",
+      '',
+      `— Dram & Draught ${locName}`,
+    ].join('\n'),
+  };
 }
 
 // Eastern-timezone date helpers live in the shared dateEastern.js module so
@@ -1034,7 +1113,7 @@ async function handleAdminEvents(req, res, pathname, prisma) {
       const decision = String(parsedDecisionUrl.searchParams.get('decision') || '').toLowerCase();
       const decisionSignupId = String(parsedDecisionUrl.searchParams.get('signupId') || '').trim();
 
-      if (req.method === 'GET' && (decision === 'approve' || decision === 'reject') && decisionSignupId) {
+      if (req.method === 'GET' && DECISION_TYPES.includes(decision) && decisionSignupId) {
         const signup = await prisma.eventSignup.findFirst({
           where: { id: decisionSignupId, eventId },
         }).catch(() => null);
@@ -1042,8 +1121,22 @@ async function handleAdminEvents(req, res, pathname, prisma) {
           redirect(res, `/admin/events/${eventId}/signups?msg=` + encodeURIComponent('error|Signup not found.'));
           return true;
         }
-        const email = buildVendorDecisionEmail(event, signup, decision);
+        const email = buildDecisionEmail(event, signup, decision);
         sendHTML(res, 200, eventSignupDecisionView(event, signup, decision, email, user, flashMsg));
+        return true;
+      }
+
+      // Bulk compose: email everyone who entered but wasn't picked as a
+      // finalist (still pending). Sends one email per person and marks them
+      // "not selected" so they leave the pending queue.
+      if (req.method === 'GET' && String(parsedDecisionUrl.searchParams.get('bulk') || '') === 'nonfinalists') {
+        const occWhere = event.currentOccurrenceId ? { occurrenceId: event.currentOccurrenceId } : {};
+        const recipients = await prisma.eventSignup.findMany({
+          where: { eventId, status: 'pending', isFinalist: false, ...occWhere },
+          orderBy: { createdAt: 'asc' },
+        }).catch(() => []);
+        const email = buildNonFinalistEmail(event);
+        sendHTML(res, 200, eventBulkEmailView(event, recipients, email, user, flashMsg));
         return true;
       }
 
@@ -1119,38 +1212,11 @@ async function handleAdminEvents(req, res, pathname, prisma) {
           return true;
         }
 
-        // Promote a waitlisted signup to confirmed (approved) and notify them.
+        // Promote a waitlisted signup: goes through the compose screen so the
+        // admin reviews (or skips) the notification email — nothing is sent
+        // automatically.
         if (action === 'promoteWaitlist' && signupId) {
-          const target = await prisma.eventSignup.findFirst({ where: { id: signupId, eventId } }).catch(() => null);
-          if (!target) {
-            redirect(res, `/admin/events/${eventId}/signups?msg=` + encodeURIComponent('error|Signup not found.'));
-            return true;
-          }
-          await prisma.eventSignup.update({
-            where: { id: signupId },
-            data: { status: 'approved', approvedBy: user.email, approvedAt: new Date() },
-          }).catch((err) => console.warn('Promote waitlist failed:', err.message));
-          writeAudit(prisma, req, user, {
-            action: 'promote', resourceType: 'eventSignup', resourceId: signupId,
-            resourceLabel: `${target.name || ''} — ${event.title}`,
-            locationSlug: event.location?.slug || null,
-          });
-          if (target.email) {
-            const dateStr = formatEventDateForEmail(event);
-            sendEmailViaGoogle({
-              to: target.email,
-              subject: `A spot opened up: ${event.title}`,
-              body: [
-                `Hi ${target.name || 'there'},`,
-                '',
-                `Good news — a spot just opened up for "${event.title}" and you're confirmed off the waitlist.`,
-                dateStr ? `Event: ${dateStr}` : null,
-                '',
-                `— Dram & Draught ${event.location?.name || ''}`,
-              ].filter(Boolean).join('\n'),
-            }).catch((err) => console.warn('Waitlist promote email failed:', err.message));
-          }
-          redirect(res, `/admin/events/${eventId}/signups?msg=promoted`);
+          redirect(res, `/admin/events/${eventId}/signups?decision=promote&signupId=${encodeURIComponent(signupId)}`);
           return true;
         }
 
@@ -1162,25 +1228,28 @@ async function handleAdminEvents(req, res, pathname, prisma) {
 
         if (action === 'sendDecision' && signupId) {
           const decisionValue = String(body.decision || '').toLowerCase();
-          const isApprove = decisionValue === 'approve';
-          if (!isApprove && decisionValue !== 'reject') {
+          if (!DECISION_TYPES.includes(decisionValue)) {
             redirect(res, `/admin/events/${eventId}/signups?msg=` + encodeURIComponent('error|Invalid decision.'));
             return true;
           }
-          const reason = isApprove ? null : (String(body.rejectionReason || '').trim().slice(0, 500) || null);
+          const isReject = decisionValue === 'reject';
+          // "Update the status without emailing" — for decisions made in
+          // person or when no note is wanted. Subject/body aren't required.
+          const skipEmail = body.skipEmail === '1';
+          const reason = isReject ? (String(body.rejectionReason || '').trim().slice(0, 500) || null) : null;
           const subject = String(body.emailSubject || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 200);
           const emailBody = String(body.emailBody || '').replace(/\r\n/g, '\n').trim().slice(0, 5000);
-          if (!subject || !emailBody) {
+          if (!skipEmail && (!subject || !emailBody)) {
             const signup = await prisma.eventSignup.findFirst({ where: { id: signupId, eventId } }).catch(() => null);
             if (!signup) {
               redirect(res, `/admin/events/${eventId}/signups?msg=` + encodeURIComponent('error|Signup not found.'));
               return true;
             }
-            const fallback = buildVendorDecisionEmail(event, signup, decisionValue, reason || '');
+            const fallback = buildDecisionEmail(event, signup, decisionValue, reason || '');
             sendHTML(res, 400, eventSignupDecisionView(event, signup, decisionValue, {
               subject: subject || fallback.subject,
               body: emailBody || fallback.body,
-            }, user, 'error|Subject and email body are required.'));
+            }, user, 'error|Subject and email body are required (or tick "update without sending").'));
             return true;
           }
 
@@ -1190,12 +1259,18 @@ async function handleAdminEvents(req, res, pathname, prisma) {
             return true;
           }
 
+          const STATUS_BY_DECISION = {
+            approve: 'approved',
+            promote: 'approved',
+            reject: 'rejected',
+            waitlist: 'waitlisted',
+          };
           let updated = null;
           try {
             updated = await prisma.eventSignup.update({
               where: { id: signupId },
               data: {
-                status: isApprove ? 'approved' : 'rejected',
+                status: STATUS_BY_DECISION[decisionValue],
                 approvedBy: user.email,
                 approvedAt: new Date(),
                 rejectionReason: reason,
@@ -1208,30 +1283,95 @@ async function handleAdminEvents(req, res, pathname, prisma) {
           }
 
           writeAudit(prisma, req, user, {
-            action: isApprove ? 'approve' : 'reject',
+            action: decisionValue === 'promote' ? 'promote' : decisionValue,
             resourceType: 'eventSignup',
             resourceId: signupId,
             resourceLabel: `${updated?.name || ''} — ${event.title}`,
             locationSlug: event.location?.slug || null,
-            details: { ...(reason ? { reason } : {}), emailSubject: subject, emailFrom: user.email },
+            details: {
+              ...(reason ? { reason } : {}),
+              ...(skipEmail ? { emailSkipped: true } : { emailSubject: subject, emailFrom: user.email }),
+            },
           });
 
-          // Best-effort email to the vendor with the decision, sent as the admin
-          // who made the call when domain-wide delegation allows it.
-          if (updated && updated.email) {
+          // Best-effort email with the decision, sent as the admin who made
+          // the call when domain-wide delegation allows it.
+          if (!skipEmail && updated && updated.email) {
             try {
               await sendEmailViaGoogle({
                 to: updated.email,
                 subject,
                 body: emailBody,
                 from: user.email,
-              }).catch((err) => console.warn('Vendor decision email failed:', err.message));
+              }).catch((err) => console.warn('Decision email failed:', err.message));
             } catch (err) {
-              console.warn('Vendor decision email error:', err.message);
+              console.warn('Decision email error:', err.message);
             }
           }
 
-          redirect(res, `/admin/events/${eventId}/signups?msg=` + encodeURIComponent(isApprove ? 'approved' : 'rejected'));
+          const doneMsg = {
+            approve: 'approved',
+            reject: 'rejected',
+            promote: skipEmail ? 'success|Promoted off the waitlist (no email sent).' : 'promoted',
+            waitlist: skipEmail ? 'success|Moved to the waitlist (no email sent).' : 'success|Moved to the waitlist and emailed.',
+          }[decisionValue];
+          redirect(res, `/admin/events/${eventId}/signups?msg=` + encodeURIComponent(doneMsg));
+          return true;
+        }
+
+        // Bulk send to pending non-finalists: one email per person ({name}
+        // token personalized), then mark each as not selected so the pending
+        // queue empties out.
+        if (action === 'sendNonFinalistEmails') {
+          const skipEmail = body.skipEmail === '1';
+          const subject = String(body.emailSubject || '').replace(/[\r\n]+/g, ' ').trim().slice(0, 200);
+          const emailBody = String(body.emailBody || '').replace(/\r\n/g, '\n').trim().slice(0, 5000);
+          const occWhere = event.currentOccurrenceId ? { occurrenceId: event.currentOccurrenceId } : {};
+          const recipients = await prisma.eventSignup.findMany({
+            where: { eventId, status: 'pending', isFinalist: false, ...occWhere },
+            orderBy: { createdAt: 'asc' },
+          }).catch(() => []);
+          if (!skipEmail && (!subject || !emailBody)) {
+            sendHTML(res, 400, eventBulkEmailView(event, recipients, { subject, body: emailBody }, user, 'error|Subject and email body are required (or tick "update without sending").'));
+            return true;
+          }
+          if (recipients.length === 0) {
+            redirect(res, `/admin/events/${eventId}/signups?msg=` + encodeURIComponent('error|No pending non-finalists to notify.'));
+            return true;
+          }
+          let sent = 0;
+          for (const r of recipients) {
+            await prisma.eventSignup.update({
+              where: { id: r.id },
+              data: {
+                status: 'rejected',
+                approvedBy: user.email,
+                approvedAt: new Date(),
+                rejectionReason: 'Not selected as a finalist',
+              },
+            }).catch((err) => console.warn('Non-finalist status update failed:', err.message));
+            if (!skipEmail && r.email) {
+              const personalized = emailBody.replace(/\{name\}/g, r.name || 'there');
+              await sendEmailViaGoogle({
+                to: r.email,
+                subject,
+                body: personalized,
+                from: user.email,
+              }).then(() => { sent += 1; })
+                .catch((err) => console.warn('Non-finalist email failed:', err.message));
+            }
+          }
+          writeAudit(prisma, req, user, {
+            action: 'reject', resourceType: 'eventSignup', resourceId: eventId,
+            resourceLabel: `${recipients.length} non-finalists — ${event.title}`,
+            locationSlug: event.location?.slug || null,
+            details: { bulk: 'nonfinalists', count: recipients.length, ...(skipEmail ? { emailSkipped: true } : { emailSubject: subject, sent }) },
+          });
+          redirect(res, `/admin/events/${eventId}/signups?msg=` + encodeURIComponent(
+            skipEmail
+              ? `success|Marked ${recipients.length} entrant${recipients.length === 1 ? '' : 's'} as not selected (no emails sent).`
+              : `success|Emailed ${sent} of ${recipients.length} non-finalist${recipients.length === 1 ? '' : 's'} and marked them as not selected.`,
+          ));
           return true;
         }
       }

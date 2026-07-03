@@ -3115,9 +3115,15 @@ function eventResultsView(event, finalists, user, flashMsg) {
 
 function eventSignupsView(event, signups, user, flashMsg, occCtx = {}) {
   const customDefs = Array.isArray(event.customQuestions) ? event.customQuestions : [];
-  const { effectiveSignupType, needsApproval } = require('../eventSignupTypes');
+  const { effectiveSignupType, needsApproval, signupNoun } = require('../eventSignupTypes');
   const sType = effectiveSignupType(event);
   const isVendor = sType === 'vendor' || event.isVendorEvent === true;
+  // Vendor + participant events both route through the approval queue and
+  // share the approve / waitlist / reject decision flow.
+  const requiresApproval = needsApproval(event);
+  const noun = signupNoun(event); // application | entry | signup
+  const nounPlural = noun === 'entry' ? 'entries' : `${noun}s`;
+  const nounPluralTitle = noun === 'application' ? 'Applications' : noun === 'entry' ? 'Entries' : 'Signups';
   // Finalist selection + judging apply to application-style events (vendor /
   // participant). A competition is the canonical participant case.
   const supportsFinalists = needsApproval(event);
@@ -3230,21 +3236,18 @@ function eventSignupsView(event, signups, user, flashMsg, occCtx = {}) {
       actionPanel = `
         <div class="evs-actions evs-actions-pending">
           <div class="evs-actions-title">On the waitlist</div>
-          <form method="POST" action="/admin/events/${escHTML(event.id)}/signups">
-            <input type="hidden" name="_action" value="promoteWaitlist" />
-            <input type="hidden" name="signupId" value="${escHTML(s.id)}" />
-            <button type="submit" class="btn btn-success btn-sm">Promote to confirmed</button>
-          </form>
+          <a class="btn btn-success btn-sm" href="/admin/events/${escHTML(event.id)}/signups?decision=promote&signupId=${encodeURIComponent(s.id)}">Promote to confirmed</a>
           ${removeForm}
         </div>
       `;
-    } else if (isVendor) {
+    } else if (requiresApproval) {
       const status = sStatus === 'approved' || sStatus === 'rejected' ? sStatus : 'pending';
       if (status === 'pending') {
         actionPanel = `
           <div class="evs-actions evs-actions-pending">
             <div class="evs-actions-title">Pending review</div>
             <a class="btn btn-success" href="/admin/events/${escHTML(event.id)}/signups?decision=approve&signupId=${encodeURIComponent(s.id)}">Approve</a>
+            <a class="btn btn-secondary" href="/admin/events/${escHTML(event.id)}/signups?decision=waitlist&signupId=${encodeURIComponent(s.id)}">Waitlist</a>
             <a class="btn btn-danger" href="/admin/events/${escHTML(event.id)}/signups?decision=reject&signupId=${encodeURIComponent(s.id)}">Reject</a>
             ${finalistControl}
           </div>
@@ -3301,10 +3304,11 @@ function eventSignupsView(event, signups, user, flashMsg, occCtx = {}) {
     `;
   }).join('');
 
-  // Count vendor signups by status for the stats row.
-  const pendingCount = isVendor ? signups.filter(s => s.status === 'pending').length : 0;
-  const approvedCount = isVendor ? signups.filter(s => s.status === 'approved').length : 0;
-  const rejectedCount = isVendor ? signups.filter(s => s.status === 'rejected').length : 0;
+  // Count approval-queue signups by status for the stats row.
+  const pendingCount = requiresApproval ? signups.filter(s => s.status === 'pending').length : 0;
+  const approvedCount = requiresApproval ? signups.filter(s => s.status === 'approved').length : 0;
+  const rejectedCount = requiresApproval ? signups.filter(s => s.status === 'rejected').length : 0;
+  const pendingNonFinalistCount = signups.filter(s => s.status === 'pending' && !s.isFinalist).length;
   const waitlistCount = signups.filter(s => s.status === 'waitlisted').length;
   const checkedInCount = signups.filter(s => s.checkedInAt).length;
   // Capacity is occupied by everything except waitlisted/rejected signups.
@@ -3338,6 +3342,8 @@ function eventSignupsView(event, signups, user, flashMsg, occCtx = {}) {
         </div>
         <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
           <a href="/admin/events/${escHTML(event.id)}/results" class="btn btn-secondary">View results</a>
+          ${finalistCount > 0 && pendingNonFinalistCount > 0 ? `
+            <a href="/admin/events/${escHTML(event.id)}/signups?bulk=nonfinalists" class="btn btn-secondary" title="Compose one email to everyone still pending who wasn't picked">Email non-finalists (${pendingNonFinalistCount})</a>` : ''}
           ${judgingConfigured ? `
             <form method="POST" action="/admin/events/${escHTML(event.id)}/signups" style="margin:0;">
               <input type="hidden" name="_action" value="toggleJudging" />
@@ -3524,9 +3530,9 @@ function eventSignupsView(event, signups, user, flashMsg, occCtx = {}) {
     <div class="admin-stat-grid">
       <div class="admin-stat">
         <strong>${signups.length}${escHTML(capacityText)}</strong>
-        <span>${isVendor ? 'Total Applications' : 'Total Signups'}</span>
+        <span>Total ${nounPluralTitle}</span>
       </div>
-      ${isVendor ? `
+      ${requiresApproval ? `
         <div class="admin-stat">
           <strong style="color:#fcd34d">${pendingCount}</strong>
           <span>Pending Review</span>
@@ -3566,20 +3572,20 @@ function eventSignupsView(event, signups, user, flashMsg, occCtx = {}) {
       ` : ''}
     </div>
 
-    ${(isVendor || waitlistCount > 0) && signups.length > 0 ? `
+    ${(requiresApproval || waitlistCount > 0) && signups.length > 0 ? `
       <div class="evs-filter-tabs" id="evs-filter-tabs">
         <button type="button" class="evs-filter-tab active" data-filter="all">All (${signups.length})</button>
-        ${isVendor ? `<button type="button" class="evs-filter-tab" data-filter="pending">Pending (${pendingCount})</button>` : ''}
-        ${isVendor ? `<button type="button" class="evs-filter-tab" data-filter="approved">Approved (${approvedCount})</button>` : ''}
+        ${requiresApproval ? `<button type="button" class="evs-filter-tab" data-filter="pending">Pending (${pendingCount})</button>` : ''}
+        ${requiresApproval ? `<button type="button" class="evs-filter-tab" data-filter="approved">Approved (${approvedCount})</button>` : ''}
         ${waitlistCount > 0 ? `<button type="button" class="evs-filter-tab" data-filter="waitlisted">Waitlist (${waitlistCount})</button>` : ''}
-        ${isVendor ? `<button type="button" class="evs-filter-tab" data-filter="rejected">Rejected (${rejectedCount})</button>` : ''}
+        ${requiresApproval ? `<button type="button" class="evs-filter-tab" data-filter="rejected">Rejected (${rejectedCount})</button>` : ''}
       </div>
     ` : ''}
 
     ${signups.length > 0 ? `
       <div class="evs-toolbar">
         <input type="search" id="evs-search" class="evs-search" placeholder="Search by name, email, phone, notes, or answers" />
-        <div id="evs-filter-note" class="evs-filter-note">Showing all ${signups.length} ${isVendor ? 'applications' : 'signups'}</div>
+        <div id="evs-filter-note" class="evs-filter-note">Showing all ${signups.length} ${nounPlural}</div>
       </div>
     ` : ''}
 
@@ -3599,7 +3605,7 @@ function eventSignupsView(event, signups, user, flashMsg, occCtx = {}) {
         var note = document.getElementById('evs-filter-note');
         var tabs = Array.from(document.querySelectorAll('#evs-filter-tabs .evs-filter-tab'));
         var rows = Array.from(document.querySelectorAll('#evs-rows .evs-card'));
-        var noun = ${isVendor ? "'applications'" : "'signups'"};
+        var noun = '${nounPlural}';
         if (rows.length === 0) return;
         var currentFilter = 'all';
 
@@ -3638,11 +3644,45 @@ function eventSignupsView(event, signups, user, flashMsg, occCtx = {}) {
 }
 
 function eventSignupDecisionView(event, signup, decision, email, user, flashMsg) {
-  const isApprove = decision === 'approve';
-  const title = isApprove ? 'Approve Vendor Application' : 'Reject Vendor Application';
-  const actionLabel = isApprove ? 'Approve and Send Email' : 'Reject and Send Email';
-  const actionClass = isApprove ? 'btn-success' : 'btn-danger';
-  const reasonField = !isApprove ? `
+  const { signupNoun } = require('../eventSignupTypes');
+  const noun = signupNoun(event); // application | entry | signup
+  const nounTitle = noun.charAt(0).toUpperCase() + noun.slice(1);
+  const isReject = decision === 'reject';
+  const DECISION_COPY = {
+    approve: {
+      title: `Approve ${nounTitle}`,
+      kicker: `${nounTitle} decision`,
+      verb: 'Approve',
+      actionClass: 'btn-success',
+      skipLabel: `Approve without sending an email`,
+    },
+    reject: {
+      title: `Reject ${nounTitle}`,
+      kicker: `${nounTitle} decision`,
+      verb: 'Reject',
+      actionClass: 'btn-danger',
+      skipLabel: `Reject without sending an email`,
+    },
+    waitlist: {
+      title: `Waitlist ${nounTitle}`,
+      kicker: `${nounTitle} decision`,
+      verb: 'Waitlist',
+      actionClass: 'btn-secondary',
+      skipLabel: `Move to the waitlist without sending an email`,
+    },
+    promote: {
+      title: 'Promote from Waitlist',
+      kicker: 'Waitlist promotion',
+      verb: 'Promote',
+      actionClass: 'btn-success',
+      skipLabel: 'Promote without sending an email',
+    },
+  };
+  const copy = DECISION_COPY[decision] || DECISION_COPY.approve;
+  const title = copy.title;
+  const actionLabel = `${copy.verb} and Send Email`;
+  const actionClass = copy.actionClass;
+  const reasonField = isReject ? `
     <div class="decision-field">
       <label for="rejectionReason">Saved rejection note</label>
       <textarea id="rejectionReason" name="rejectionReason" rows="3" placeholder="Optional. This is saved on the application record.">${escHTML(signup.rejectionReason || '')}</textarea>
@@ -3687,10 +3727,10 @@ function eventSignupDecisionView(event, signup, decision, email, user, flashMsg)
       }
     </style>
     <div class="decision-wrap">
-      <a class="decision-back" href="/admin/events/${escHTML(event.id)}/signups">&larr; Back to applications</a>
+      <a class="decision-back" href="/admin/events/${escHTML(event.id)}/signups">&larr; Back to signups</a>
       <div class="page-header">
         <div>
-          <div class="admin-kicker">Vendor decision</div>
+          <div class="admin-kicker">${escHTML(copy.kicker)}</div>
           <h1>${escHTML(title)}</h1>
           <p class="page-subtitle">Review and edit the email before the status changes. It will be sent from ${escHTML(user.email || 'the approving admin')} and CC lentz@dramanddraught.com.</p>
         </div>
@@ -3715,16 +3755,141 @@ function eventSignupDecisionView(event, signup, decision, email, user, flashMsg)
               <textarea id="emailBody" name="emailBody" required>${escHTML(email.body || '')}</textarea>
             </div>
             ${reasonField}
-            <p class="decision-send-note">Nothing is approved or rejected until this email is sent. Add load-in notes, next steps, or any other instructions here.</p>
+            <p class="decision-send-note">${signup.email
+              ? 'Nothing changes until you confirm below. Add load-in notes, next steps, or any other instructions here.'
+              : 'This person didn\'t leave an email address — the status will update but no email can be sent.'}</p>
+            <label style="display:flex; align-items:center; gap:8px; color:#9ca3af; font-size:0.88rem; cursor:pointer;">
+              <input type="checkbox" name="skipEmail" value="1" id="decision-skip-email" style="width:auto;" />
+              ${escHTML(copy.skipLabel)}
+            </label>
             <div class="decision-actions">
               <a class="btn btn-secondary" href="/admin/events/${escHTML(event.id)}/signups">Cancel</a>
-              <button type="submit" class="btn ${actionClass}">${actionLabel}</button>
+              <button type="submit" class="btn ${actionClass}" id="decision-submit">${actionLabel}</button>
             </div>
           </form>
+          <script>
+            (function() {
+              var box = document.getElementById('decision-skip-email');
+              var btn = document.getElementById('decision-submit');
+              var subj = document.getElementById('emailSubject');
+              var bodyEl = document.getElementById('emailBody');
+              if (!box || !btn) return;
+              box.addEventListener('change', function() {
+                btn.textContent = box.checked ? ${JSON.stringify(`${copy.verb} (No Email)`)} : ${JSON.stringify(actionLabel)};
+                if (subj) subj.required = !box.checked;
+                if (bodyEl) bodyEl.required = !box.checked;
+              });
+            })();
+          </script>
         </div>
       </div>
     </div>
   `, user, { pathname: `/admin/events/${event.id}/signups`, flashMsg });
 }
 
-module.exports = { eventsList, eventEditor, eventSignupsView, eventSignupDecisionView, eventResultsView, eventQrStudioPage };
+// Bulk compose: one email to every pending entrant who wasn't picked as a
+// finalist. {name} in the body is replaced per-recipient at send time, and
+// everyone on the list is marked "not selected" when it goes out.
+function eventBulkEmailView(event, recipients, email, user, flashMsg) {
+  const { signupNoun } = require('../eventSignupTypes');
+  const noun = signupNoun(event);
+  const nounPlural = noun === 'entry' ? 'entries' : `${noun}s`;
+  const withEmail = recipients.filter(r => r.email).length;
+  const withoutEmail = recipients.length - withEmail;
+  const recipientRows = recipients.map(r => `
+    <div>
+      <span>${escHTML(r.name || 'Unnamed')}</span>
+      <strong>${r.email ? escHTML(r.email) : '<em style="color:#f87171;font-style:normal;">no email — status only</em>'}</strong>
+    </div>`).join('');
+
+  return adminLayout('Email Non-Finalists', `
+    <style>
+      .decision-wrap { max-width:980px; margin:0 auto; }
+      .decision-back { color:#888; font-size:0.85rem; text-decoration:none; }
+      .decision-back:hover { color:#d4af37; }
+      .decision-card { background:#111; border:1px solid var(--line); border-radius:14px; padding:18px; margin-top:16px; }
+      .decision-grid { display:grid; grid-template-columns:0.9fr 1.4fr; gap:18px; align-items:start; }
+      .decision-summary { background:#17191d; border:1px solid #2a2d33; border-radius:12px; padding:14px; }
+      .decision-summary h2 { margin:0 0 6px; color:#fff; font-size:1.1rem; }
+      .decision-summary p { margin:0 0 14px; color:#9ca3af; line-height:1.45; font-size:0.9rem; }
+      .decision-recipients { display:grid; gap:6px; max-height:340px; overflow-y:auto; }
+      .decision-recipients div { background:#101114; border:1px solid #262a30; border-radius:8px; padding:8px 9px; display:flex; justify-content:space-between; gap:8px; }
+      .decision-recipients span { color:#e5e7eb; font-size:0.88rem; }
+      .decision-recipients strong { color:#8b949e; font-size:0.82rem; font-weight:500; word-break:break-all; text-align:right; }
+      .decision-form { display:grid; gap:12px; }
+      .decision-field label { display:block; color:#8b949e; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:5px; font-weight:700; }
+      .decision-field input, .decision-field textarea {
+        width:100%; background:#0d0f12; color:#f3f4f6; border:1px solid #30343b; border-radius:10px;
+        padding:11px 12px; font:inherit; line-height:1.45;
+      }
+      .decision-field textarea { resize:vertical; min-height:220px; }
+      .decision-send-note { color:#9ca3af; font-size:0.84rem; line-height:1.45; margin:0; }
+      .decision-actions { display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:flex-end; }
+      @media(max-width:780px) {
+        .decision-grid { grid-template-columns:1fr; }
+        .decision-card { padding:14px; }
+        .decision-actions { justify-content:stretch; }
+        .decision-actions .btn { width:100%; text-align:center; }
+      }
+    </style>
+    <div class="decision-wrap">
+      <a class="decision-back" href="/admin/events/${escHTML(event.id)}/signups">&larr; Back to signups</a>
+      <div class="page-header">
+        <div>
+          <div class="admin-kicker">Competition wrap-up</div>
+          <h1>Email Non-Finalists</h1>
+          <p class="page-subtitle">One email per person, sent from ${escHTML(user.email || 'you')} and CC lentz@dramanddraught.com. Everyone below is marked "not selected" when it sends.</p>
+        </div>
+      </div>
+      <div class="decision-card">
+        ${recipients.length === 0 ? `
+          <p class="decision-send-note">No pending ${nounPlural} left to notify — everyone has already been decided.</p>
+        ` : `
+        <div class="decision-grid">
+          <aside class="decision-summary">
+            <h2>${recipients.length} recipient${recipients.length === 1 ? '' : 's'}</h2>
+            <p>Pending ${nounPlural} for ${escHTML(event.title)} not selected as finalists.${withoutEmail > 0 ? ` ${withoutEmail} left no email address and will only have their status updated.` : ''}</p>
+            <div class="decision-recipients">${recipientRows}</div>
+          </aside>
+          <form class="decision-form" method="POST" action="/admin/events/${escHTML(event.id)}/signups">
+            <input type="hidden" name="_action" value="sendNonFinalistEmails" />
+            <div class="decision-field">
+              <label for="emailSubject">Subject</label>
+              <input id="emailSubject" name="emailSubject" value="${escHTML(email.subject || '')}" required />
+            </div>
+            <div class="decision-field">
+              <label for="emailBody">Email body</label>
+              <textarea id="emailBody" name="emailBody" required>${escHTML(email.body || '')}</textarea>
+            </div>
+            <p class="decision-send-note"><code>{name}</code> is replaced with each person's name. Nothing sends until you confirm below.</p>
+            <label style="display:flex; align-items:center; gap:8px; color:#9ca3af; font-size:0.88rem; cursor:pointer;">
+              <input type="checkbox" name="skipEmail" value="1" id="decision-skip-email" style="width:auto;" />
+              Mark as not selected without sending any emails
+            </label>
+            <div class="decision-actions">
+              <a class="btn btn-secondary" href="/admin/events/${escHTML(event.id)}/signups">Cancel</a>
+              <button type="submit" class="btn btn-danger" id="decision-submit">Send to ${withEmail} &amp; Mark Not Selected</button>
+            </div>
+          </form>
+        </div>
+        <script>
+          (function() {
+            var box = document.getElementById('decision-skip-email');
+            var btn = document.getElementById('decision-submit');
+            var subj = document.getElementById('emailSubject');
+            var bodyEl = document.getElementById('emailBody');
+            if (!box || !btn) return;
+            box.addEventListener('change', function() {
+              btn.textContent = box.checked ? 'Mark Not Selected (No Emails)' : ${JSON.stringify(`Send to ${withEmail} & Mark Not Selected`)};
+              if (subj) subj.required = !box.checked;
+              if (bodyEl) bodyEl.required = !box.checked;
+            });
+          })();
+        </script>
+        `}
+      </div>
+    </div>
+  `, user, { pathname: `/admin/events/${event.id}/signups`, flashMsg });
+}
+
+module.exports = { eventsList, eventEditor, eventSignupsView, eventSignupDecisionView, eventBulkEmailView, eventResultsView, eventQrStudioPage };

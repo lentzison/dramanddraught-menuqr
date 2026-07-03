@@ -41,54 +41,13 @@ function isVendor(event)      { return effectiveSignupType(event) === 'vendor'; 
 function isParticipant(event) { return effectiveSignupType(event) === 'participant'; }
 function isGuest(event)       { return effectiveSignupType(event) === 'guest'; }
 
-// Form copy that adapts to the signup mode. The admin can still override
-// individual question labels via the custom-questions feature; these are
-// the defaults used by the rendered form.
-function signupFormCopy(event) {
+// What one submission is called in admin copy — "application" for vendors,
+// "entry" for competition participants, plain "signup" for guests.
+function signupNoun(event) {
   const t = effectiveSignupType(event);
-  if (t === 'vendor') {
-    return {
-      heading: 'Apply to vendor',
-      submitLabel: 'Submit application',
-      nameLabel: 'Your name *',
-      nameHint: 'Person we should contact about your booth.',
-      emailLabel: 'Email *',
-      phoneLabel: 'Phone',
-      partySizeLabel: 'How many people will staff your booth?',
-      notesLabel: 'Tell us about your vendor table',
-      notesPlaceholder: 'What are you bringing? Booth needs? Any setup notes.',
-      pendingHeading: 'Application received',
-      pendingMessage: 'Thanks for applying. The team reviews vendor applications and emails you within a few days with a decision.',
-    };
-  }
-  if (t === 'participant') {
-    return {
-      heading: 'Sign up to take part',
-      submitLabel: 'Submit signup',
-      nameLabel: 'Your name *',
-      nameHint: 'Your name as you\'d like it to appear if announced.',
-      emailLabel: 'Email *',
-      phoneLabel: 'Phone',
-      partySizeLabel: 'How many people are coming with you?',
-      notesLabel: 'Tell us about what you\'re bringing',
-      notesPlaceholder: 'Cocktail concept, dish description, performance length, equipment you\'ll bring, etc.',
-      pendingHeading: 'Signup received',
-      pendingMessage: 'Thanks for signing up. We review participant signups and email you within a few days with a decision.',
-    };
-  }
-  return {
-    heading: 'Sign up',
-    submitLabel: 'Submit signup',
-    nameLabel: 'Your name *',
-    nameHint: '',
-    emailLabel: 'Email *',
-    phoneLabel: 'Phone',
-    partySizeLabel: 'Party size',
-    notesLabel: 'Notes for the team',
-    notesPlaceholder: 'Anything we should know? Allergies, accessibility, etc.',
-    pendingHeading: 'Signup received',
-    pendingMessage: 'Thanks for signing up! Check your email for confirmation details.',
-  };
+  if (t === 'vendor') return 'application';
+  if (t === 'participant') return 'entry';
+  return 'signup';
 }
 
 module.exports = {
@@ -100,5 +59,5 @@ module.exports = {
   isVendor,
   isParticipant,
   isGuest,
-  signupFormCopy,
+  signupNoun,
 };

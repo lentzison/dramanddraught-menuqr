@@ -805,7 +805,7 @@ function generateEventPage(location, event, signupCount, options = {}) {
     <aside class="ev-side-card" id="apply">
       <div class="ev-side-kicker">Waitlist</div>
       <h2 class="ev-side-title">This event is full</h2>
-      <p class="ev-side-copy">Add your name to the waitlist and we'll email you if a spot opens up.</p>
+      <p class="ev-side-copy">Add your name to the waitlist and we'll reach out if a spot opens up.</p>
       ${waitlistForm}
       <div class="ev-side-actions">
         <a href="${escHTML(eventsPath)}" class="ev-side-link ev-side-link-muted">Browse all events</a>
@@ -3037,7 +3037,7 @@ function generateEventConfirmationPage(location, event, signup) {
   const { bodyClass } = resolveThemeRender(event, { isVendor });
   const isWaitlisted = signup && signup.status === 'waitlisted';
   const defaultMsg = isWaitlisted
-    ? "You're on the waitlist! This event is currently full, but we'll email you right away if a spot opens up."
+    ? "You're on the waitlist! This event is currently full, but we'll reach out if a spot opens up."
     : isVendor
       ? "Thanks for applying! Our team will review your application and reach out once a decision has been made."
       : isParticipant

@@ -1,8 +1,10 @@
 // Admin-side printable spirit list. Two views:
 //   generateSpiritListIndex — pick a location (admin chrome via adminLayout)
-//   generateSpiritPrintPage — standalone, print-optimized document for one
-//     location, grouped by category, "detailed" rows (name · region/style ·
-//     ABV + all pour prices), two-column, branded header + "Updated" date.
+//   generateSpiritPrintPage — standalone, guest-facing spirit "book" for one
+//     location: gold-framed cover page, then one chapter per spirit family
+//     (Whiskey, Agave, Rum & Cane…) that starts on a fresh printed page,
+//     two-column rows of name · ABV tag · bare price trio. A fixed gold
+//     frame + running footer repeat on every printed page.
 // Pulls live spirit data each load, so reprints are always current.
 
 const { adminLayout } = require('./adminLayout');
@@ -117,25 +119,38 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
     </div>`;
   };
 
-  const body = items.length
-    ? orderedFamilies.map((fam) => {
-        const catMap = families.get(fam);
-        const famCats = [...catMap.keys()].sort((a, b) => {
-          const r = catRank(a) - catRank(b);
-          return r !== 0 ? r : a.localeCompare(b);
-        });
-        for (const c of famCats) catMap.get(c).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
-        const subs = famCats.map((c) => {
-          // Skip a redundant sub-header when the only category equals the family.
-          const showSub = !(famCats.length === 1 && c.trim().toLowerCase() === fam.trim().toLowerCase());
-          return `<section class="sp-sub">
-            ${showSub ? `<h3 class="sp-sub-title">${escHTML(c)}</h3>` : ''}
-            ${catMap.get(c).map(spiritRow).join('')}
-          </section>`;
-        }).join('');
-        return `<h2 class="sp-fam"><span>${escHTML(fam)}</span></h2>${subs}`;
-      }).join('')
-    : '<p class="sp-empty">No spirits found for this location yet.</p>';
+  // One "page" section per spirit family — on paper each family starts on a
+  // fresh page (break-before), so a guest flips straight to Whiskey, Agave,
+  // Rum & Cane… like chapters in a book.
+  const famPages = orderedFamilies.map((fam) => {
+    const catMap = families.get(fam);
+    const famCats = [...catMap.keys()].sort((a, b) => {
+      const r = catRank(a) - catRank(b);
+      return r !== 0 ? r : a.localeCompare(b);
+    });
+    for (const c of famCats) catMap.get(c).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+    let famCount = 0;
+    const subs = famCats.map((c) => {
+      famCount += catMap.get(c).length;
+      // Skip a redundant sub-header when the only category equals the family.
+      const showSub = !(famCats.length === 1 && c.trim().toLowerCase() === fam.trim().toLowerCase());
+      return `<section class="sp-sub">
+        ${showSub ? `<h3 class="sp-sub-title"><span>${escHTML(c)}</span></h3>` : ''}
+        ${catMap.get(c).map(spiritRow).join('')}
+      </section>`;
+    }).join('');
+    return `<section class="page fam-page">
+      <header class="fam-head">
+        <div class="fam-eyebrow">Dram &amp; Draught &mdash; ${escHTML(location.name)}</div>
+        <h2 class="fam-title">${escHTML(fam)}</h2>
+        <div class="fam-rule"><span class="fam-dia">&#9670;</span></div>
+        <div class="fam-legend">${famCount} pour${famCount === 1 ? '' : 's'} &middot; priced in dollars &mdash; 1 oz &middot; 1.5 oz &middot; 2 oz</div>
+      </header>
+      <div class="cols">${subs}</div>
+    </section>`;
+  }).join('');
+
+  const emptyPage = `<section class="page fam-page"><p class="sp-empty">No spirits found for this location yet.</p></section>`;
 
   const count = items.length;
   return `<!DOCTYPE html>
@@ -149,34 +164,49 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
   @font-face { font-family: 'Mostra One'; font-weight: 700; font-display: swap; src: url('/assets/fonts/MostraOne-Bold.ttf') format('truetype'); }
   :root { --ink:#221d16; --soft:#5c5345; --muted:#8a7f6f; --gold:#9c7b32; --gold-lt:#bd9a5c; --hair:#e4dccb; --paper:#fffdf8; }
   * { box-sizing: border-box; }
-  html, body { margin: 0; padding: 0; background: #d8d0bf; color: var(--ink); font-family: 'EB Garamond', Georgia, serif; -webkit-font-smoothing: antialiased; }
-  .sheet { max-width: 8.5in; margin: 24px auto; background: var(--paper); padding: 0.72in 0.85in 0.55in; box-shadow: 0 10px 44px rgba(40,30,12,0.22); border-top: 3px solid var(--gold); }
+  html, body { margin: 0; padding: 0; background: #211d18; color: var(--ink); font-family: 'EB Garamond', Georgia, serif; -webkit-font-smoothing: antialiased; }
 
-  /* ── Masthead ── */
-  .mast { text-align: center; margin-bottom: 22px; }
-  .mast-brand { font-family: 'Mostra One', Georgia, serif; font-weight: 700; font-size: 0.95rem; letter-spacing: 0.5em; text-transform: uppercase; color: var(--gold); margin-left: 0.5em; }
-  .mast-div { display: flex; align-items: center; justify-content: center; gap: 13px; margin: 13px auto 15px; max-width: 360px; color: var(--gold-lt); }
+  /* ── Pages ──
+     Each section renders as its own cream sheet with a double gold frame
+     (on screen); on paper every family starts a fresh page and a fixed
+     frame + running footer repeat on every printed page. */
+  .page { position: relative; max-width: 8.5in; margin: 26px auto; background: var(--paper); padding: 0.62in 0.68in 0.55in; box-shadow: 0 14px 44px rgba(0,0,0,0.45); }
+  .page::before { content: ''; position: absolute; inset: 0.24in; border: 1.5px solid rgba(156,123,50,0.6); pointer-events: none; }
+  .page::after { content: ''; position: absolute; inset: 0.3in; border: 1px solid rgba(156,123,50,0.28); pointer-events: none; }
+
+  /* ── Cover ── */
+  .cover { min-height: 10.4in; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  .mast-est { font-size: 0.72rem; letter-spacing: 0.42em; text-transform: uppercase; color: var(--muted); margin-bottom: 16px; margin-left: 0.42em; }
+  .mast-brand { font-family: 'Mostra One', Georgia, serif; font-weight: 700; font-size: 1.28rem; letter-spacing: 0.5em; text-transform: uppercase; color: var(--gold); margin-left: 0.5em; }
+  .mast-div { display: flex; align-items: center; justify-content: center; gap: 13px; margin: 22px auto; width: 100%; max-width: 380px; color: var(--gold-lt); }
   .mast-div::before, .mast-div::after { content: ''; height: 1px; flex: 1; background: linear-gradient(90deg, transparent, var(--gold-lt)); }
   .mast-div::after { background: linear-gradient(90deg, var(--gold-lt), transparent); }
   .mast-dia { font-size: 0.62rem; letter-spacing: 0.34em; transform: translateY(-1px); }
-  .mast-title { font-family: 'Mostra One', Georgia, serif; font-weight: 400; font-size: 2.55rem; letter-spacing: 0.04em; line-height: 1; margin: 0; }
-  .mast-loc { font-style: italic; font-size: 1.16rem; color: var(--soft); margin-top: 9px; }
-  .mast-sub { font-size: 0.74rem; color: var(--muted); letter-spacing: 0.16em; text-transform: uppercase; margin-top: 12px; }
-  .mast-legend { font-size: 0.82rem; color: var(--muted); font-style: italic; margin-top: 3px; }
+  .mast-title { font-family: 'Mostra One', Georgia, serif; font-weight: 400; font-size: 3.4rem; letter-spacing: 0.05em; line-height: 1.04; margin: 0; }
+  .mast-loc { font-style: italic; font-size: 1.35rem; color: var(--soft); margin-top: 14px; }
+  .mast-sub { font-size: 0.76rem; color: var(--muted); letter-spacing: 0.18em; text-transform: uppercase; margin-top: 26px; }
+  .mast-legend { font-size: 0.95rem; color: var(--soft); font-style: italic; margin-top: 8px; }
+  .mast-note { font-size: 0.78rem; color: var(--muted); font-style: italic; margin-top: 34px; max-width: 4.6in; line-height: 1.5; }
+
+  /* ── Family page header ── */
+  .fam-head { text-align: center; margin-bottom: 20px; }
+  .fam-eyebrow { font-size: 0.68rem; letter-spacing: 0.3em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
+  .fam-title { font-family: 'Mostra One', Georgia, serif; font-weight: 400; font-size: 2.1rem; letter-spacing: 0.06em; line-height: 1.05; margin: 0; color: var(--ink); }
+  .fam-rule { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 12px auto 10px; max-width: 300px; color: var(--gold-lt); }
+  .fam-rule::before, .fam-rule::after { content: ''; height: 1px; flex: 1; background: linear-gradient(90deg, transparent, var(--gold-lt)); }
+  .fam-rule::after { background: linear-gradient(90deg, var(--gold-lt), transparent); }
+  .fam-dia { font-size: 0.56rem; transform: translateY(-1px); }
+  .fam-legend { font-size: 0.8rem; color: var(--muted); font-style: italic; }
 
   /* ── Columns ── */
-  .cols { column-count: 2; column-gap: 38px; }
+  .cols { column-count: 2; column-gap: 40px; }
   @media (max-width: 640px) { .cols { column-count: 1; } }
 
-  /* ── Family section header (spans both columns) ── */
-  .sp-fam { column-span: all; -webkit-column-span: all; break-after: avoid; text-align: center; font-family: 'Mostra One', Georgia, serif; font-weight: 700; font-size: 1.18rem; letter-spacing: 0.24em; text-transform: uppercase; color: var(--ink); margin: 24px 0 13px; display: flex; align-items: center; justify-content: center; gap: 17px; }
-  .sp-fam:first-child { margin-top: 2px; }
-  .sp-fam::before, .sp-fam::after { content: ''; width: 54px; height: 2px; background: var(--gold); }
-  .sp-fam span { padding-bottom: 2px; }
-
-  /* ── Sub-category ── */
-  .sp-sub { break-inside: avoid-column; -webkit-column-break-inside: avoid; page-break-inside: avoid; margin: 0 0 15px; }
-  .sp-sub-title { font-weight: 600; font-size: 0.76rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold); margin: 2px 0 7px; padding-bottom: 4px; border-bottom: 1px solid var(--hair); }
+  /* ── Sub-category: centered small caps with flanking hairlines ── */
+  .sp-sub { break-inside: avoid-column; -webkit-column-break-inside: avoid; page-break-inside: avoid; margin: 0 0 16px; }
+  .sp-sub-title { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 0.74rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--gold); margin: 2px 0 8px; text-align: center; }
+  .sp-sub-title::before, .sp-sub-title::after { content: ''; height: 1px; flex: 1; background: var(--hair); }
+  .sp-sub-title span { flex: none; }
 
   /* ── Spirit rows ──
      Roomy names + compact bare-number price trio ("6 · 9 · 12") so almost
@@ -190,38 +220,50 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
   .sp-price { white-space: nowrap; font-size: 0.86rem; font-weight: 500; color: #4c4436; font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }
   .sp-empty { text-align: center; color: var(--muted); padding: 60px; font-style: italic; }
 
-  /* ── Footer ── */
-  .doc-foot { text-align: center; margin-top: 30px; padding-top: 14px; border-top: 1px solid var(--hair); color: var(--muted); font-size: 0.74rem; font-style: italic; letter-spacing: 0.03em; }
-
   /* ── Screen-only print bar ── */
   .print-bar { position: fixed; top: 14px; right: 16px; display: flex; gap: 8px; z-index: 10; }
   .print-bar a, .print-bar button { font-family: 'EB Garamond', Georgia, serif; font-size: 0.95rem; padding: 9px 16px; border-radius: 8px; border: 1px solid var(--gold); cursor: pointer; text-decoration: none; }
   .print-bar button { background: var(--gold); color: #fff; }
   .print-bar a { background: #fff; color: var(--ink); }
 
+  /* Print-only chrome: a gold frame + running footer that repeat on every
+     printed page (position:fixed repeats per page in print). Hidden on screen,
+     where each .page draws its own frame instead. */
+  .print-frame, .print-foot { display: none; }
+
   @media print {
     html, body { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .sheet { max-width: none; margin: 0; padding: 0; box-shadow: none; border-top: none; }
     .print-bar { display: none !important; }
-    .sp-fam { margin-top: 22px; }
-    @page { margin: 0.55in; }
+    @page { size: letter; margin: 0.42in 0.5in 0.66in; }
+    .page { max-width: none; margin: 0; box-shadow: none; padding: 0.3in 0.34in 0.2in; break-after: page; page-break-after: always; }
+    .page:last-of-type { break-after: auto; page-break-after: auto; }
+    /* Per-sheet screen frames off — the fixed frame below handles paper. */
+    .page::before, .page::after { display: none; }
+    .cover { min-height: 9.2in; }
+    .print-frame { display: block; position: fixed; top: 0; left: 0; right: 0; bottom: 0.24in; border: 1.5px solid rgba(156,123,50,0.75); pointer-events: none; }
+    .print-frame::after { content: ''; position: absolute; inset: 4px; border: 0.5px solid rgba(156,123,50,0.45); }
+    .print-foot { display: block; position: fixed; bottom: 0; left: 0; right: 0; text-align: center; font-size: 0.6rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--muted); }
   }
 </style></head><body>
   <div class="print-bar">
     <a href="/admin/spirit-list">← Back</a>
     <button type="button" onclick="window.print()">Print / Save PDF</button>
   </div>
-  <div class="sheet">
-    <header class="mast">
+  <div class="print-frame"></div>
+  <div class="print-foot">Dram &amp; Draught &middot; ${escHTML(location.name)} &middot; Prices subject to change</div>
+  <div class="book">
+    <section class="page cover">
+      <div class="mast-est">North Carolina</div>
       <div class="mast-brand">Dram &amp; Draught</div>
       <div class="mast-div"><span class="mast-dia">◆ ◆ ◆</span></div>
       <h1 class="mast-title">Spirit List</h1>
       <div class="mast-loc">${escHTML(location.name)}</div>
+      <div class="mast-div"><span class="mast-dia">◆ ◆ ◆</span></div>
       <div class="mast-sub">${count} Pour${count === 1 ? '' : 's'} &middot; Updated ${escHTML(updated)}</div>
-      <div class="mast-legend">Prices in dollars per pour — 1 oz &middot; 1.5 oz &middot; 2 oz</div>
-    </header>
-    <main class="cols">${body}</main>
-    <div class="doc-foot">Dram &amp; Draught &middot; ${escHTML(location.name)} &middot; Prices subject to change</div>
+      <div class="mast-legend">Every spirit is priced in dollars by the pour — 1 oz &middot; 1.5 oz &middot; 2 oz</div>
+      <div class="mast-note">Ask your bartender about anything on these pages — flights, recommendations, and allocated pours included. Prices subject to change.</div>
+    </section>
+    ${items.length ? famPages : emptyPage}
   </div>
 </body></html>`;
 }

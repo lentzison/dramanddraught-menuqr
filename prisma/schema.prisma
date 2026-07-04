@@ -926,3 +926,15 @@ model SpiritNote {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+// Admin sessions, persisted so deploys/restarts don't log everyone out. The
+// in-memory Map in auth.js is the fast path; rows here rehydrate it after a
+// new container boots. Expired rows are swept by the auth cleanup interval.
+model AdminSession {
+  id        String   @id
+  user      Json
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+}

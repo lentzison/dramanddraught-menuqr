@@ -842,8 +842,26 @@ async function hasFeaturedFlights(locationSlug) {
   }
 }
 
+// Write a curated display name back to the Bartender catalog so every menu
+// that reads SpiritProduct picks it up — fix a name once, everywhere. This is
+// menuqr's one deliberate write into the Bartender database.
+async function updateSpiritProductName(productId, name) {
+  const clean = String(name || '').trim().slice(0, 200);
+  const pid = String(productId || '').trim();
+  if (!pid || !clean) return false;
+  try {
+    const db = getPool();
+    const r = await db.query('UPDATE "SpiritProduct" SET name = $1 WHERE "productId" = $2', [clean, pid]);
+    return r.rowCount > 0;
+  } catch (err) {
+    console.warn('Bartender name write-back failed:', err.message);
+    return false;
+  }
+}
+
 module.exports = {
   getPool,
+  updateSpiritProductName,
   findUserByEmail,
   getUserRoles,
   hasAccess,

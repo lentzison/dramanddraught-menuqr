@@ -2,10 +2,33 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const { findUserByEmail, getUserRoles, hasAccess } = require('./bartenderDb');
 
-// In-memory session store
+// Session store: in-memory Map as the fast path, backed by the AdminSession
+// table so sessions survive deploys/restarts. Reads stay synchronous
+// (requireAuth is called all over the routes) — index.js awaits
+// hydrateSession() for /admin requests, which pulls a DB-backed session into
+// the Map before any route runs.
 const sessions = new Map();
 const SESSION_TTL = 8 * 60 * 60 * 1000; // 8 hours
 const COOKIE_NAME = 'menuqr_session';
+
+let sessionDb = null; // prisma client, wired up from index.js at boot
+function setSessionStore(prisma) { sessionDb = prisma; }
+
+// Load the request's session from the DB into the in-memory Map if this
+// process hasn't seen it yet (fresh container after a deploy).
+async function hydrateSession(req) {
+  if (!sessionDb) return;
+  const sid = parseCookies(req)[COOKIE_NAME];
+  if (!sid || sessions.has(sid)) return;
+  try {
+    const row = await sessionDb.adminSession.findUnique({ where: { id: sid } });
+    if (row && row.expiresAt.getTime() > Date.now()) {
+      sessions.set(sid, { user: row.user, expiresAt: row.expiresAt.getTime() });
+    }
+  } catch (err) {
+    console.warn('Session hydrate failed:', err.message);
+  }
+}
 
 function generateSessionId() {
   return crypto.randomBytes(32).toString('hex');
@@ -15,6 +38,10 @@ function cleanExpiredSessions() {
   const now = Date.now();
   for (const [id, session] of sessions) {
     if (session.expiresAt < now) sessions.delete(id);
+  }
+  if (sessionDb) {
+    sessionDb.adminSession.deleteMany({ where: { expiresAt: { lt: new Date(now) } } })
+      .catch((err) => console.warn('Session cleanup failed:', err.message));
   }
 }
 
@@ -87,10 +114,12 @@ async function authenticate(email, password) {
 
 function createSession(res, user) {
   const sessionId = generateSessionId();
-  sessions.set(sessionId, {
-    user,
-    expiresAt: Date.now() + SESSION_TTL,
-  });
+  const expiresAt = Date.now() + SESSION_TTL;
+  sessions.set(sessionId, { user, expiresAt });
+  if (sessionDb) {
+    sessionDb.adminSession.create({ data: { id: sessionId, user, expiresAt: new Date(expiresAt) } })
+      .catch((err) => console.warn('Session persist failed:', err.message));
+  }
   setSessionCookie(res, sessionId);
   return sessionId;
 }
@@ -114,7 +143,13 @@ async function authenticateSso(email) {
 function destroySession(req, res) {
   const cookies = parseCookies(req);
   const sessionId = cookies[COOKIE_NAME];
-  if (sessionId) sessions.delete(sessionId);
+  if (sessionId) {
+    sessions.delete(sessionId);
+    if (sessionDb) {
+      sessionDb.adminSession.delete({ where: { id: sessionId } })
+        .catch(() => {}); // already gone is fine
+    }
+  }
   clearSessionCookie(res);
 }
 
@@ -159,6 +194,10 @@ function refreshSession(req, res) {
     return false;
   }
   session.expiresAt = Date.now() + SESSION_TTL;
+  if (sessionDb) {
+    sessionDb.adminSession.update({ where: { id: sessionId }, data: { expiresAt: new Date(session.expiresAt) } })
+      .catch(() => {}); // row may predate persistence; recreated on next login
+  }
   // Refresh the cookie too so browser keeps it
   setSessionCookie(res, sessionId);
   return true;
@@ -172,6 +211,8 @@ module.exports = {
   requireAuth,
   getSession,
   refreshSession,
+  setSessionStore,
+  hydrateSession,
   isCompanyWide,
   getUserLocationSlugs,
   canAccessLocation,

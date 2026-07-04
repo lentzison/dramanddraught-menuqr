@@ -35,6 +35,9 @@ function sendSafeServerError(res) {
   sendHTML(res, 500, '<h1>Server Error</h1><p>Please try again later.</p>');
 }
 
+const { setSessionStore, hydrateSession } = require('./auth');
+if (prisma) setSessionStore(prisma);
+
 const handler = async (req, res) => {
   const parsedUrl = url.parse(req.url, true);
   const pathname = parsedUrl.pathname;
@@ -42,6 +45,10 @@ const handler = async (req, res) => {
   console.log(`${req.method} ${pathname}`);
 
   try {
+    // Sessions are DB-backed so deploys don't log admins out; pull this
+    // request's session into the in-memory store before any route runs.
+    if (pathname.startsWith('/admin')) await hydrateSession(req);
+
     // Admin specials routes (session auth): /admin/specials/*, /admin/bottles/*
     if (pathname.startsWith('/admin/specials') || pathname.startsWith('/admin/bottles') || pathname.startsWith('/admin/feedback') || pathname.startsWith('/admin/analytics') || pathname.startsWith('/admin/spirit-list')) {
       if (prisma && await handleAdminSpecials(req, res, pathname, prisma)) return;

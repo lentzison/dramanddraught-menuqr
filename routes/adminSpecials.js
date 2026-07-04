@@ -2,8 +2,8 @@ const { sendHTML, parseBody, redirect, generateCocktailImage, getFlashMsg } = re
 const { requireAuth, isCompanyWide, getUserLocationSlugs, canAccessLocation } = require('../auth');
 const { specialsDashboard, dayThemeEditor, bottlesList, bottleEditor, DAYS, DAY_LABELS } = require('../views/adminSpecialsViews');
 const { adminLayout } = require('../views/adminLayout');
-const { getSpiritCategories, getSpiritCatalog, getHalfPriceSpirits, getSpiritList } = require('../bartenderDb');
-const { generateSpiritPrintPage, generateSpiritListIndex, generateSpiritEditorPage, generateAbvSyncPage } = require('../views/spiritPrintPage');
+const { getSpiritCategories, getSpiritCatalog, getHalfPriceSpirits, getSpiritList, updateSpiritProductName } = require('../bartenderDb');
+const { generateSpiritPrintPage, generateSpiritListIndex, generateSpiritEditorPage, generateAbvSyncPage, generateAutoShortenReport, filterPrintableSpirits } = require('../views/spiritPrintPage');
 const { shortenName, lookupAbv } = require('../spiritAI');
 const { planAbvSync } = require('../spiritAbvSync');
 const { sendJSON } = require('../helpers');
@@ -575,6 +575,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       const body = await parseBody(req);
       const byId = new Map(items.map((s) => [String(s.productId), s]));
       const ops = [];
+      const renames = []; // { pid, from, to } — written back to the Bartender catalog after the save
       for (const [pid, sp] of byId) {
         const hasName = Object.prototype.hasOwnProperty.call(body, `name_${pid}`);
         const hasAbv = Object.prototype.hasOwnProperty.call(body, `abv_${pid}`);
@@ -583,6 +584,7 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
         // clear it so the print falls back to the catalog name.
         const val = String(body[`name_${pid}`] || '').trim().slice(0, 120);
         const displayName = (!val || val === String(sp.name || '').trim()) ? null : val;
+        if (displayName) renames.push({ pid, from: String(sp.name || ''), to: displayName });
         // ABV override: only store when it differs from the catalog ABV; otherwise
         // clear it so the print falls back to the catalog ABV.
         const srcAbv = (sp.abv != null && sp.abv !== '') ? Number.parseFloat(sp.abv) : null;
@@ -597,7 +599,26 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
         }));
       }
       if (ops.length) await prisma.$transaction(ops).catch((err) => console.warn('spirit notes save failed:', err.message));
-      redirect(res, `/admin/spirit-list/editor?location=${encodeURIComponent(slug)}&msg=saved`);
+      // Write name changes to the Bartender catalog so every menu inherits
+      // them. On success the local override is cleared — the catalog is the
+      // source of truth again; on failure the override keeps the print right.
+      let synced = 0;
+      for (const r of renames) {
+        const ok = await updateSpiritProductName(r.pid, r.to);
+        if (ok) {
+          synced += 1;
+          await prisma.spiritNote.update({ where: { productId: r.pid }, data: { displayName: null } }).catch(() => {});
+          writeAudit(prisma, req, user, {
+            action: 'update', resourceType: 'spiritProduct', resourceId: r.pid,
+            resourceLabel: `${r.from} → ${r.to}`, locationSlug: slug,
+            details: { source: 'spirit-name-editor', bartenderSync: true },
+          });
+        }
+      }
+      const msg = renames.length
+        ? `success|Saved. ${synced} of ${renames.length} name change${renames.length === 1 ? '' : 's'} synced to the Bartender catalog.`
+        : 'saved';
+      redirect(res, `/admin/spirit-list/editor?location=${encodeURIComponent(slug)}&msg=${encodeURIComponent(msg)}`);
       return true;
     }
 
@@ -610,7 +631,73 @@ async function handleAdminSpecials(req, res, pathname, prisma) {
       if (n.displayName) notes[n.productId] = n.displayName;
       if (n.abv != null) abvNotes[n.productId] = n.abv;
     }
-    sendHTML(res, 200, generateSpiritEditorPage(location, items, notes, user, { flashMsg, abvNotes }));
+    // Show which rows are being held off the printed list so they can be
+    // fixed (or 86'd) in the Bartender dashboard.
+    const { filtered } = filterPrintableSpirits(items, notes);
+    sendHTML(res, 200, generateSpiritEditorPage(location, items, notes, user, { flashMsg, abvNotes, filteredOut: filtered }));
+    return true;
+  }
+
+  // Server-side batch: AI-shorten every overly long name (60 per run), save,
+  // and write the results back to the Bartender catalog. Ends on a report
+  // page listing every before → after for review.
+  if (pathname === '/admin/spirit-list/editor/auto-shorten' && req.method === 'POST') {
+    const slug = String((require('url').parse(req.url, true).query.location) || '').trim();
+    if (!slug || (!userIsCompanyWide && !canAccessLocation(user, slug))) { redirect(res, '/admin/spirit-list'); return true; }
+    const location = await prisma.location.findFirst({ where: { slug, isActive: true }, select: { slug: true, name: true } });
+    if (!location) { redirect(res, '/admin/spirit-list'); return true; }
+    let items = [];
+    try { const loaded = await getSpiritList(slug); items = loaded.items || []; }
+    catch (err) { console.warn('auto-shorten load failed:', err.message); }
+
+    const LONG_NAME = 40; // anything longer than this gets a pass
+    const BATCH = 60;     // per run, keeps the request under proxy timeouts
+    const pids = items.map((s) => String(s.productId)).filter(Boolean);
+    const noteRows = pids.length ? await prisma.spiritNote.findMany({ where: { productId: { in: pids } }, select: { productId: true, displayName: true } }).catch(() => []) : [];
+    const overrides = new Map(noteRows.filter((n) => n.displayName).map((n) => [n.productId, n.displayName]));
+    const candidates = items.filter((s) => {
+      const effective = (s.productId && overrides.get(String(s.productId))) || s.name || '';
+      return String(effective).trim().length > LONG_NAME;
+    });
+    const batch = candidates.slice(0, BATCH);
+
+    const renamed = [];
+    const failed = [];
+    // Small concurrency so 60 names finish in well under a minute.
+    const queue = [...batch];
+    async function worker() {
+      for (let sp = queue.shift(); sp; sp = queue.shift()) {
+        const from = String((sp.productId && overrides.get(String(sp.productId))) || sp.name || '').trim();
+        const result = await shortenName(sp).catch((err) => ({ name: '', error: err.message }));
+        const to = String(result.name || '').trim().slice(0, 120);
+        if (!to || result.error) { failed.push({ name: from, error: result.error || 'no suggestion' }); continue; }
+        if (to.length >= from.length) { failed.push({ name: from, error: 'suggestion not shorter' }); continue; }
+        const pid = String(sp.productId);
+        await prisma.spiritNote.upsert({
+          where: { productId: pid },
+          update: { displayName: to, spiritName: sp.name || pid, updatedBy: user.email || null },
+          create: { productId: pid, spiritName: sp.name || pid, displayName: to, updatedBy: user.email || null },
+        }).catch((err) => console.warn('auto-shorten note save failed:', err.message));
+        const synced = await updateSpiritProductName(pid, to);
+        if (synced) {
+          await prisma.spiritNote.update({ where: { productId: pid }, data: { displayName: null } }).catch(() => {});
+          writeAudit(prisma, req, user, {
+            action: 'update', resourceType: 'spiritProduct', resourceId: pid,
+            resourceLabel: `${from} → ${to}`, locationSlug: slug,
+            details: { source: 'auto-shorten', bartenderSync: true },
+          });
+        }
+        renamed.push({ from, to, synced });
+      }
+    }
+    await Promise.all([worker(), worker(), worker(), worker()]);
+
+    sendHTML(res, 200, generateAutoShortenReport(location, {
+      renamed,
+      failed,
+      scanned: batch.length,
+      remaining: Math.max(candidates.length - batch.length, 0),
+    }, user));
     return true;
   }
 

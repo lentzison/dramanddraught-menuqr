@@ -72,11 +72,44 @@ function familyTitleFor(cat) {
   return FAMILY_FALLBACK;
 }
 
+// Guest-book hygiene: catalog rows that would embarrass the printed list.
+// Whole-string repetitions of test/sample/dummy/placeholder ("test",
+// "testtesttest") and the "LASTONE" placeholder — never partial matches, so
+// real bottlings are untouched.
+const TEST_NAME_RE = /^(?:\s*(?:test|sample|dummy|placeholder)\s*)+\d*$|^last\s*one$/i;
+
+// Split a spirit list into printable items and the ones held back (test
+// entries, unpriced or $0 rows). The filtered list is surfaced in the admin
+// editor so the underlying rows get fixed in the Bartender dashboard.
+function filterPrintableSpirits(items = [], notes = {}) {
+  const printable = [];
+  const filtered = [];
+  for (const it of items) {
+    const raw = String(it.name || '').trim();
+    const curated = (it.productId && notes[it.productId]) ? String(notes[it.productId]).trim() : '';
+    const shown = curated || raw;
+    const prices = [it.oneOzPrice, it.oneHalfOzPrice, it.twoOzPrice]
+      .map((v) => (v == null || v === '' ? null : Number.parseFloat(v)))
+      .filter((n) => n != null && Number.isFinite(n));
+    let reason = null;
+    if (TEST_NAME_RE.test(raw) || TEST_NAME_RE.test(shown)) reason = 'looks like a test entry';
+    else if (prices.length === 0) reason = 'no pour prices on file';
+    else if (prices.every((p) => p <= 0)) reason = 'all pour prices are $0';
+    if (reason) filtered.push({ productId: it.productId || null, name: shown, category: it.primaryCategory || '', reason });
+    else printable.push(it);
+  }
+  return { printable, filtered };
+}
+
 function generateSpiritPrintPage(location, items = [], opts = {}) {
   const notes = opts.notes || {}; // { productId: displayName } curated in the editor
   const abvNotes = opts.abvNotes || {}; // { productId: abv } override when the catalog has none
   const updated = opts.updatedAt
     || new Date().toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'long', day: 'numeric', year: 'numeric' });
+
+  // Hold back test rows and unpriced/$0 pours — the editor page lists what
+  // was hidden so the data gets fixed at the source.
+  items = filterPrintableSpirits(items, notes).printable;
 
   // Two-tier grouping: family → primaryCategory → spirits.
   const families = new Map(); // familyTitle -> Map<cat, items[]>
@@ -518,12 +551,25 @@ function generateSpiritEditorPage(location, items = [], notes = {}, user, opts =
       </section>`).join('')
     : '<p style="color:var(--text-muted);">No spirits found for this location.</p>';
 
+  // Rows held back from the printed list — surfaced here so the source rows
+  // get fixed in the Bartender dashboard (they can't be edited from menuqr).
+  const filteredOut = Array.isArray(opts.filteredOut) ? opts.filteredOut : [];
+  const filteredPanel = filteredOut.length ? `
+    <div class="card" style="margin-bottom:18px; padding:14px 16px; border:1px solid rgba(252,211,77,0.35); background:rgba(252,211,77,0.05);">
+      <div style="font-weight:800; color:#fcd34d; margin-bottom:6px;">⚠︎ ${filteredOut.length} spirit${filteredOut.length === 1 ? ' is' : 's are'} hidden from the printed list</div>
+      <div style="color:var(--text-muted,#999); font-size:0.85rem; margin-bottom:10px;">These come straight from the spirit catalog — fix or 86 them in the <strong>Bartender dashboard</strong> and they'll reappear (or disappear for good) here automatically.</div>
+      <div style="display:grid; gap:4px; font-size:0.88rem;">
+        ${filteredOut.map((f) => `<div><strong style="color:var(--text,#ddd);">${escHTML(f.name)}</strong> <span style="color:var(--text-muted,#8b949e);">${f.category ? `(${escHTML(f.category)}) ` : ''}— ${escHTML(f.reason)}</span></div>`).join('')}
+      </div>
+    </div>` : '';
+
   const content = `
     <div class="page-header"><div>
       <div class="admin-kicker">Spirits</div>
       <h1>Edit Spirit Names &mdash; ${escHTML(location.name)}</h1>
-      <p class="page-subtitle">Set the short, recognizable name that prints on the list (the printed list shows just <strong>name · ABV · price</strong>). <strong>✨ Shorten</strong> suggests a tidy name from the full catalog name; <strong>🔍 Look up</strong> fills in a missing ABV. Both are AI suggestions — review before saving. ${customized} of ${items.length} have a custom name.</p>
+      <p class="page-subtitle">Set the short, recognizable name that prints on the list (the printed list shows just <strong>name · ABV · price</strong>). <strong>✨ Shorten</strong> suggests a tidy name from the full catalog name; <strong>🔍 Look up</strong> fills in a missing ABV. Both are AI suggestions — review before saving. Saved name changes are also written to the <strong>Bartender catalog</strong>, so every menu picks them up. ${customized} of ${items.length} have a custom name.</p>
     </div></div>
+    ${filteredPanel}
     <style>
       .sp-ed-bar { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: var(--panel, #111); border: 1px solid var(--line, #2a2a2a); border-radius: 12px; padding: 12px 16px; margin-bottom: 18px; }
       .sp-ed-bar .grow { flex: 1; }
@@ -549,6 +595,7 @@ function generateSpiritEditorPage(location, items = [], notes = {}, user, opts =
         <button type="submit" class="btn btn-primary">Save all</button>
         <button type="button" class="btn btn-secondary" id="ed-shorten-all">✨ Shorten all</button>
         <button type="button" class="btn btn-secondary" id="ed-abv-all">🔍 Look up missing ABVs</button>
+        <button type="button" class="btn btn-secondary" id="ed-auto-shorten" title="AI-shortens long names in one pass and writes them to the Bartender catalog">⚡ Auto-shorten long names</button>
         <span id="ed-bulk-status"></span>
         <span class="grow"></span>
         <a class="btn btn-secondary btn-sm" href="/admin/spirit-list/print?location=${encodeURIComponent(location.slug)}" target="_blank" rel="noopener">Print preview →</a>
@@ -612,6 +659,17 @@ function generateSpiritEditorPage(location, items = [], notes = {}, user, opts =
             lookupAbvOne(pid).then(function(){ btn.disabled = false; btn.textContent = old; });
           });
         });
+        var autoBtn = document.getElementById('ed-auto-shorten');
+        if (autoBtn) autoBtn.addEventListener('click', function(){
+          if (!confirm('AI-shorten up to 60 overly long names in one pass?\\n\\nNew names are saved AND written to the Bartender catalog, so every menu picks them up. You review the results on the next screen.')) return;
+          autoBtn.disabled = true; autoBtn.textContent = '\\u26a1 Working\\u2026 up to a minute';
+          var f = document.createElement('form');
+          f.method = 'POST';
+          f.action = '/admin/spirit-list/editor/auto-shorten?location=' + encodeURIComponent(LOC);
+          document.body.appendChild(f);
+          f.submit();
+        });
+
         var abvAllBtn = document.getElementById('ed-abv-all');
         if (abvAllBtn) abvAllBtn.addEventListener('click', function(){
           // Only spirits with no ABV filled in yet (blank input).
@@ -710,4 +768,47 @@ function generateAbvSyncPage(data, user, opts = {}) {
 // Minimal attribute-safe escaper for inline JS string literals (confirm dialog).
 function escAttr(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '\\u0027' }[c])); }
 
-module.exports = { generateSpiritPrintPage, generateSpiritListIndex, generateSpiritEditorPage, generateAbvSyncPage };
+// ── Auto-shorten report: what the AI batch renamed, what synced to Bartender ──
+function generateAutoShortenReport(location, data, user) {
+  const { renamed = [], failed = [], remaining = 0, scanned = 0 } = data;
+  const rows = renamed.map((r) => `
+    <tr>
+      <td class="as-from">${escHTML(r.from)}</td>
+      <td class="as-arrow">→</td>
+      <td class="as-to">${escHTML(r.to)}</td>
+      <td class="as-sync">${r.synced ? '<span style="color:#6ee7b7">✓ Bartender catalog</span>' : '<span style="color:#fcd34d">menuqr only — catalog write failed</span>'}</td>
+    </tr>`).join('');
+  const failList = failed.length
+    ? `<div class="as-fails"><strong>${failed.length} skipped:</strong> ${failed.map((f) => `${escHTML(f.name)} <span style="opacity:.7">(${escHTML(f.error)})</span>`).join(' · ')}</div>`
+    : '';
+  const content = `
+    <div class="page-header"><div>
+      <div class="admin-kicker"><a href="/admin/spirit-list" style="color:inherit;">Spirits</a> › Auto-shorten</div>
+      <h1>Auto-Shorten Results — ${escHTML(location.name)}</h1>
+      <p class="page-subtitle">${renamed.length} of ${scanned} long name${scanned === 1 ? '' : 's'} shortened. Renames marked ✓ were written to the Bartender catalog, so every menu picks them up. Review below — anything off is a quick fix in the name editor.</p>
+    </div></div>
+    <style>
+      .as-table { width:100%; border-collapse:collapse; }
+      .as-table td { padding:8px; border-bottom:1px solid rgba(255,255,255,0.06); font-size:0.92rem; vertical-align:top; }
+      .as-from { color:var(--text-muted,#8b949e); max-width:380px; }
+      .as-arrow { color:var(--gold-strong,#d4af37); white-space:nowrap; }
+      .as-to { color:var(--text,#eee); font-weight:700; }
+      .as-sync { font-size:0.8rem; white-space:nowrap; }
+      .as-fails { margin-top:14px; color:#fca5a5; font-size:0.86rem; line-height:1.6; }
+      .as-actions { display:flex; gap:10px; margin:18px 0; flex-wrap:wrap; }
+    </style>
+    <div class="as-actions">
+      <a class="btn btn-secondary" href="/admin/spirit-list/editor?location=${encodeURIComponent(location.slug)}">← Back to name editor</a>
+      <a class="btn btn-secondary" href="/admin/spirit-list/print?location=${encodeURIComponent(location.slug)}" target="_blank" rel="noopener">Print preview →</a>
+      ${remaining > 0 ? `
+        <form method="POST" action="/admin/spirit-list/editor/auto-shorten?location=${encodeURIComponent(location.slug)}" style="margin:0;">
+          <button type="submit" class="btn btn-primary">Shorten the next ${remaining > 60 ? 60 : remaining} →</button>
+        </form>` : ''}
+    </div>
+    ${remaining > 0 ? `<p style="color:var(--text-muted,#999);">${remaining} long name${remaining === 1 ? '' : 's'} still to go — run the next batch when ready.</p>` : '<p style="color:#6ee7b7;">All long names are done.</p>'}
+    ${renamed.length ? `<div class="card" style="padding:8px 14px;"><table class="as-table"><tbody>${rows}</tbody></table></div>` : '<p style="color:var(--text-muted,#999);">Nothing needed shortening in this batch.</p>'}
+    ${failList}`;
+  return adminLayout('Auto-Shorten Results', content, user, { pathname: '/admin/spirit-list' });
+}
+
+module.exports = { generateSpiritPrintPage, generateSpiritListIndex, generateSpiritEditorPage, generateAbvSyncPage, generateAutoShortenReport, filterPrintableSpirits };

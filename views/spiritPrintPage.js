@@ -132,8 +132,9 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
     </div>`;
   };
 
-  // Column header row — repeated at the top of every sub-section so a guest
-  // always knows which price is which pour.
+  // Column header row — pinned by the paginator to the top of every column
+  // on every page, so wherever a guest's eye lands the ABV and pour columns
+  // are labeled directly above the numbers.
   const colHead = `<div class="sp-cols-head"><span></span><span>abv</span><span>1 oz</span><span>1.5 oz</span><span>2 oz</span></div>`;
 
   // Source content for the client-side paginator: one hidden .fam block per
@@ -157,7 +158,7 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
       famCount += rows.length;
       // Skip a redundant sub-header when the only category equals the family.
       const showSub = !(famCats.length === 1 && c.trim().toLowerCase() === fam.trim().toLowerCase());
-      return `<div class="blk head-blk">${showSub ? `<h3 class="sp-sub-title"><span>${escHTML(c)}</span></h3>` : ''}${colHead}</div>`
+      return (showSub ? `<div class="blk head-blk"><h3 class="sp-sub-title"><span>${escHTML(c)}</span></h3></div>` : '')
         + rows.map(spiritRow).join('');
     }).join('');
     return `<div class="fam" data-title="${escHTML(fam)}" data-legend="${famCount} pour${famCount === 1 ? '' : 's'}">${blocks}</div>`;
@@ -216,9 +217,9 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
   .fam-cont .fam-eyebrow { margin-bottom: 7px; }
 
   /* ── Sub-category: centered small caps with flanking hairlines ── */
-  .head-blk { margin: 12px 0 3px; }
-  .pg-col > .head-blk:first-child { margin-top: 0; }
-  .sp-sub-title { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 0.74rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--gold); margin: 0 0 8px; text-align: center; }
+  .head-blk { margin: 12px 0 5px; }
+  .pg-col > .sp-cols-head + .head-blk { margin-top: 4px; }
+  .sp-sub-title { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 0.74rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--gold); margin: 0; text-align: center; }
   .sp-sub-title::before, .sp-sub-title::after { content: ''; height: 1px; flex: 1; background: var(--hair); }
   .sp-sub-title span { flex: none; }
 
@@ -227,7 +228,7 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
      three pour prices align straight down the page. Bare numbers under
      explicit "1 oz / 1.5 oz / 2 oz" headers. */
   .sp-row, .sp-cols-head { display: grid; grid-template-columns: 1fr 2.5em 3em 3.4em 3em; gap: 0 7px; align-items: baseline; }
-  .sp-cols-head { padding: 0 0 3px; border-bottom: 1px solid #d9cfb8; margin-bottom: 3px; }
+  .sp-cols-head { padding: 0 0 3px; border-bottom: 1px solid #d9cfb8; margin-bottom: 6px; }
   .sp-cols-head span { text-align: right; font-size: 0.58rem; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: #a2977f; }
   .sp-row { margin: 0; padding: 3px 0; border-bottom: 1px solid #f3edde; }
   .sp-name { font-size: 0.9rem; font-weight: 500; line-height: 1.2; color: var(--ink); }
@@ -276,6 +277,7 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
   <script>
   (function () {
     var LOC = ${JSON.stringify(location.name)};
+    var COLHEAD = ${JSON.stringify(colHead)};
     var book = document.getElementById('book');
     var src = document.getElementById('src');
     var done = false;
@@ -316,7 +318,9 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
       inner.appendChild(head);
       var cols = document.createElement('div');
       cols.className = 'pg-cols';
-      cols.innerHTML = '<div class="pg-col"></div><div class="pg-col"></div>';
+      // Every column starts with the ABV / 1 oz / 1.5 oz / 2 oz header row so
+      // the numbers are always labeled directly above wherever you're reading.
+      cols.innerHTML = '<div class="pg-col">' + COLHEAD + '</div><div class="pg-col">' + COLHEAD + '</div>';
       inner.appendChild(cols);
       pg.appendChild(inner);
       var foot = document.createElement('div');
@@ -366,6 +370,13 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
         });
       });
       src.parentNode.removeChild(src);
+      // A column holding only its header row (e.g. an unused right column on
+      // a family's last page) reads as clutter — clear it.
+      Array.prototype.forEach.call(book.querySelectorAll('.pg-col'), function (col) {
+        if (col.children.length === 1 && col.firstElementChild.className.indexOf('sp-cols-head') !== -1) {
+          col.removeChild(col.firstElementChild);
+        }
+      });
       // Footers: brand line on the cover, brand + page number on the rest.
       var pages = book.querySelectorAll('.pg');
       Array.prototype.forEach.call(pages, function (p, i) {

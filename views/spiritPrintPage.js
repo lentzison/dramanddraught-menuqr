@@ -341,6 +341,7 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
         var pg = newPage(title, legend, false);
         var cols = pg.querySelectorAll('.pg-col');
         var ci = 0;
+        var curSection = '';
         function fits(col) { return col.scrollHeight <= col.clientHeight + 1; }
         function advance() {
           ci++;
@@ -350,8 +351,30 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
             ci = 0;
           }
         }
+        function sectionTitle(text) {
+          var d = document.createElement('div');
+          d.className = 'blk head-blk';
+          var h = document.createElement('h3');
+          h.className = 'sp-sub-title';
+          var s = document.createElement('span');
+          s.textContent = text;
+          h.appendChild(s);
+          d.appendChild(h);
+          return d;
+        }
         blocks.forEach(function (b) {
+          var isHead = b.className.indexOf('head-blk') !== -1;
+          if (isHead) {
+            var span = b.querySelector('.sp-sub-title span');
+            curSection = span ? span.textContent : '';
+          }
           var col = cols[ci];
+          // A column picking up mid-section repeats the section name (e.g.
+          // "Bourbon") under its header row so every column is self-labeled.
+          if (!isHead && curSection && col.children.length === 1
+              && col.firstElementChild.className.indexOf('sp-cols-head') !== -1) {
+            col.appendChild(sectionTitle(curSection));
+          }
           col.appendChild(b);
           if (!fits(col)) {
             var moved = [b];
@@ -359,12 +382,16 @@ function generateSpiritPrintPage(location, items = [], opts = {}) {
             // Never strand a section header at the bottom of a column —
             // carry it forward with the row that overflowed.
             var last = col.lastElementChild;
-            if (last && last.className.indexOf('head-blk') !== -1) {
+            while (last && last.className.indexOf('head-blk') !== -1) {
               col.removeChild(last);
-              moved.unshift(last);
+              if (!isHead) moved.unshift(last);
+              last = col.lastElementChild;
             }
             advance();
             col = cols[ci];
+            if (!isHead && curSection && moved[0].className.indexOf('head-blk') === -1) {
+              col.appendChild(sectionTitle(curSection));
+            }
             moved.forEach(function (m) { col.appendChild(m); });
           }
         });

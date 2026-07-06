@@ -257,10 +257,45 @@ function draftSlides(mod, data) {
   return slides;
 }
 
-// One module → one or more rotating slides. Draft paginates; everything else
-// stays a single slide.
+// Rotating events: one event per slide (feedback was that a grid of several
+// at once is easy to miss — a single big poster per rotation reads across the
+// bar). Each slide is a full-stage poster: uncropped artwork with the date,
+// title, and blurb below. The pinned rail keeps the compact list (renderEvents)
+// since nothing rotates there.
+const MAX_EVENT_SLIDES = 6;
+
+function renderEventSolo(ev) {
+  const hasImg = !!ev.image;
+  const when = fmtEventWhen(ev.startDate, ev.endDate);
+  return `<div class="tv-event-solo${hasImg ? ' has-img' : ''}">
+    ${hasImg ? `<div class="tv-event-solo-img" style="background-image:url('${escHTML(ev.image)}')" role="img" aria-label="${escHTML(ev.title)}"></div>` : ''}
+    <div class="tv-event-solo-body">
+      ${when ? `<div class="tv-event-solo-when">${escHTML(when)}</div>` : ''}
+      <div class="tv-event-solo-title">${escHTML(ev.title)}</div>
+      ${ev.blurb ? `<div class="tv-event-solo-blurb">${escHTML(ev.blurb)}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+function eventSlides(mod, data) {
+  const events = Array.isArray(data && data.events) ? data.events : [];
+  const title = moduleTitle(mod);
+  if (events.length === 0) {
+    return [{ idSuffix: '', title, html: head('Coming Up', title) + emptyBody('No upcoming events scheduled.') }];
+  }
+  return events.slice(0, MAX_EVENT_SLIDES).map((ev, i, all) => ({
+    idSuffix: i > 0 ? `ev${i + 1}` : '',
+    // The counter tells guests more are coming without cramming them together.
+    title: all.length > 1 ? `${title} · ${i + 1} of ${all.length}` : title,
+    html: head('Coming Up', title) + renderEventSolo(ev),
+  }));
+}
+
+// One module → one or more rotating slides. Draft and events paginate;
+// everything else stays a single slide.
 function renderTvModuleSlides(mod, data) {
   if (mod && mod.type === 'draft') return draftSlides(mod, data);
+  if (mod && mod.type === 'events') return eventSlides(mod, data);
   return [{ idSuffix: '', title: moduleTitle(mod), html: renderTvModule(mod, data) }];
 }
 

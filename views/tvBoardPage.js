@@ -374,6 +374,16 @@ function generateTvBoardPage(location, board, data, opts = {}) {
     .tv-event-when { color: var(--gold); font-family: var(--display); text-transform: uppercase; letter-spacing: 0.08em; font-size: clamp(0.85rem,1.05vw,1.2rem); }
     .tv-event-title { color: var(--cream); font-weight: 700; font-size: clamp(1.2rem,1.7vw,2rem); line-height: 1.1; margin-top: 6px; }
     .tv-event-blurb { color: var(--muted); font-size: clamp(0.9rem,1.1vw,1.25rem); margin-top: 6px; }
+    /* Solo event: one event per rotating slide, poster style. Uncropped
+       artwork fills the space above, details centered below. When there's no
+       image the details block centers on the whole stage. */
+    .tv-event-solo { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; align-items: center; justify-content: center; gap: clamp(16px,2.8vh,40px); text-align: center; }
+    .tv-event-solo.has-img { justify-content: stretch; }
+    .tv-event-solo-img { width: 100%; flex: 1 1 auto; min-height: 0; background-size: contain; background-repeat: no-repeat; background-position: center; }
+    .tv-event-solo-body { flex: 0 0 auto; max-width: 92%; }
+    .tv-event-solo-when { color: var(--gold); font-family: var(--display); text-transform: uppercase; letter-spacing: 0.1em; font-size: clamp(1.3rem,2.4vw,2.6rem); }
+    .tv-event-solo-title { color: var(--cream); font-weight: 700; font-size: clamp(2.2rem,4.2vw,4.8rem); line-height: 1.04; margin-top: clamp(8px,1.2vh,18px); }
+    .tv-event-solo-blurb { color: var(--muted); font-size: clamp(1.2rem,1.9vw,2.3rem); margin-top: clamp(8px,1.2vh,18px); line-height: 1.28; max-width: 30ch; margin-left: auto; margin-right: auto; }
     /* flights */
     .tv-flights { display: flex; flex-direction: column; gap: clamp(12px,1.6vh,22px); }
     .tv-flight { border: 1px solid var(--line); border-radius: 16px; padding: clamp(14px,1.8vh,24px); background: rgba(255,255,255,0.02); }

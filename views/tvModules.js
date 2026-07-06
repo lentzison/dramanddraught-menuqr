@@ -364,43 +364,51 @@ function breakEvenSundayInfo() {
   return { isSunday: dow === 0, label: `Sunday, ${MONTHS[sun.getMonth()]} ${sun.getDate()}` };
 }
 
+// Featured break-even bottle slide. On Sunday it reads as available now; on
+// other days the same bottle is shown as a preview of what's coming this
+// Sunday (with a "Coming Sunday, July 12" banner) so guests see WHAT the
+// bottle is and WHEN to come in for it.
+function renderBottleFeature(mod, b, isSunday, label) {
+  const facts = [b.region, b.style, b.abv, b.bottleSize].filter(Boolean).join(' · ');
+  const price = b.costPerOz || b.bottleCost || '';
+  const desc = b.description || b.notes || '';
+  const tasting = b.tastingNotes || '';
+  const banner = isSunday ? '' : `<div class="tv-be-coming">
+    <span class="tv-be-teaser-badge">Every Sunday</span>
+    <span class="tv-be-coming-date">Coming ${escHTML(label)}</span>
+  </div>`;
+  return head('Featured', moduleTitle(mod)) + `<div class="tv-be">
+    ${banner}
+    <div class="tv-be-head">
+      <div class="tv-be-name">${escHTML(b.name)}</div>
+      ${price ? `<div class="tv-be-price"><span class="tv-be-price-amt">${escHTML(price)}</span><span class="tv-be-price-note">${isSunday ? 'our cost — no markup' : 'poured at cost Sunday'}</span></div>` : ''}
+    </div>
+    ${facts ? `<div class="tv-be-facts">${escHTML(facts)}</div>` : ''}
+    ${desc ? `<div class="tv-be-desc">${escHTML(desc)}</div>` : ''}
+    ${tasting ? `<div class="tv-be-tasting"><span class="tv-be-tasting-label">Tasting</span><span>${escHTML(tasting)}</span></div>` : ''}
+  </div>`;
+}
+
 function renderBottles(mod, data) {
   const { isSunday, label } = breakEvenSundayInfo();
-  // Break-even is Sunday-only — on other days promote it with a "come back
-  // Sunday" teaser instead of showing next Sunday's bottle early.
-  if (!isSunday) {
-    // Self-contained centered promo — no head title (it would just repeat
-    // "break-even bottle" above the teaser).
-    return `<div class="tv-be-teaser">
-      <div class="tv-be-teaser-badge">Every Sunday</div>
-      <div class="tv-be-teaser-headline">Come back ${escHTML(label)}</div>
-      <div class="tv-be-teaser-sub">for this week's break-even bottle</div>
-      <div class="tv-be-teaser-note">A hand-picked bottle poured at cost — no markup, our gift to you.</div>
-    </div>`;
-  }
   const bottles = Array.isArray(data && data.bottles) ? data.bottles : [];
+  // No bottle set for the upcoming Sunday yet.
   if (bottles.length === 0) {
-    return head('Featured', moduleTitle(mod)) + emptyBody('No featured bottles this week.');
+    if (!isSunday) {
+      // Generic "come back Sunday" teaser — the specific bottle isn't in yet.
+      return `<div class="tv-be-teaser">
+        <div class="tv-be-teaser-badge">Every Sunday</div>
+        <div class="tv-be-teaser-headline">Come back ${escHTML(label)}</div>
+        <div class="tv-be-teaser-sub">for this week's break-even bottle</div>
+        <div class="tv-be-teaser-note">A hand-picked bottle poured at cost — no markup, our gift to you.</div>
+      </div>`;
+    }
+    return head('Featured', moduleTitle(mod)) + emptyBody('No featured bottle this week.');
   }
-  // Break-even is almost always a single bottle — give it a featured slide
-  // with the price, quick facts, and the catalog description/tasting notes
-  // (the same enrichment the specials page uses). Multiple bottles fall back
-  // to the compact price list.
+  // Break-even is almost always a single bottle — featured slide (Sunday: now;
+  // other days: a preview of what's coming). Multiple bottles → compact list.
   if (bottles.length === 1) {
-    const b = bottles[0];
-    const facts = [b.region, b.style, b.abv, b.bottleSize].filter(Boolean).join(' · ');
-    const price = b.costPerOz || b.bottleCost || '';
-    const desc = b.description || b.notes || '';
-    const tasting = b.tastingNotes || '';
-    return head('Featured', moduleTitle(mod)) + `<div class="tv-be">
-      <div class="tv-be-head">
-        <div class="tv-be-name">${escHTML(b.name)}</div>
-        ${price ? `<div class="tv-be-price"><span class="tv-be-price-amt">${escHTML(price)}</span><span class="tv-be-price-note">our cost — no markup</span></div>` : ''}
-      </div>
-      ${facts ? `<div class="tv-be-facts">${escHTML(facts)}</div>` : ''}
-      ${desc ? `<div class="tv-be-desc">${escHTML(desc)}</div>` : ''}
-      ${tasting ? `<div class="tv-be-tasting"><span class="tv-be-tasting-label">Tasting</span><span>${escHTML(tasting)}</span></div>` : ''}
-    </div>`;
+    return renderBottleFeature(mod, bottles[0], isSunday, label);
   }
   const rows = bottles.slice(0, 10).map((b) => {
     const meta = [b.bottleSize, b.notes].filter(Boolean).join(' · ');

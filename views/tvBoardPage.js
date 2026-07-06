@@ -408,6 +408,9 @@ function generateTvBoardPage(location, board, data, opts = {}) {
     .tv-be-tasting { border-left: 3px solid var(--gold); padding: clamp(8px,1.2vh,14px) clamp(12px,1.2vw,18px); background: rgba(255,255,255,0.035); border-radius: 0 12px 12px 0; }
     .tv-be-tasting-label { display: block; color: var(--gold); font-size: clamp(0.72rem,0.9vw,1.1rem); font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 4px; }
     .tv-be-tasting span:last-child { color: var(--muted); font-size: clamp(1rem,1.35vw,1.75rem); line-height: 1.38; font-style: italic; }
+    /* "Coming Sunday, {date}" banner above the previewed bottle on non-Sundays. */
+    .tv-be-coming { display: flex; align-items: center; gap: clamp(10px,1.2vw,22px); flex-wrap: wrap; margin-bottom: clamp(2px,0.6vh,8px); }
+    .tv-be-coming-date { color: var(--gold); font-family: var(--display); font-size: clamp(1.3rem,2vw,2.4rem); letter-spacing: 0.02em; }
     /* "Come back Sunday" teaser shown on non-Sunday days (break-even is Sunday-only). */
     .tv-be-teaser { display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: clamp(12px,1.8vh,26px); }
     .tv-be-teaser-badge { background: var(--gold); color: #1a1408; font-family: var(--display); font-size: clamp(0.85rem,1.1vw,1.5rem); letter-spacing: 0.16em; text-transform: uppercase; padding: clamp(6px,0.8vh,12px) clamp(14px,1.4vw,28px); border-radius: 999px; }

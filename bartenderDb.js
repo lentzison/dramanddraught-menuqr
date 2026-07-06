@@ -168,21 +168,44 @@ async function getBreakEvenBottles(locationSlug) {
     // timezone (UTC) — otherwise on a Sunday evening ET, UTC has already
     // rolled to Monday and the query jumps to NEXT Sunday, hiding today's
     // break-even bottle. `edate` is today's date in America/New_York.
+    // Enrich each bottle with the spirit catalog's description / tasting notes
+    // / region / ABV so the specials page and TV can showcase it like a real
+    // special (the BreakEvenBottle row itself usually has no description). The
+    // LATERAL match normalizes both names (strip case/punctuation/spacing) and
+    // accepts a prefix match either direction, picking the most specific
+    // (longest) catalog name — so "Infuse Spirits, Broken Barrel Bourbon
+    // Whiskey" resolves to catalog "Infuse Spirits Broken Barrel".
     const result = await db.query(`
       WITH edate AS (
         SELECT (now() AT TIME ZONE 'America/New_York')::date AS d
       )
-      SELECT "productName", "bottleSize", cost, "sellPrice", notes, "weekStartDate"
-      FROM "BreakEvenBottle", edate
-      WHERE "locationId" = $1
-        AND status = 'ACTIVE'
+      SELECT b."productName", b."bottleSize", b.cost, b."sellPrice", b.notes, b."weekStartDate",
+             cat.description AS "catDescription", cat."tastingNotes" AS "catTastingNotes",
+             cat.region AS "catRegion", cat.style AS "catStyle", cat.abv AS "catAbv"
+      FROM "BreakEvenBottle" b, edate
+      LEFT JOIN LATERAL (
+        SELECT sd.description, sd."tastingNotes", sd.region, sd.style, sd.abv
+        FROM "SpiritProduct" sp
+        JOIN "SpiritDetail" sd ON sd."productId" = sp."productId"
+        WHERE length(regexp_replace(lower(sp.name), '[^a-z0-9]', '', 'g')) > 3
+          AND (
+            regexp_replace(lower(b."productName"), '[^a-z0-9]', '', 'g')
+              LIKE regexp_replace(lower(sp.name), '[^a-z0-9]', '', 'g') || '%'
+            OR regexp_replace(lower(sp.name), '[^a-z0-9]', '', 'g')
+              LIKE regexp_replace(lower(b."productName"), '[^a-z0-9]', '', 'g') || '%'
+          )
+        ORDER BY length(sp.name) DESC
+        LIMIT 1
+      ) cat ON true
+      WHERE b."locationId" = $1
+        AND b.status = 'ACTIVE'
         -- Compare by DATE on both sides: weekStartDate may carry a time
         -- component (timestamp/timestamptz), and a raw "= <date>" match then
         -- silently fails for anything not stored at exact UTC midnight.
-        AND "weekStartDate"::date = (
+        AND b."weekStartDate"::date = (
           edate.d + ((7 - EXTRACT(DOW FROM edate.d)::int) % 7) * INTERVAL '1 day'
         )::date
-      ORDER BY "productName" ASC
+      ORDER BY b."productName" ASC
     `, [locationId]);
 
     return {
@@ -192,6 +215,13 @@ async function getBreakEvenBottles(locationSlug) {
       costPerOz: row.sellPrice ? `$${parseFloat(row.sellPrice).toFixed(0)}/oz` : null,
       bottleCost: row.cost ? `$${parseFloat(row.cost).toFixed(0)}` : null,
       notes: row.notes || null,
+      // Catalog enrichment (may be null if no match) — a guest-facing blurb
+      // plus tasting notes and quick facts.
+      description: row.catDescription || null,
+      tastingNotes: row.catTastingNotes || null,
+      region: row.catRegion || null,
+      style: row.catStyle || null,
+      abv: (row.catAbv != null && row.catAbv !== '') ? `${parseFloat(row.catAbv)}%` : null,
       weekStartDate: row.weekStartDate,
       })),
       error: null,

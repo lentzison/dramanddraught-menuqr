@@ -267,8 +267,12 @@ const MAX_EVENT_SLIDES = 6;
 function renderEventSolo(ev) {
   const hasImg = !!ev.image;
   const when = fmtEventWhen(ev.startDate, ev.endDate);
+  // A real <img> (not a background div) so the poster sizes to its own aspect
+  // and scales down to fit — a background div has no intrinsic size and
+  // collapses in a flex column. object-fit:contain shows the whole 1000×560
+  // rendition with no crop.
   return `<div class="tv-event-solo${hasImg ? ' has-img' : ''}">
-    ${hasImg ? `<div class="tv-event-solo-img" style="background-image:url('${escHTML(ev.image)}')" role="img" aria-label="${escHTML(ev.title)}"></div>` : ''}
+    ${hasImg ? `<img class="tv-event-solo-img" src="${escHTML(ev.image)}" alt="${escHTML(ev.title)}" />` : ''}
     <div class="tv-event-solo-body">
       ${when ? `<div class="tv-event-solo-when">${escHTML(when)}</div>` : ''}
       <div class="tv-event-solo-title">${escHTML(ev.title)}</div>
@@ -343,6 +347,26 @@ function renderBottles(mod, data) {
   const bottles = Array.isArray(data && data.bottles) ? data.bottles : [];
   if (bottles.length === 0) {
     return head('Featured', moduleTitle(mod)) + emptyBody('No featured bottles this week.');
+  }
+  // Break-even is almost always a single bottle — give it a featured slide
+  // with the price, quick facts, and the catalog description/tasting notes
+  // (the same enrichment the specials page uses). Multiple bottles fall back
+  // to the compact price list.
+  if (bottles.length === 1) {
+    const b = bottles[0];
+    const facts = [b.region, b.style, b.abv, b.bottleSize].filter(Boolean).join(' · ');
+    const price = b.costPerOz || b.bottleCost || '';
+    const desc = b.description || b.notes || '';
+    const tasting = b.tastingNotes || '';
+    return head('Featured', moduleTitle(mod)) + `<div class="tv-be">
+      <div class="tv-be-head">
+        <div class="tv-be-name">${escHTML(b.name)}</div>
+        ${price ? `<div class="tv-be-price"><span class="tv-be-price-amt">${escHTML(price)}</span><span class="tv-be-price-note">our cost — no markup</span></div>` : ''}
+      </div>
+      ${facts ? `<div class="tv-be-facts">${escHTML(facts)}</div>` : ''}
+      ${desc ? `<div class="tv-be-desc">${escHTML(desc)}</div>` : ''}
+      ${tasting ? `<div class="tv-be-tasting"><span class="tv-be-tasting-label">Tasting</span><span>${escHTML(tasting)}</span></div>` : ''}
+    </div>`;
   }
   const rows = bottles.slice(0, 10).map((b) => {
     const meta = [b.bottleSize, b.notes].filter(Boolean).join(' · ');

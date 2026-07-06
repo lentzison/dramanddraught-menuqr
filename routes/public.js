@@ -1245,9 +1245,16 @@ async function loadTvEvents(prisma, location) {
     // Force a TV-safe JPEG rendition — f_auto can serve AVIF/WebP that some
     // smart-TV / streaming-stick browsers can't decode, leaving images blank.
     image: mediaRenditionUrl(absolutizeMediaUrl(ev.image, mediaOrigin), 'w_1000,h_560,c_fill,g_auto,f_jpg,q_82'),
-    blurb: ev.description
-      ? String(ev.description).replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().slice(0, 110)
-      : null,
+    // Trim the blurb at a word boundary with an ellipsis so a TV slide never
+    // ends mid-word ("...six bartenders go head" → "...go head-to-head…").
+    blurb: (() => {
+      if (!ev.description) return null;
+      const clean = String(ev.description).replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+      if (clean.length <= 120) return clean;
+      const cut = clean.slice(0, 120);
+      const lastSpace = cut.lastIndexOf(' ');
+      return (lastSpace > 70 ? cut.slice(0, lastSpace) : cut).replace(/[\s,;:.–—-]+$/, '') + '…';
+    })(),
   }));
 }
 

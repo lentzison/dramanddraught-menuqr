@@ -313,33 +313,45 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
     </div>
   ` : '';
 
-  const bottlesSection = isSunday ? (bottles && bottles.length > 0 ? `
-    <div class="section">
-      <div class="section-header">
-        <h2>This Week's Break Even Bottle${bottles.length > 1 ? 's' : ''}</h2>
-      </div>
-      ${breakEvenServingNote ? `<p class="section-subtitle">Break-even note: ${escHTML(breakEvenServingNote)}</p>` : ''}
-      ${showGiftToYouSubtitle ? '<p class="section-subtitle">Select bottles sold at cost &mdash; our gift to you</p>' : ''}
-      ${bottles.map(b => `
-        <div class="bottle-card">
-          <div class="bottle-head">
-            <div class="bottle-head-copy">
-              <div class="deal-name">${escHTML(b.name)}</div>
+  // On Sundays the break-even bottle IS the day's featured special: a poured-
+  // at-cost pick presented like a proper special with the bottle's story,
+  // tasting notes, and quick facts (region/style/ABV) pulled from the catalog.
+  const renderBreakEvenHero = (b) => {
+    const facts = [b.region, b.style, b.abv, b.bottleSize].filter(Boolean).join(' &middot; ');
+    const price = formatGuestCharge(b.costPerOz);
+    // Prefer the catalog blurb; fall back to any note on the bottle itself.
+    const desc = sanitizeGuestCopy(b.description || b.notes || '');
+    const tasting = sanitizeGuestCopy(b.tastingNotes || '');
+    return `
+      <div class="be-hero">
+        <div class="be-hero-body">
+          <div class="be-hero-head">
+            <div class="be-hero-titles">
+              <div class="be-hero-kicker">This Week's Break-Even Bottle</div>
+              <h2 class="be-hero-name">${escHTML(b.name)}</h2>
+              ${facts ? `<div class="be-hero-facts">${facts}</div>` : ''}
             </div>
-            ${formatGuestCharge(b.costPerOz) ? `<div class="deal-price">Price: ${escHTML(formatGuestCharge(b.costPerOz))}</div>` : ''}
+            ${price ? `<div class="be-hero-price"><span class="be-hero-price-amt">${escHTML(price)}</span><span class="be-hero-price-note">our cost — no markup</span></div>` : ''}
           </div>
-          ${renderBottleTastingNotes(b)}
+          ${desc ? `<p class="be-hero-desc">${escHTML(desc)}</p>` : ''}
+          ${tasting ? `<div class="be-hero-tasting"><span class="be-hero-tasting-label">Tasting</span><span class="be-hero-tasting-text">${escHTML(tasting)}</span></div>` : ''}
+          ${breakEvenServingNote ? `<div class="be-hero-serving">${escHTML(breakEvenServingNote)}</div>` : ''}
         </div>
-      `).join('')}
+      </div>`;
+  };
+
+  const bottlesSection = isSunday ? (bottles && bottles.length > 0 ? `
+    <div class="section be-section">
+      ${bottles.map(renderBreakEvenHero).join('')}
     </div>
   ` : `
-    <div class="section">
-      <div class="section-header">
-        <h2>Break Even Bottles</h2>
-      </div>
-      <div class="bottle-card" style="text-align:center; padding:20px 16px">
-        <div class="deal-name" style="margin-bottom:6px">Ask your bartender what this week's break-even bottle is!</div>
-        <p style="color:#aaa; font-size:0.9rem; margin:0">Select bottles sold at cost &mdash; our gift to you</p>
+    <div class="section be-section">
+      <div class="be-hero be-hero-empty">
+        <div class="be-hero-body">
+          <div class="be-hero-kicker">This Week's Break-Even Bottle</div>
+          <h2 class="be-hero-name">Ask your bartender!</h2>
+          <p class="be-hero-desc">Each week we pour a hand-picked bottle at cost — no markup, our gift to you. Ask what's open tonight.</p>
+        </div>
       </div>
     </div>
   `) : '';
@@ -862,6 +874,59 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
           padding: 6px 10px;
           background: rgba(210, 170, 103, 0.08);
         }
+        /* ── Sunday break-even hero ── */
+        .be-section { margin-bottom: 26px; }
+        .be-hero {
+          position: relative;
+          overflow: hidden;
+          border: 1px solid rgba(210,170,103,0.42);
+          border-radius: 20px;
+          background:
+            radial-gradient(120% 140% at 100% 0%, rgba(210,170,103,0.14), transparent 55%),
+            linear-gradient(180deg, rgba(32,28,22,0.96), rgba(14,13,12,0.98));
+          box-shadow: 0 20px 52px var(--shadow), inset 0 0 0 1px rgba(255,255,255,0.03);
+        }
+        .be-hero-body { padding: clamp(18px,4.5vw,30px); }
+        .be-hero-kicker {
+          color: var(--gold); font-size: 0.72rem; font-weight: 700;
+          letter-spacing: 0.2em; text-transform: uppercase; margin-bottom: 6px;
+        }
+        .be-hero-head { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; }
+        .be-hero-titles { min-width: 0; flex: 1 1 260px; }
+        .be-hero-name {
+          margin: 0; color: var(--cream, #f3ece0);
+          font-size: clamp(1.3rem, 4.2vw, 2.05rem); line-height: 1.14; font-weight: 800;
+          overflow-wrap: break-word; word-break: break-word;
+        }
+        .be-hero-facts {
+          margin-top: 8px; color: #b3a894; font-size: 0.85rem;
+          letter-spacing: 0.03em; text-transform: uppercase;
+        }
+        .be-hero-price {
+          flex: 0 0 auto; text-align: center;
+          border: 1px solid rgba(210,170,103,0.4); border-radius: 16px;
+          padding: 12px 18px; background: rgba(210,170,103,0.1);
+        }
+        .be-hero-price-amt { display: block; color: var(--gold); font-weight: 900; font-size: clamp(1.6rem,6vw,2.4rem); line-height: 1; }
+        .be-hero-price-note { display: block; margin-top: 5px; color: #b3a894; font-size: 0.66rem; letter-spacing: 0.08em; text-transform: uppercase; }
+        .be-hero-desc { margin: 16px 0 0; color: #d8d1c4; font-size: 1rem; line-height: 1.55; }
+        .be-hero-tasting {
+          margin-top: 14px; padding: 13px 15px;
+          border-left: 3px solid var(--gold); border-radius: 0 12px 12px 0;
+          background: rgba(255,255,255,0.035);
+        }
+        .be-hero-tasting-label {
+          display: block; color: var(--gold); font-size: 0.66rem; font-weight: 700;
+          letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 4px;
+        }
+        .be-hero-tasting-text { color: #cfc7ba; font-size: 0.94rem; line-height: 1.5; font-style: italic; }
+        .be-hero-serving {
+          margin-top: 14px; color: #9c9486; font-size: 0.82rem;
+          display: flex; align-items: center; gap: 7px;
+        }
+        .be-hero-serving::before { content: '🥃'; font-size: 0.95rem; }
+        .be-hero-empty .be-hero-name { font-size: clamp(1.3rem,5vw,1.9rem); }
+
         .badge {
           display: inline-block;
           background: linear-gradient(180deg, rgba(255,255,255,0.14), rgba(111,118,127,0.18));
@@ -1251,12 +1316,13 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
       <div class="container">
         ${eventCocktailSection}
         ${ltoSection}
+        ${isSunday ? bottlesSection : ''}
         ${searchSectionUI}
         ${specialsHTML}
         ${emptyThemeMessage}
         ${noSpecialsMessage}
         ${flightSection}
-        ${bottlesSection}
+        ${isSunday ? '' : bottlesSection}
         ${halfPriceSection}
 
         ${tomorrowTeaser || flightTeaser ? `

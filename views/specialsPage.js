@@ -128,6 +128,15 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
   const isFriday = activeDay === 'FRIDAY';
   const isSunday = activeDay === 'SUNDAY';
   const isMonday = activeDay === 'MONDAY';
+  // The Sunday the break-even bottle applies to (today if it's Sunday,
+  // otherwise the next one). Built from Eastern date components so it never
+  // slips a day across the timezone boundary. "Sunday, July 12".
+  const _MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const _nowE = getEasternDay().date;
+  const _daysUntilSun = _nowE.getDay() === 0 ? 0 : 7 - _nowE.getDay();
+  const _sun = new Date(_nowE.getFullYear(), _nowE.getMonth(), _nowE.getDate() + _daysUntilSun);
+  const upcomingSundayLabel = `${_MONTHS[_sun.getMonth()]} ${_sun.getDate()}`;
+  const upcomingSundayFull = `Sunday, ${upcomingSundayLabel}`;
   const themeTagline = sanitizeGuestCopy(theme && typeof theme.tagline === 'string' ? theme.tagline : '');
   const isIndustryNight = isMonday && theme && /industry night/i.test(theme.name || '');
   const badIndustryTagline = /we take care of our own/i;
@@ -327,7 +336,7 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         <div class="be-hero-body">
           <div class="be-hero-head">
             <div class="be-hero-titles">
-              <div class="be-hero-kicker">This Week's Break-Even Bottle</div>
+              <div class="be-hero-kicker">Break-Even Bottle &middot; ${escHTML(upcomingSundayFull)}</div>
               <h2 class="be-hero-name">${escHTML(b.name)}</h2>
               ${facts ? `<div class="be-hero-facts">${facts}</div>` : ''}
             </div>
@@ -340,21 +349,24 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
       </div>`;
   };
 
-  const bottlesSection = isSunday ? (bottles && bottles.length > 0 ? `
+  // Non-Sunday days get a highlighted teaser naming the upcoming Sunday, so
+  // guests know exactly when to come back for the poured-at-cost bottle.
+  const breakEvenTeaser = `
     <div class="section be-section">
-      ${bottles.map(renderBreakEvenHero).join('')}
-    </div>
-  ` : `
-    <div class="section be-section">
-      <div class="be-hero be-hero-empty">
+      <div class="be-hero be-hero-teaser">
         <div class="be-hero-body">
-          <div class="be-hero-kicker">This Week's Break-Even Bottle</div>
-          <h2 class="be-hero-name">Ask your bartender!</h2>
-          <p class="be-hero-desc">Each week we pour a hand-picked bottle at cost — no markup, our gift to you. Ask what's open tonight.</p>
+          <div class="be-teaser-badge">Every Sunday</div>
+          <h2 class="be-hero-name">Come back ${escHTML(upcomingSundayFull)} for this week's break-even bottle</h2>
+          <p class="be-hero-desc">A hand-picked bottle poured <strong>at cost</strong> — no markup, our gift to you. 1 oz per guest so everyone gets a taste.</p>
         </div>
       </div>
-    </div>
-  `) : '';
+    </div>`;
+
+  const bottlesSection = isSunday
+    ? (bottles && bottles.length > 0
+        ? `<div class="section be-section">${bottles.map(renderBreakEvenHero).join('')}</div>`
+        : breakEvenTeaser)
+    : breakEvenTeaser;
 
   // Group half-price spirits by category for compact display
   const halfPriceGrouped = {};
@@ -926,6 +938,23 @@ function generateSpecialsPage(location, theme, specials, flight, bottles, viewin
         }
         .be-hero-serving::before { content: '🥃'; font-size: 0.95rem; }
         .be-hero-empty .be-hero-name { font-size: clamp(1.3rem,5vw,1.9rem); }
+
+        /* Non-Sunday "come back Sunday" teaser — highlighted so it draws the eye. */
+        .be-hero-teaser {
+          text-align: center;
+          border-color: rgba(210,170,103,0.75);
+          background:
+            radial-gradient(130% 130% at 50% -10%, rgba(210,170,103,0.22), transparent 60%),
+            linear-gradient(180deg, rgba(40,33,24,0.97), rgba(16,14,12,0.98));
+          box-shadow: 0 20px 52px var(--shadow), 0 0 0 1px rgba(210,170,103,0.28), 0 0 46px rgba(210,170,103,0.14);
+        }
+        .be-hero-teaser .be-hero-name { font-size: clamp(1.3rem,3.6vw,1.85rem); line-height: 1.2; }
+        .be-hero-teaser .be-hero-desc { max-width: 46ch; margin-left: auto; margin-right: auto; }
+        .be-teaser-badge {
+          display: inline-block; background: var(--gold); color: #1a1408;
+          font-size: 0.7rem; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase;
+          padding: 6px 14px; border-radius: 999px; margin-bottom: 14px;
+        }
 
         .badge {
           display: inline-block;

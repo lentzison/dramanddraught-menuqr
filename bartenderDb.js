@@ -163,14 +163,24 @@ async function getBreakEvenBottles(locationSlug) {
     if (locResult.rows.length === 0) return { items: [], error: `Active location not found: ${locationName}` };
     const locationId = locResult.rows[0].id;
 
-    // Get active bottles for this Sunday only (nearest Sunday: today if Sun, else upcoming)
+    // Get active bottles for this Sunday only (nearest Sunday: today if Sun,
+    // else upcoming). Anchor to the EASTERN calendar date, not the database's
+    // timezone (UTC) — otherwise on a Sunday evening ET, UTC has already
+    // rolled to Monday and the query jumps to NEXT Sunday, hiding today's
+    // break-even bottle. `edate` is today's date in America/New_York.
     const result = await db.query(`
+      WITH edate AS (
+        SELECT (now() AT TIME ZONE 'America/New_York')::date AS d
+      )
       SELECT "productName", "bottleSize", cost, "sellPrice", notes, "weekStartDate"
-      FROM "BreakEvenBottle"
+      FROM "BreakEvenBottle", edate
       WHERE "locationId" = $1
         AND status = 'ACTIVE'
-        AND "weekStartDate" = (
-          CURRENT_DATE + ((7 - EXTRACT(DOW FROM CURRENT_DATE)::int) % 7) * INTERVAL '1 day'
+        -- Compare by DATE on both sides: weekStartDate may carry a time
+        -- component (timestamp/timestamptz), and a raw "= <date>" match then
+        -- silently fails for anything not stored at exact UTC midnight.
+        AND "weekStartDate"::date = (
+          edate.d + ((7 - EXTRACT(DOW FROM edate.d)::int) % 7) * INTERVAL '1 day'
         )::date
       ORDER BY "productName" ASC
     `, [locationId]);

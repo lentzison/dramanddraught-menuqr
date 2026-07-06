@@ -374,16 +374,33 @@ function generateTvBoardPage(location, board, data, opts = {}) {
     .tv-event-when { color: var(--gold); font-family: var(--display); text-transform: uppercase; letter-spacing: 0.08em; font-size: clamp(0.85rem,1.05vw,1.2rem); }
     .tv-event-title { color: var(--cream); font-weight: 700; font-size: clamp(1.2rem,1.7vw,2rem); line-height: 1.1; margin-top: 6px; }
     .tv-event-blurb { color: var(--muted); font-size: clamp(0.9rem,1.1vw,1.25rem); margin-top: 6px; }
-    /* Solo event: one event per rotating slide, poster style. Uncropped
-       artwork fills the space above, details centered below. When there's no
-       image the details block centers on the whole stage. */
-    .tv-event-solo { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; align-items: center; justify-content: center; gap: clamp(16px,2.8vh,40px); text-align: center; }
-    .tv-event-solo.has-img { justify-content: stretch; }
-    .tv-event-solo-img { width: 100%; flex: 1 1 auto; min-height: 0; background-size: contain; background-repeat: no-repeat; background-position: center; }
-    .tv-event-solo-body { flex: 0 0 auto; max-width: 92%; }
-    .tv-event-solo-when { color: var(--gold); font-family: var(--display); text-transform: uppercase; letter-spacing: 0.1em; font-size: clamp(1.3rem,2.4vw,2.6rem); }
-    .tv-event-solo-title { color: var(--cream); font-weight: 700; font-size: clamp(2.2rem,4.2vw,4.8rem); line-height: 1.04; margin-top: clamp(8px,1.2vh,18px); }
-    .tv-event-solo-blurb { color: var(--muted); font-size: clamp(1.2rem,1.9vw,2.3rem); margin-top: clamp(8px,1.2vh,18px); line-height: 1.28; max-width: 30ch; margin-left: auto; margin-right: auto; }
+    /* Solo event: one event per rotating slide.
+       - With artwork: a split layout — big poster on the left, details stacked
+         on the right — which fills the 16:9 stage. The served image is a
+         1000×560 (c_fill) rendition, so a box at that exact aspect with
+         background-size:cover shows the whole poster, no crop, no letterbox.
+       - Without artwork: the details center on the stage in a wide block so
+         the date and title never wrap awkwardly. */
+    .tv-event-solo { display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column; align-items: center; justify-content: center; gap: clamp(14px,2vh,28px); text-align: center; }
+    .tv-event-solo.has-img { flex-direction: row; gap: clamp(30px,3.6vw,76px); text-align: left; }
+    .tv-event-solo-img {
+      flex: 0 0 auto;
+      width: 52%; max-width: 52%;
+      aspect-ratio: 1000 / 560;
+      max-height: 100%;
+      background-size: cover; background-position: center;
+      border-radius: clamp(10px,0.8vw,18px);
+      border: 1px solid var(--line);
+      box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+    }
+    .tv-event-solo-body { flex: 0 1 auto; }
+    .tv-event-solo:not(.has-img) .tv-event-solo-body { max-width: 80%; }
+    .tv-event-solo.has-img .tv-event-solo-body { max-width: 40%; }
+    /* The date is short — keep it on one line so it never wraps mid-phrase. */
+    .tv-event-solo-when { color: var(--gold); font-family: var(--display); text-transform: uppercase; letter-spacing: 0.08em; font-size: clamp(1.3rem,2.1vw,2.5rem); white-space: nowrap; }
+    .tv-event-solo-title { color: var(--cream); font-family: var(--display); font-weight: 400; font-size: clamp(2.4rem,4.2vw,5rem); line-height: 1.03; margin-top: clamp(8px,1.4vh,20px); }
+    .tv-event-solo-blurb { color: var(--muted); font-size: clamp(1.15rem,1.8vw,2.2rem); margin-top: clamp(10px,1.4vh,20px); line-height: 1.3; }
+    .tv-event-solo:not(.has-img) .tv-event-solo-blurb { max-width: 26ch; margin-left: auto; margin-right: auto; }
     /* flights */
     .tv-flights { display: flex; flex-direction: column; gap: clamp(12px,1.6vh,22px); }
     .tv-flight { border: 1px solid var(--line); border-radius: 16px; padding: clamp(14px,1.8vh,24px); background: rgba(255,255,255,0.02); }

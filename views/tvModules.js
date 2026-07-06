@@ -300,6 +300,15 @@ function eventSlides(mod, data) {
 function renderTvModuleSlides(mod, data) {
   if (mod && mod.type === 'draft') return draftSlides(mod, data);
   if (mod && mod.type === 'events') return eventSlides(mod, data);
+  if (mod && mod.type === 'specials') {
+    const sp = data && data.specials;
+    const hasSpecials = sp && Array.isArray(sp.items) && sp.items.length > 0;
+    const hasBottle = data && Array.isArray(data.bottles) && data.bottles.length > 0;
+    // When the day has no individual specials but a break-even bottle is
+    // featured, the break-even IS the day's special — don't also show an
+    // empty "Today's Specials" slide next to it.
+    if (!hasSpecials && hasBottle) return [];
+  }
   return [{ idSuffix: '', title: moduleTitle(mod), html: renderTvModule(mod, data) }];
 }
 

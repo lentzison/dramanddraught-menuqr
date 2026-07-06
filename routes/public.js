@@ -1244,7 +1244,9 @@ async function loadTvEvents(prisma, location) {
     endDate: ev.endDate,
     // Force a TV-safe JPEG rendition — f_auto can serve AVIF/WebP that some
     // smart-TV / streaming-stick browsers can't decode, leaving images blank.
-    image: mediaRenditionUrl(absolutizeMediaUrl(ev.image, mediaOrigin), 'w_1000,h_560,c_fill,g_auto,f_jpg,q_82'),
+    // c_fit (not c_fill): show the WHOLE event poster on the solo slide
+    // instead of cropping a portrait flyer to a landscape strip.
+    image: mediaRenditionUrl(absolutizeMediaUrl(ev.image, mediaOrigin), 'w_1200,h_1080,c_fit,f_jpg,q_82'),
     // Trim the blurb at a word boundary with an ellipsis so a TV slide never
     // ends mid-word ("...six bartenders go head" → "...go head-to-head…").
     blurb: (() => {

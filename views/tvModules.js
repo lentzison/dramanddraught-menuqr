@@ -352,7 +352,32 @@ function renderFlights(mod, data) {
   return head('Flights', moduleTitle(mod)) + `<div class="tv-flights">${cards}</div>`;
 }
 
+// The break-even bottle runs on Sundays only. Returns whether today (Eastern)
+// is Sunday and a label for the Sunday it applies to (today if Sunday, else
+// the next one) — "Sunday, July 12".
+function breakEvenSundayInfo() {
+  const nowE = new Date(new Date().toLocaleString('en-US', { timeZone: EASTERN_TZ }));
+  const dow = nowE.getDay();
+  const daysUntil = dow === 0 ? 0 : 7 - dow;
+  const sun = new Date(nowE.getFullYear(), nowE.getMonth(), nowE.getDate() + daysUntil);
+  const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  return { isSunday: dow === 0, label: `Sunday, ${MONTHS[sun.getMonth()]} ${sun.getDate()}` };
+}
+
 function renderBottles(mod, data) {
+  const { isSunday, label } = breakEvenSundayInfo();
+  // Break-even is Sunday-only — on other days promote it with a "come back
+  // Sunday" teaser instead of showing next Sunday's bottle early.
+  if (!isSunday) {
+    // Self-contained centered promo — no head title (it would just repeat
+    // "break-even bottle" above the teaser).
+    return `<div class="tv-be-teaser">
+      <div class="tv-be-teaser-badge">Every Sunday</div>
+      <div class="tv-be-teaser-headline">Come back ${escHTML(label)}</div>
+      <div class="tv-be-teaser-sub">for this week's break-even bottle</div>
+      <div class="tv-be-teaser-note">A hand-picked bottle poured at cost — no markup, our gift to you.</div>
+    </div>`;
+  }
   const bottles = Array.isArray(data && data.bottles) ? data.bottles : [];
   if (bottles.length === 0) {
     return head('Featured', moduleTitle(mod)) + emptyBody('No featured bottles this week.');

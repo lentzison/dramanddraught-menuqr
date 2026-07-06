@@ -408,6 +408,12 @@ function generateTvBoardPage(location, board, data, opts = {}) {
     .tv-be-tasting { border-left: 3px solid var(--gold); padding: clamp(8px,1.2vh,14px) clamp(12px,1.2vw,18px); background: rgba(255,255,255,0.035); border-radius: 0 12px 12px 0; }
     .tv-be-tasting-label { display: block; color: var(--gold); font-size: clamp(0.72rem,0.9vw,1.1rem); font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; margin-bottom: 4px; }
     .tv-be-tasting span:last-child { color: var(--muted); font-size: clamp(1rem,1.35vw,1.75rem); line-height: 1.38; font-style: italic; }
+    /* "Come back Sunday" teaser shown on non-Sunday days (break-even is Sunday-only). */
+    .tv-be-teaser { display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: clamp(12px,1.8vh,26px); }
+    .tv-be-teaser-badge { background: var(--gold); color: #1a1408; font-family: var(--display); font-size: clamp(0.85rem,1.1vw,1.5rem); letter-spacing: 0.16em; text-transform: uppercase; padding: clamp(6px,0.8vh,12px) clamp(14px,1.4vw,28px); border-radius: 999px; }
+    .tv-be-teaser-headline { color: var(--gold); font-family: var(--display); font-size: clamp(2.1rem,4vw,4.8rem); line-height: 1.04; }
+    .tv-be-teaser-sub { color: var(--cream); font-family: var(--display); font-size: clamp(1.5rem,2.7vw,3.2rem); line-height: 1.08; }
+    .tv-be-teaser-note { color: var(--muted); font-size: clamp(1.05rem,1.5vw,2rem); line-height: 1.35; max-width: 28ch; margin-top: clamp(4px,0.8vh,12px); }
 
     /* flights */
     .tv-flights { display: flex; flex-direction: column; gap: clamp(12px,1.6vh,22px); }

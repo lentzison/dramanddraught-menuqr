@@ -17,6 +17,7 @@ const {
   getFeedbackFromAddress,
   mediaRenditionUrl,
 } = require('../helpers');
+const { getBrand } = require('../brand');
 const { generateHomepage } = require('../views/homepage');
 const { generateHiringIndexPage } = require('../views/hiringIndexPage');
 const { generateLocationPage } = require('../views/locationPage');
@@ -93,7 +94,7 @@ const {
   generateQuestionnaireExpiredPage,
   generateQuestionnaireLinkExpiredPage,
 } = require('../views/questionnairePage');
-const { QUESTIONS: HIRING_QUESTIONS, QUESTIONNAIRE_VERSION, effectiveQuestionsForApplicant } = require('../hiring/knowledgeBase');
+const { QUESTIONS: HIRING_QUESTIONS, QUESTIONNAIRE_VERSION, effectiveQuestionsForApplicant, APPLICANT_NOTICE } = require('../hiring/knowledgeBase');
 const { runAiEvaluation, MODEL: AI_MODEL } = require('../hiring/aiEvaluation');
 const { sendSms } = require('../sms');
 const { normalizeCriteria, normalizeJudges, clampScore } = require('../eventJudging');
@@ -404,7 +405,7 @@ async function handlePublicEventsFeed(req, res, prisma) {
     });
 
     const { effectiveSignupType } = require('../eventSignupTypes');
-    const baseUrl = process.env.MENUQR_BASE_URL || 'https://menuqr.apps.dramanddraught.com';
+    const baseUrl = process.env.MENUQR_BASE_URL || getBrand().urls.menuqr;
     const items = events.map((ev) => ({
       // Stable identity from the menuqr side. external_id on the public side.
       id: ev.id,
@@ -425,7 +426,7 @@ async function handlePublicEventsFeed(req, res, prisma) {
         if (/^https?:/i.test(img) || /^data:image\//i.test(img)) return img
         // Relative path (e.g. "/media/...") → absolutize against the media origin.
         if (img.startsWith('/')) {
-          const mediaOrigin = (process.env.PUBLIC_WEB_ORIGIN || 'https://public.apps.dramanddraught.com').replace(/\/+$/, '')
+          const mediaOrigin = getBrand().urls.public.replace(/\/+$/, '')
           return `${mediaOrigin}${img}`
         }
         return null
@@ -825,7 +826,7 @@ async function handleFeedback(req, res, prisma) {
 
   // Sync newsletter opt-in to public site email marketing
   if (newsletterOptIn && guestEmail) {
-    const publicApiBase = process.env.PUBLIC_WEB_ORIGIN || 'https://public.apps.dramanddraught.com';
+    const publicApiBase = getBrand().urls.public;
     fetch(`${publicApiBase}/api/public/newsletter/subscribe`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1237,7 +1238,7 @@ async function loadTvEvents(prisma, location) {
     orderBy: { startDate: 'asc' },
     take: 6,
   }).catch(() => []);
-  const mediaOrigin = (process.env.PUBLIC_WEB_ORIGIN || 'https://public.apps.dramanddraught.com').replace(/\/+$/, '');
+  const mediaOrigin = getBrand().urls.public.replace(/\/+$/, '');
   return rows.map((ev) => ({
     title: ev.title,
     startDate: ev.startDate,
@@ -1829,6 +1830,113 @@ function parseResume(body) {
   };
 }
 
+// Shared field parsing + validation for both the HTML apply form and the JSON
+// hiring API (the public dramanddraught.com careers page posts cross-origin).
+// Keeping one implementation means the two entry points can never drift.
+function parseApplicationSubmission(body) {
+  const name = trimField(body.name, 200);
+  const email = trimField(body.email, 200).toLowerCase();
+  const phone = trimField(body.phone, 50);
+  const position = trimField(body.position, 60);
+  const positionOther = position === 'Other' ? trimField(body.positionOther, 100) : null;
+  const age21Raw = trimField(body.age21, 10).toLowerCase();
+  const age21 = age21Raw === 'yes';
+  // Legal eligibility for alcohol-service duties: yes / no / unsure. Required
+  // for alcohol-handling roles; optional otherwise. Stored verbatim.
+  const alcEligRaw = trimField(body.alcoholEligibility, 10).toLowerCase();
+  const alcoholEligibility = ['yes', 'no', 'unsure'].includes(alcEligRaw) ? alcEligRaw : null;
+  const earliestStartRaw = trimField(body.earliestStart, 20);
+  const yearsRaw = trimField(body.yearsExperience, 10);
+  const yearsExperience = /^\d{1,2}$/.test(yearsRaw) ? Math.min(parseInt(yearsRaw, 10), 60) : null;
+  const hoursRaw = trimField(body.hoursPerWeek, 6);
+  const hoursPerWeek = /^\d{1,3}$/.test(hoursRaw) ? Math.min(Math.max(parseInt(hoursRaw, 10), 1), 80) : null;
+  const priorEmployers = trimField(body.priorEmployers, 4000);
+  const certifications = trimField(body.certifications, 500);
+  const spiritKnowledge = trimField(body.spiritKnowledge, 4000);
+  const whyDD = trimField(body.whyDD, 4000);
+  const referredBy = trimField(body.referredBy, 200);
+  const availability = parseAvailability(body);
+
+  const errors = [];
+  if (!name) errors.push('Name is required.');
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.push('A valid email is required.');
+  if (!phone) errors.push('Phone is required.');
+  if (!position || !APPLY_POSITIONS_SET.has(position)) errors.push('Please select a position.');
+  if (position === 'Other' && !positionOther) errors.push('Please tell us which "Other" role.');
+  if (!age21Raw) errors.push('Please tell us if you are 21 or older.');
+  if (hoursPerWeek == null) errors.push('Please tell us how many hours per week you are available to work.');
+  // Availability grid is required — an empty grid used to flow through as
+  // "unknown availability" and burn a manager-review cycle downstream.
+  if (!Object.keys(availability).length) {
+    errors.push('Please check at least one availability slot (or use the "I have open availability" button).');
+  }
+  // Required for any role that pours or serves alcohol. Host is the only
+  // applied position that doesn't, so they're exempt.
+  const ALCOHOL_ROLES = new Set(['Bartender', 'Barback', 'Server', 'Floor Manager']);
+  if (ALCOHOL_ROLES.has(position) && !alcoholEligibility) {
+    errors.push('Please answer whether you are legally eligible to perform alcohol-service duties for this role.');
+  }
+
+  let earliestStart = null;
+  if (earliestStartRaw) {
+    const d = new Date(earliestStartRaw + 'T00:00:00');
+    if (!Number.isNaN(d.valueOf())) earliestStart = d;
+  }
+
+  const resumeParsed = parseResume(body);
+  if (resumeParsed && resumeParsed.error) errors.push(resumeParsed.error);
+  const resume = resumeParsed && !resumeParsed.error ? resumeParsed : null;
+
+  return {
+    errors,
+    // Raw echo used to re-fill the HTML form after a validation failure.
+    prev: {
+      name, email, phone, position, positionOther,
+      age21: age21Raw, alcoholEligibility: alcEligRaw, earliestStart: earliestStartRaw,
+      yearsExperience: yearsRaw, hoursPerWeek: hoursRaw, priorEmployers, certifications,
+      spiritKnowledge, whyDD, referredBy, availability,
+    },
+    // Column-shaped values for prisma.jobApplication.create.
+    data: {
+      name,
+      email,
+      phone: phone || null,
+      position,
+      positionOther: positionOther || null,
+      age21,
+      alcoholEligibility,
+      earliestStart,
+      availability: Object.keys(availability).length ? availability : null,
+      hoursPerWeek,
+      yearsExperience,
+      priorEmployers: priorEmployers || null,
+      certifications: certifications || null,
+      spiritKnowledge: spiritKnowledge || null,
+      whyDD: whyDD || null,
+      referredBy: referredBy || null,
+      resumeData: resume ? resume.data : null,
+      resumeFileName: resume ? resume.fileName : null,
+      resumeMimeType: resume ? resume.mime : null,
+    },
+  };
+}
+
+// Duplicate guard: one live application per email per location. Re-submits
+// inside the 30-day questionnaire window are almost always impatience (or a
+// bot), and a second row would split the manager's view of the candidate —
+// route them back into their existing questionnaire flow instead.
+function findRecentApplication(prisma, locationId, email) {
+  return prisma.jobApplication.findFirst({
+    where: {
+      locationId,
+      email,
+      createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+    },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true },
+  }).catch(() => null);
+}
+
 async function handleApply(req, res, prisma, locationSlug) {
   const locs = await getLocations(prisma);
   const location = locs.find((l) => l.slug === locationSlug);
@@ -1877,85 +1985,18 @@ async function handleApply(req, res, prisma, locationSlug) {
     return true;
   }
 
-  const name = trimField(body.name, 200);
-  const email = trimField(body.email, 200).toLowerCase();
-  const phone = trimField(body.phone, 50);
-  const position = trimField(body.position, 60);
-  const positionOther = position === 'Other' ? trimField(body.positionOther, 100) : null;
-  const age21Raw = trimField(body.age21, 10).toLowerCase();
-  const age21 = age21Raw === 'yes';
-  // Legal eligibility for alcohol-service duties: yes / no / unsure. Required
-  // for Bartender; optional for non-alcohol-handling roles. Stored verbatim.
-  const alcEligRaw = trimField(body.alcoholEligibility, 10).toLowerCase();
-  const alcoholEligibility = ['yes', 'no', 'unsure'].includes(alcEligRaw) ? alcEligRaw : null;
-  const earliestStartRaw = trimField(body.earliestStart, 20);
-  const yearsRaw = trimField(body.yearsExperience, 10);
-  const yearsExperience = /^\d{1,2}$/.test(yearsRaw) ? Math.min(parseInt(yearsRaw, 10), 60) : null;
-  const hoursRaw = trimField(body.hoursPerWeek, 6);
-  const hoursPerWeek = /^\d{1,3}$/.test(hoursRaw) ? Math.min(Math.max(parseInt(hoursRaw, 10), 1), 80) : null;
-  const priorEmployers = trimField(body.priorEmployers, 4000);
-  const certifications = trimField(body.certifications, 500);
-  const spiritKnowledge = trimField(body.spiritKnowledge, 4000);
-  const whyDD = trimField(body.whyDD, 4000);
-  const referredBy = trimField(body.referredBy, 200);
-  const availability = parseAvailability(body);
+  const parsed = parseApplicationSubmission(body);
 
-  const errors = [];
-  if (!name) errors.push('Name is required.');
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.push('A valid email is required.');
-  if (!phone) errors.push('Phone is required.');
-  if (!position || !APPLY_POSITIONS_SET.has(position)) errors.push('Please select a position.');
-  if (position === 'Other' && !positionOther) errors.push('Please tell us which "Other" role.');
-  if (!age21Raw) errors.push('Please tell us if you are 21 or older.');
-  if (hoursPerWeek == null) errors.push('Please tell us how many hours per week you are available to work.');
-  // Availability grid is required — an empty grid used to flow through as
-  // "unknown availability" and burn a manager-review cycle downstream.
-  if (!Object.keys(availability).length) {
-    errors.push('Please check at least one availability slot (or use the "I have open availability" button).');
-  }
-  // Required for any role that pours or serves alcohol. Host is the only
-  // applied position that doesn't, so they're exempt.
-  const ALCOHOL_ROLES = new Set(['Bartender', 'Barback', 'Server', 'Floor Manager']);
-  if (ALCOHOL_ROLES.has(position) && !alcoholEligibility) {
-    errors.push('Please answer whether you are legally eligible to perform alcohol-service duties for this role.');
-  }
-
-  let earliestStart = null;
-  if (earliestStartRaw) {
-    const d = new Date(earliestStartRaw + 'T00:00:00');
-    if (!Number.isNaN(d.valueOf())) earliestStart = d;
-  }
-
-  const resumeParsed = parseResume(body);
-  if (resumeParsed && resumeParsed.error) errors.push(resumeParsed.error);
-
-  if (errors.length) {
+  if (parsed.errors.length) {
     sendHTML(res, 400, injectTracking(generateApplyPage(location, {
-      errorMessage: errors.join(' '),
-      prev: {
-        name, email, phone, position, positionOther,
-        age21: age21Raw, alcoholEligibility: alcEligRaw, earliestStart: earliestStartRaw,
-        yearsExperience: yearsRaw, hoursPerWeek: hoursRaw, priorEmployers, certifications,
-        spiritKnowledge, whyDD, referredBy, availability,
-      },
+      errorMessage: parsed.errors.join(' '),
+      prev: parsed.prev,
     }), sid));
     return true;
   }
 
-  // Duplicate guard: one live application per email per location. Re-submits
-  // inside the 30-day questionnaire window are almost always impatience (or a
-  // bot), and a second row would split the manager's view of the candidate —
-  // send them back into their existing questionnaire flow instead. The done
-  // page renders if they already finished it.
-  const existing = await prisma.jobApplication.findFirst({
-    where: {
-      locationId: location.id,
-      email,
-      createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
-    },
-    orderBy: { createdAt: 'desc' },
-    select: { id: true },
-  }).catch(() => null);
+  // The done page renders if they already finished the questionnaire.
+  const existing = await findRecentApplication(prisma, location.id, parsed.data.email);
   if (existing) {
     redirect(res, `/apply/q/${existing.id}`);
     return true;
@@ -1971,25 +2012,7 @@ async function handleApply(req, res, prisma, locationSlug) {
     application = await prisma.jobApplication.create({
       data: {
         locationId: location.id,
-        name,
-        email,
-        phone: phone || null,
-        position,
-        positionOther: positionOther || null,
-        age21,
-        alcoholEligibility,
-        earliestStart,
-        availability: Object.keys(availability).length ? availability : null,
-        hoursPerWeek,
-        yearsExperience,
-        priorEmployers: priorEmployers || null,
-        certifications: certifications || null,
-        spiritKnowledge: spiritKnowledge || null,
-        whyDD: whyDD || null,
-        referredBy: referredBy || null,
-        resumeData: resumeParsed && !resumeParsed.error ? resumeParsed.data : null,
-        resumeFileName: resumeParsed && !resumeParsed.error ? resumeParsed.fileName : null,
-        resumeMimeType: resumeParsed && !resumeParsed.error ? resumeParsed.mime : null,
+        ...parsed.data,
         ipAddress: ip,
         visitorId: visitorId || null,
         sessionId: currentSession?.id || null,
@@ -2014,6 +2037,32 @@ async function handleApply(req, res, prisma, locationSlug) {
 }
 
 // ─── Hospitality questionnaire (post-application screening) ───
+
+// Soft 30-day expiry on the questionnaire link. Computed from the
+// application's createdAt so we don't need a new column.
+const QUIZ_EXPIRY_DAYS = 30;
+function questionnaireAge(application) {
+  const ageMs = Date.now() - new Date(application.createdAt).getTime();
+  const daysOld = Math.max(0, Math.floor(ageMs / (1000 * 60 * 60 * 24)));
+  return { daysOld, isExpired: !application.questionnaire && daysOld > QUIZ_EXPIRY_DAYS };
+}
+
+// Only validate the questions this applicant's role actually sees on the
+// form — role-specific questions never appear for off-role applicants and
+// shouldn't be flagged as missing.
+function parseQuestionnaireAnswers(application, body) {
+  const answers = {};
+  const missing = [];
+  const roleQuestions = effectiveQuestionsForApplicant(application);
+  for (const q of roleQuestions) {
+    const raw = body[q.id];
+    const text = typeof raw === 'string' ? raw.trim() : '';
+    if (!text) missing.push(q.order);
+    answers[q.id] = text.slice(0, 4000);
+  }
+  return { answers, missing };
+}
+
 async function handleQuestionnaire(req, res, prisma, applicationId) {
   if (!prisma) {
     sendHTML(res, 500, '<h1>Service unavailable</h1>');
@@ -2032,12 +2081,7 @@ async function handleQuestionnaire(req, res, prisma, applicationId) {
   const locationName = application.location?.name || 'Dram & Draught';
   const locationSlug = application.location?.slug || '';
 
-  // Soft 30-day expiry on the questionnaire link. Computed from the
-  // application's createdAt so we don't need a new column.
-  const QUIZ_EXPIRY_DAYS = 30;
-  const ageMs = Date.now() - new Date(application.createdAt).getTime();
-  const daysOld = Math.max(0, Math.floor(ageMs / (1000 * 60 * 60 * 24)));
-  const isExpired = !application.questionnaire && daysOld > QUIZ_EXPIRY_DAYS;
+  const { daysOld, isExpired } = questionnaireAge(application);
 
   if (req.method === 'GET') {
     if (application.questionnaire) {
@@ -2081,18 +2125,7 @@ async function handleQuestionnaire(req, res, prisma, applicationId) {
     return true;
   }
 
-  const answers = {};
-  const missing = [];
-  // Only validate the questions this applicant's role actually sees on the
-  // form — role-specific questions never appear for off-role applicants and
-  // shouldn't be flagged as missing.
-  const roleQuestions = effectiveQuestionsForApplicant(application);
-  for (const q of roleQuestions) {
-    const raw = body[q.id];
-    const text = typeof raw === 'string' ? raw.trim() : '';
-    if (!text) missing.push(q.order);
-    answers[q.id] = text.slice(0, 4000);
-  }
+  const { answers, missing } = parseQuestionnaireAnswers(application, body);
 
   if (missing.length) {
     sendHTML(res, 400, generateQuestionnairePage({
@@ -2128,6 +2161,184 @@ async function handleQuestionnaire(req, res, prisma, applicationId) {
   });
 
   sendHTML(res, 200, generateQuestionnaireDonePage({ application, locationName, locationSlug }));
+  return true;
+}
+
+// ─── JSON hiring API (native careers form on dramanddraught.com) ───
+// The public site renders its own application + questionnaire UI and posts
+// here cross-origin. Open CORS is fine: these are the public-form equivalents,
+// no cookies or credentials are involved, and the same IP throttle applies.
+function applyHiringCors(res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+}
+
+// Only expose what applicants see on the form — never scoring anchors,
+// signals, or rubric notes.
+function publicQuestions(application) {
+  return effectiveQuestionsForApplicant(application).map((q) => ({ id: q.id, order: q.order, text: q.text }));
+}
+
+async function handleHiringStatusApi(req, res, prisma, locationSlug) {
+  applyHiringCors(res);
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return true; }
+  if (req.method !== 'GET') { sendJSON(res, 405, { ok: false, error: 'Method Not Allowed' }); return true; }
+  const locs = await getLocations(prisma);
+  const location = locs.find((l) => l.slug === locationSlug);
+  if (!location) { sendJSON(res, 404, { ok: false, error: 'Unknown location' }); return true; }
+  sendJSON(res, 200, {
+    ok: true,
+    location: { name: location.name, slug: location.slug },
+    isHiring: !!location.isHiring,
+    positions: POSITIONS,
+    days: DAYS,
+    shifts: SHIFTS,
+  });
+  return true;
+}
+
+async function handleHiringApplyApi(req, res, prisma, locationSlug) {
+  applyHiringCors(res);
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return true; }
+  if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'Method Not Allowed' }); return true; }
+  if (!prisma) { sendJSON(res, 500, { ok: false, error: 'Service unavailable' }); return true; }
+
+  const locs = await getLocations(prisma);
+  const location = locs.find((l) => l.slug === locationSlug);
+  if (!location) { sendJSON(res, 404, { ok: false, error: 'Unknown location' }); return true; }
+  if (!location.isHiring) {
+    sendJSON(res, 200, { ok: false, closed: true, error: `${location.name} isn't taking applications right now.` });
+    return true;
+  }
+
+  // Same in-memory IP throttle as the HTML form — each submission parses up
+  // to 10 MB and stores a base64 resume, so unthrottled POSTs are a cheap
+  // spam/disk-fill vector. Checked before the body is read.
+  const fwd = req.headers['x-forwarded-for'];
+  const ip = fwd ? String(fwd).split(',')[0].trim() : (req.socket?.remoteAddress || null);
+  if (signupRateLimited(ip)) {
+    sendJSON(res, 429, { ok: false, error: 'Too many submissions from this connection. Please wait a few minutes and try again.' });
+    return true;
+  }
+
+  let body;
+  try {
+    body = await parseBody(req, { maxBytes: 10 * 1024 * 1024 });
+  } catch (err) {
+    sendJSON(res, 413, { ok: false, error: 'Submission was too large. Please use a smaller resume file (max 5 MB).' });
+    return true;
+  }
+
+  const parsed = parseApplicationSubmission(body);
+  if (parsed.errors.length) {
+    sendJSON(res, 400, { ok: false, errors: parsed.errors });
+    return true;
+  }
+
+  // Duplicate inside the 30-day window: hand back the existing application so
+  // the site can route them into that questionnaire instead of a second row.
+  const existing = await findRecentApplication(prisma, location.id, parsed.data.email);
+  if (existing) {
+    sendJSON(res, 200, { ok: true, applicationId: existing.id, existing: true });
+    return true;
+  }
+
+  let application;
+  try {
+    application = await prisma.jobApplication.create({
+      data: {
+        locationId: location.id,
+        ...parsed.data,
+        ipAddress: ip,
+        // Cross-origin submissions carry no menuqr visitor cookie, so tag the
+        // source directly for admin attribution.
+        source: 'dramanddraught.com',
+      },
+    });
+  } catch (err) {
+    console.error('[apply api] create failed:', err.message);
+    sendJSON(res, 500, { ok: false, error: 'Something went wrong saving your application. Please try again.' });
+    return true;
+  }
+
+  notifyApplicationSubmitted(location, application).catch((err) => console.warn('[apply api] notify failed:', err.message));
+  sendJSON(res, 200, { ok: true, applicationId: application.id });
+  return true;
+}
+
+async function handleHiringQuestionnaireApi(req, res, prisma, applicationId) {
+  applyHiringCors(res);
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return true; }
+  if (!prisma) { sendJSON(res, 500, { ok: false, error: 'Service unavailable' }); return true; }
+
+  const application = await prisma.jobApplication.findUnique({
+    where: { id: applicationId },
+    include: { location: true, questionnaire: true },
+  }).catch(() => null);
+  if (!application) { sendJSON(res, 404, { ok: false, error: 'Application not found' }); return true; }
+
+  const locationName = application.location?.name || 'Dram & Draught';
+  const { daysOld, isExpired } = questionnaireAge(application);
+  const firstName = (application.name || '').split(/\s+/)[0] || null;
+
+  if (req.method === 'GET') {
+    const status = application.questionnaire ? 'done' : isExpired ? 'expired' : 'pending';
+    sendJSON(res, 200, {
+      ok: true,
+      status,
+      firstName,
+      locationName,
+      notice: APPLICANT_NOTICE,
+      questions: status === 'pending' ? publicQuestions(application) : [],
+    });
+    return true;
+  }
+
+  if (req.method !== 'POST') { sendJSON(res, 405, { ok: false, error: 'Method Not Allowed' }); return true; }
+
+  // Block re-submission and expired submissions, same as the HTML flow.
+  if (application.questionnaire) { sendJSON(res, 200, { ok: true, status: 'done', alreadySubmitted: true }); return true; }
+  if (isExpired) {
+    sendJSON(res, 410, { ok: false, status: 'expired', error: `This questionnaire link expired ${daysOld} days after applying.` });
+    return true;
+  }
+
+  let body;
+  try {
+    body = await parseBody(req);
+  } catch (err) {
+    sendJSON(res, 400, { ok: false, error: 'Could not read your submission. Please try again.' });
+    return true;
+  }
+
+  const { answers, missing } = parseQuestionnaireAnswers(application, body);
+  if (missing.length) {
+    sendJSON(res, 400, { ok: false, missing, error: `Please answer every question (missing: ${missing.join(', ')}).` });
+    return true;
+  }
+
+  let questionnaire;
+  try {
+    questionnaire = await prisma.jobApplicationQuestionnaire.create({
+      data: {
+        applicationId: application.id,
+        answers,
+        version: QUESTIONNAIRE_VERSION,
+      },
+    });
+  } catch (err) {
+    console.error('[questionnaire api] create failed:', err.message);
+    sendJSON(res, 500, { ok: false, error: 'Something went wrong saving your answers. Please try again.' });
+    return true;
+  }
+
+  // Run the AI evaluation in the background — never block the response.
+  runAndPersistEvaluation(prisma, application, questionnaire).catch((err) => {
+    console.warn('[hiring] AI evaluation pipeline error:', err.message);
+  });
+
+  sendJSON(res, 200, { ok: true, status: 'done', firstName, locationName });
   return true;
 }
 
@@ -2271,7 +2482,7 @@ async function notifyApplicationSubmitted(location, application) {
   // candidate can come back to it later if they closed the tab right after
   // submit (the apply route redirects them straight into the quiz, but not
   // everyone finishes in one sitting).
-  const quizUrl = `https://menuqr.apps.dramanddraught.com/apply/q/${application.id}`;
+  const quizUrl = `${getBrand().urls.menuqr}/apply/q/${application.id}`;
   const positionLabel = application.position + (application.positionOther ? ` (${application.positionOther})` : '');
   const applicantBody = [
     `Hi ${application.name.split(' ')[0] || 'there'},`,
@@ -2311,7 +2522,7 @@ async function notifyApplicationSubmitted(location, application) {
   const recipients = Array.from(new Set(gmEmails.filter(Boolean)));
   let teamEmail = Promise.resolve();
   if (recipients.length) {
-    const adminUrl = `https://menuqr.apps.dramanddraught.com/admin/applicants/${application.id}`;
+    const adminUrl = `${getBrand().urls.menuqr}/admin/applicants/${application.id}`;
     const lines = [
       `New application at ${location.name}`,
       `Position: ${application.position}${application.positionOther ? ` (${application.positionOther})` : ''}`,
@@ -2570,6 +2781,22 @@ async function handlePublic(req, res, pathname, prisma) {
 
   if (pathname === '/api/public/reviews') {
     return handlePublicReviews(req, res, prisma);
+  }
+
+  // JSON hiring API for the native careers form on dramanddraught.com.
+  // Questionnaire route is matched first so the "application" segment can
+  // never be read as a location slug.
+  const hiringQApiMatch = pathname.match(/^\/api\/public\/hiring\/application\/([0-9a-f-]{36})\/questionnaire$/i);
+  if (hiringQApiMatch) {
+    return handleHiringQuestionnaireApi(req, res, prisma, hiringQApiMatch[1]);
+  }
+  const hiringApplyApiMatch = pathname.match(/^\/api\/public\/hiring\/([a-z0-9-]+)\/apply$/);
+  if (hiringApplyApiMatch) {
+    return handleHiringApplyApi(req, res, prisma, hiringApplyApiMatch[1]);
+  }
+  const hiringStatusApiMatch = pathname.match(/^\/api\/public\/hiring\/([a-z0-9-]+)$/);
+  if (hiringStatusApiMatch) {
+    return handleHiringStatusApi(req, res, prisma, hiringStatusApiMatch[1]);
   }
 
   // /api/public/flights/:slug — JSON list of currently active spirit flights
@@ -3073,7 +3300,7 @@ async function handlePublic(req, res, pathname, prisma) {
           }
         }
         if (requiresApproval) {
-          bodyLines.push('', 'Review & approve: https://menuqr.apps.dramanddraught.com/admin/events/' + event.id + '/signups');
+          bodyLines.push('', 'Review & approve: ' + getBrand().urls.menuqr + '/admin/events/' + event.id + '/signups');
         } else {
           // Recount so concurrent submissions don't make this read low.
           const totalNow = await prisma.eventSignup.count({ where: CAP_WHERE }).catch(() => signupCount + 1);

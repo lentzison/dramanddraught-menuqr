@@ -128,10 +128,16 @@ async function runScreeningRetry(prisma) {
   }
 }
 
+// A rejected background run must never reach the process-level handler as an
+// unhandled rejection; log it with its job name and let the next tick retry.
+function guard(err) {
+  console.error('[screening-retry] run failed:', err && err.stack ? err.stack : err);
+}
+
 function scheduleScreeningRetry(prisma) {
   // Wait 2 minutes after boot so the rest of the app settles, then poll.
-  setTimeout(() => runScreeningRetry(prisma), 2 * 60 * 1000);
-  setInterval(() => runScreeningRetry(prisma), POLL_INTERVAL_MS);
+  setTimeout(() => runScreeningRetry(prisma).catch(guard), 2 * 60 * 1000);
+  setInterval(() => runScreeningRetry(prisma).catch(guard), POLL_INTERVAL_MS);
 }
 
 module.exports = { runScreeningRetry, scheduleScreeningRetry };

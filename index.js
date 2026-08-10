@@ -1,5 +1,6 @@
 const http = require('http');
 const url = require('url');
+const { getBrand } = require('./brand');
 const { sendHTML, sendEmailViaGoogle, getLocations } = require('./helpers');
 
 let prisma;
@@ -24,6 +25,24 @@ const { generateNotFoundPage } = require('./views/notFoundPage');
 
 const PORT = parseInt(process.env.PORT || '80', 10);
 
+// Node 20 kills the process on an unhandled promise rejection. The background
+// schedulers below are fire-and-forget, so a single transient failure inside
+// one (a Prisma pool timeout, a Gmail 5xx) used to take the whole site down —
+// that is what caused the repeated crashes on Aug 5-6 2026. A rejected
+// background promise is never worth dropping the server for: log it loudly
+// and keep serving.
+process.on('unhandledRejection', (err) => {
+  console.error('[unhandledRejection]', err && err.stack ? err.stack : err);
+});
+
+// An uncaught exception leaves the process in an undefined state, so here we
+// do exit — but deliberately and with a stack trace in the log, so the
+// container restarts clean instead of wedging.
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err && err.stack ? err.stack : err);
+  process.exit(1);
+});
+
 function sendSafeServerError(res) {
   if (!res || res.writableEnded) return;
   if (res.headersSent) {
@@ -41,6 +60,17 @@ if (prisma) setSessionStore(prisma);
 const handler = async (req, res) => {
   const parsedUrl = url.parse(req.url, true);
   const pathname = parsedUrl.pathname;
+
+  // Liveness probe for the Docker HEALTHCHECK. Answered before logging so the
+  // every-30s poll doesn't drown the request log. Reaching this line at all
+  // proves the event loop is still turning, which is the failure this guards
+  // against: a wedged process keeps its container "running", so Swarm never
+  // replaces it and the site 502s until someone redeploys by hand.
+  if (pathname === '/healthz') {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('ok');
+    return;
+  }
 
   console.log(`${req.method} ${pathname}`);
 
@@ -109,9 +139,9 @@ const server = http.createServer((req, res) => {
 
 const GIFT_CARD_RECIPIENTS =
     [
-  'carrie@dramanddraught.com',
-  'lexi@dramanddraught.com',
-  'lentz@dramanddraught.com',
+  `carrie@${getBrand().contact.emailDomain}`,
+  `lexi@${getBrand().contact.emailDomain}`,
+  `lentz@${getBrand().contact.emailDomain}`,
 ];
 
 // Monthly gift card drawing — runs on the 15th, picks a winner from the previous month
@@ -206,7 +236,7 @@ async function runGiftCardDrawing() {
       '',
       '--- ACTION REQUIRED ---',
       '',
-      '1. Send a $100 Dram & Draught gift card to the winner at the email above',
+      `1. Send a $100 ${getBrand().identity.name} gift card to the winner at the email above`,
       '2. Include a congratulations message letting them know they won the monthly drawing',
       '3. Reply-all to this email confirming the gift card has been sent',
       '',
@@ -227,14 +257,16 @@ async function runGiftCardDrawing() {
 
 // Check for gift card drawing every hour so it fires reliably on the 15th
 function scheduleGiftCardDrawing() {
-  runGiftCardDrawing();
+  const guard = (err) =>
+    console.error('[gift-card-drawing] run failed:', err && err.stack ? err.stack : err);
+  runGiftCardDrawing().catch(guard);
   setInterval(() => {
-    runGiftCardDrawing();
+    runGiftCardDrawing().catch(guard);
   }, 60 * 60 * 1000); // every hour
 }
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log(`Dram & Draught server running on port ${PORT}`);
+  console.log(`${getBrand().identity.name} server running on port ${PORT}`);
   console.log('Ready to serve location pages!');
   scheduleGiftCardDrawing();
   scheduleInterviewReminders(prisma);

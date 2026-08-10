@@ -1,4 +1,5 @@
 const { adminLayout } = require('./adminLayout');
+const { getBrand } = require('../brand');
 const { escHTML } = require('./escapeHtml');
 
 const STATUS_LABELS = {
@@ -2596,7 +2597,7 @@ function renderOnboardingCard(application, dashboardInviteStatus, roleOptions) {
     '{{registrationUrl}}',
     '',
     'Then install the dashboard app on your phone for quick access:',
-    'https://bartender.dramanddraught.com/install',
+    `${getBrand().urls.bartender}/install`,
     '',
     'Step 2 — Toast onboarding',
     `After creating your account you'll get an email from Toast (our POS / Payroll system) to complete tax paperwork, intake documents, and direct deposit.`,

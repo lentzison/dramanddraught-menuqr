@@ -1,4 +1,5 @@
 const { adminLayout } = require('./adminLayout');
+const { getBrand } = require('../brand');
 const { escHTML } = require('./escapeHtml');
 const { EVENT_THEMES, THEME_BY_KEY, themeLabel } = require('./eventThemes');
 const { normalizeRecurrenceRule, generateOccurrences, describeRecurrence } = require('../recurrence');
@@ -3325,7 +3326,7 @@ function eventSignupsView(event, signups, user, flashMsg, occCtx = {}) {
   // Judging control strip — only for application-style events. Shows the
   // finalist count, links to the results board, and (once criteria + judges
   // are configured) the shareable judge link + an open/close toggle.
-  const judgeBase = process.env.MENUQR_BASE_URL || 'https://menuqr.apps.dramanddraught.com';
+  const judgeBase = process.env.MENUQR_BASE_URL || getBrand().urls.menuqr;
   const judgeLink = event.judgeToken ? `${judgeBase}/events/judge/${event.judgeToken}` : null;
   const judgingPanel = supportsFinalists ? `
     <div class="card" style="margin:16px 0; padding:16px;">

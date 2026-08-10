@@ -11,8 +11,9 @@
 const crypto = require('crypto');
 const { sendEmailViaGoogle } = require('./helpers');
 const { generateOccurrences, normalizeRecurrenceRule } = require('./recurrence');
+const { getBrand } = require('./brand');
 
-const BASE_URL = (process.env.MENUQR_BASE_URL || 'https://menuqr.apps.dramanddraught.com').replace(/\/+$/, '');
+const BASE_URL = (process.env.MENUQR_BASE_URL || getBrand().urls.menuqr).replace(/\/+$/, '');
 
 function formatEastern(date) {
   if (!date) return '';
@@ -262,10 +263,16 @@ async function runRollovers(prisma) {
   }
 }
 
+// A rejected background run must never reach the process-level handler as an
+// unhandled rejection; log it with its job name and let the next tick retry.
+function guard(err) {
+  console.error('[event-rollover] run failed:', err && err.stack ? err.stack : err);
+}
+
 function scheduleEventRollovers(prisma) {
   // After reminders boot (which start at 45s), then every 5 minutes.
-  setTimeout(() => runRollovers(prisma), 60 * 1000);
-  setInterval(() => runRollovers(prisma), 5 * 60 * 1000);
+  setTimeout(() => runRollovers(prisma).catch(guard), 60 * 1000);
+  setInterval(() => runRollovers(prisma).catch(guard), 5 * 60 * 1000);
 }
 
 // Keep an event's occurrence rows consistent with its current dates + rule.

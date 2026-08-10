@@ -1,8 +1,9 @@
 const { sendEmailViaGoogle, getLocations } = require('./helpers');
+const { getBrand } = require('./brand');
 const { getGeneralManagerEmailsForLocation } = require('./bartenderDb');
 
 const COMPANY_RECIPIENTS = ['carrie@dramanddraught.com', 'lentz@dramanddraught.com'];
-const MENUQR_BASE_URL = process.env.MENUQR_BASE_URL || 'https://menuqr.apps.dramanddraught.com';
+const MENUQR_BASE_URL = process.env.MENUQR_BASE_URL || getBrand().urls.menuqr;
 
 // In-memory marker so the poll fires once per Eastern calendar day.
 // On a server restart we may resend if the restart lands in the 9 AM Eastern window;
@@ -240,9 +241,15 @@ async function runApplicantDailyRecap(prisma) {
   }
 }
 
+// A rejected background run must never reach the process-level handler as an
+// unhandled rejection; log it with its job name and let the next tick retry.
+function guard(err) {
+  console.error('[applicant-recap] run failed:', err && err.stack ? err.stack : err);
+}
+
 function scheduleApplicantDailyRecap(prisma) {
-  runApplicantDailyRecap(prisma);
-  setInterval(() => runApplicantDailyRecap(prisma), 5 * 60 * 1000);
+  runApplicantDailyRecap(prisma).catch(guard);
+  setInterval(() => runApplicantDailyRecap(prisma).catch(guard), 5 * 60 * 1000);
 }
 
 module.exports = { runApplicantDailyRecap, scheduleApplicantDailyRecap };

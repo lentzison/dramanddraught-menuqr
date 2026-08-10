@@ -147,13 +147,19 @@ async function runDataRetention(prisma) {
   }
 }
 
+// A rejected background run must never reach the process-level handler as an
+// unhandled rejection; log it with its job name and let the next tick retry.
+function guard(err) {
+  console.error('[data-retention] run failed:', err && err.stack ? err.stack : err);
+}
+
 function scheduleDataRetention(prisma) {
   if (DISABLED) {
     console.log('[data-retention] disabled via DATA_RETENTION_DISABLED=1');
     return;
   }
-  runDataRetention(prisma);
-  setInterval(() => runDataRetention(prisma), 30 * 60 * 1000);
+  runDataRetention(prisma).catch(guard);
+  setInterval(() => runDataRetention(prisma).catch(guard), 30 * 60 * 1000);
 }
 
 module.exports = { runDataRetention, scheduleDataRetention, stripResumes, anonymizeApplications };

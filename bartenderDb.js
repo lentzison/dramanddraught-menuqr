@@ -1,4 +1,5 @@
 const { Pool } = require('pg');
+const { getBrand } = require('./brand');
 const { buildGuestBottleNotesForCatalog } = require('./helpers');
 
 const BARTENDER_DB_URL = process.env.BARTENDER_DB_URL || 'postgresql://bartenderuser:asswipe12@srv-captain--bartender:5432/postgres';
@@ -60,7 +61,7 @@ async function getUserRoles(userId) {
 const ALLOWED_SUPPORT_ROLES = ['FOUNDER', 'MANAGING_DIRECTOR', 'HR', 'TRAINING', 'FINANCE', 'MARKETING'];
 const ALLOWED_LOCATION_ROLES = ['ADMIN', 'GENERAL_MANAGER', 'HEAD_BARTENDER'];
 const FRIDAY_FLIGHT_DISCOUNT = 5;
-const BARTENDER_FLIGHT_BUILDER_URL = process.env.BARTENDER_FLIGHT_BUILDER_URL || 'https://bartender.dramanddraught.com/admin/spirits/flights';
+const BARTENDER_FLIGHT_BUILDER_URL = process.env.BARTENDER_FLIGHT_BUILDER_URL || `${getBrand().urls.bartender}/admin/spirits/flights`;
 
 async function getBarSupportEmails() {
   return getBarSupportEmailsForLocation(null);

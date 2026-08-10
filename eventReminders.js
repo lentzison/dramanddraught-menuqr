@@ -12,8 +12,9 @@
 const crypto = require('crypto');
 const { sendEmailViaGoogle } = require('./helpers');
 const { effectiveSignupType, isVendor, isParticipant } = require('./eventSignupTypes');
+const { getBrand } = require('./brand');
 
-const BASE_URL = (process.env.MENUQR_BASE_URL || 'https://menuqr.apps.dramanddraught.com').replace(/\/+$/, '');
+const BASE_URL = (process.env.MENUQR_BASE_URL || getBrand().urls.menuqr).replace(/\/+$/, '');
 
 function formatEastern(date) {
   if (!date) return '';
@@ -171,11 +172,17 @@ async function runEventReminders(prisma) {
   }
 }
 
+// A rejected background run must never reach the process-level handler as an
+// unhandled rejection; log it with its job name and let the next tick retry.
+function guard(err) {
+  console.error('[event-reminders] run failed:', err && err.stack ? err.stack : err);
+}
+
 function scheduleEventReminders(prisma) {
   // First run 45s after boot (after interview reminders, to spread email API
   // load), then every 5 minutes.
-  setTimeout(() => runEventReminders(prisma), 45 * 1000);
-  setInterval(() => runEventReminders(prisma), 5 * 60 * 1000);
+  setTimeout(() => runEventReminders(prisma).catch(guard), 45 * 1000);
+  setInterval(() => runEventReminders(prisma).catch(guard), 5 * 60 * 1000);
 }
 
 module.exports = { runEventReminders, scheduleEventReminders };

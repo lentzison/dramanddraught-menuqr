@@ -1,4 +1,5 @@
 const { sendHTML, parseBody, redirect, getFlashMsg, sendEmailViaGoogle } = require('../helpers');
+const { getBrand } = require('../brand');
 const { requireAuth, isCompanyWide, getUserLocationSlugs } = require('../auth');
 const { applicantsList, applicantDetail, STATUS_LABELS, CONTACT_KINDS, contactBadgeHtml, contactHistoryHtml } = require('../views/adminApplicantsViews');
 const { writeAudit } = require('../auditLog');
@@ -324,7 +325,7 @@ async function handleAdminApplicants(req, res, pathname, prisma) {
 
   // ─── Send questionnaire invites to applicants who haven't done it yet ───
   if (pathname === '/admin/applicants/send-questionnaire-invites' && req.method === 'POST') {
-    const MENUQR_BASE_URL = process.env.MENUQR_BASE_URL || 'https://menuqr.apps.dramanddraught.com';
+    const MENUQR_BASE_URL = process.env.MENUQR_BASE_URL || getBrand().urls.menuqr;
     const body = await parseBody(req).catch(() => ({}));
     const force = body.force === '1' || body.force === 'on';
 

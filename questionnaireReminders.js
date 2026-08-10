@@ -4,9 +4,10 @@
 // boolean flags so each reminder only fires once.
 
 const { sendEmailViaGoogle } = require('./helpers');
+const { getBrand } = require('./brand');
 const { sendSms } = require('./sms');
 
-const MENUQR_BASE_URL = process.env.MENUQR_BASE_URL || 'https://menuqr.apps.dramanddraught.com';
+const MENUQR_BASE_URL = process.env.MENUQR_BASE_URL || getBrand().urls.menuqr;
 const ACTIVE_STATUSES = ['new', 'reviewing'];
 
 function buildBody(application, kind) {
@@ -122,11 +123,17 @@ async function runQuestionnaireReminders(prisma) {
   }
 }
 
+// A rejected background run must never reach the process-level handler as an
+// unhandled rejection; log it with its job name and let the next tick retry.
+function guard(err) {
+  console.error('[questionnaire-reminders] run failed:', err && err.stack ? err.stack : err);
+}
+
 function scheduleQuestionnaireReminders(prisma) {
-  runQuestionnaireReminders(prisma);
+  runQuestionnaireReminders(prisma).catch(guard);
   // Poll every 30 minutes. Windows are 6h wide, so two polls always cover
   // any single applicant once.
-  setInterval(() => runQuestionnaireReminders(prisma), 30 * 60 * 1000);
+  setInterval(() => runQuestionnaireReminders(prisma).catch(guard), 30 * 60 * 1000);
 }
 
 module.exports = { runQuestionnaireReminders, scheduleQuestionnaireReminders };

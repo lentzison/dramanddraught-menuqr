@@ -3,6 +3,7 @@
 // NEXTAUTH_SECRET (no jsonwebtoken dependency — Node crypto only, and the
 // output is a standard JWT so the Next.js / Express apps interop).
 const crypto = require('crypto');
+const { getBrand } = require('./brand');
 
 function secret() {
   const s = process.env.NEXTAUTH_SECRET || process.env.JWT_SECRET;
@@ -20,9 +21,9 @@ function b64urlDecode(str) {
 
 // Where each app accepts an incoming handoff.
 const APPS = {
-  bartender: { accept: 'https://bartender.dramanddraught.com/sso' },
-  public:    { accept: 'https://public.apps.dramanddraught.com/admin' },
-  menuqr:    { accept: 'https://menuqr.apps.dramanddraught.com/admin/sso' },
+  bartender: { accept: `${getBrand().urls.bartender}/sso` },
+  public:    { accept: `${getBrand().urls.public}/admin` },
+  menuqr:    { accept: `${getBrand().urls.menuqr}/admin/sso` },
 };
 
 function sign({ sub, email, target }) {

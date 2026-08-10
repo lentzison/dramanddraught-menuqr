@@ -126,10 +126,16 @@ async function runInterviewReminders(prisma) {
   }
 }
 
+// A rejected background run must never reach the process-level handler as an
+// unhandled rejection; log it with its job name and let the next tick retry.
+function guard(err) {
+  console.error('[interview-reminders] run failed:', err && err.stack ? err.stack : err);
+}
+
 function scheduleInterviewReminders(prisma) {
   // Run once shortly after boot, then every 5 minutes.
-  setTimeout(() => runInterviewReminders(prisma), 30 * 1000);
-  setInterval(() => runInterviewReminders(prisma), 5 * 60 * 1000);
+  setTimeout(() => runInterviewReminders(prisma).catch(guard), 30 * 1000);
+  setInterval(() => runInterviewReminders(prisma).catch(guard), 5 * 60 * 1000);
 }
 
 module.exports = { runInterviewReminders, scheduleInterviewReminders };

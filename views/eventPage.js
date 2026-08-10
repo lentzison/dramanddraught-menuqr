@@ -1,4 +1,5 @@
 const { vintageThemeCss } = require('./publicTheme');
+const { getBrand } = require('../brand');
 const { resolveThemeRender, eventThemesCss } = require('./eventThemes');
 const { brandMarkCss, renderBrandMark } = require('./brandMark');
 const { escHTML } = require('./escapeHtml');
@@ -38,7 +39,7 @@ function isSafeLinkHref(value) {
   return /^(https?:\/\/|mailto:|tel:)/i.test(String(value || '').trim());
 }
 
-const EVENT_BASE_URL = process.env.MENUQR_BASE_URL || 'https://menuqr.apps.dramanddraught.com';
+const EVENT_BASE_URL = process.env.MENUQR_BASE_URL || getBrand().urls.menuqr;
 
 // Strip markdown/HTML to plain text for meta descriptions and calendar bodies.
 function plainText(value, maxLen = 0) {

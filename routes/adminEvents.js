@@ -1,4 +1,5 @@
 const { sendHTML, parseBody, redirect, getFlashMsg, sendEmailViaGoogle, uploadImageToMedia } = require('../helpers');
+const { getBrand } = require('../brand');
 const { requireAuth, isCompanyWide, getUserLocationSlugs, canAccessLocation } = require('../auth');
 const {
   eventsList,
@@ -962,7 +963,7 @@ async function handleAdminEvents(req, res, pathname, prisma) {
 
     const QRCode = require('qrcode');
     const urlObj = new URL(req.url, 'http://x');
-    const baseUrl = process.env.MENUQR_BASE_URL || 'https://menuqr.apps.dramanddraught.com';
+    const baseUrl = process.env.MENUQR_BASE_URL || getBrand().urls.menuqr;
     const target = `${baseUrl}/${event.location.slug}/events/${event.slug}`;
 
     // Color customization for marketing: dark = QR module color, light =

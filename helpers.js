@@ -1,6 +1,7 @@
 const querystring = require('querystring');
 const fs = require('fs');
 const crypto = require('crypto');
+const { getBrand } = require('./brand');
 
 let google = null;
 let JWT = null;
@@ -40,7 +41,7 @@ const GOOGLE_GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
 const GOOGLE_OAUTH_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GOOGLE_GMAIL_SEND_ENDPOINT_BASE = 'https://gmail.googleapis.com/gmail/v1/users';
 const GOOGLE_TOKEN_CACHE_BUFFER_MS = 3 * 60 * 1000;
-const SYSTEM_EMAIL_CC = 'lentz@dramanddraught.com';
+const SYSTEM_EMAIL_CC = getBrand().contact.systemCc;
 const openAiBottleNotesCache = new Map();
 const openAiCocktailImageCache = new Map();
 const googleHoursCache = new Map();
@@ -847,7 +848,7 @@ function getGoogleServiceAccountSubjectEmail(senderOverride) {
   const legacySubject = sanitizeEmail(process.env.GOOGLE_SERVICE_ACCOUNT_SUBJECT);
   if (legacySubject) return legacySubject;
 
-  return 'cheers@dramanddraught.com';
+  return getBrand().contact.fromEmail;
 }
 
 function buildGmailHeaders({
@@ -1468,7 +1469,7 @@ async function generateFeedbackResponse(payload) {
                 'You are a guest-experience assistant for Dram & Draught. Write a friendly, human reply to a guest feedback email. '
                 + 'Use a warm bar-owner tone, thank them for visiting and giving feedback, acknowledge the specific feedback details, and say the team will review it. '
                 + 'Keep it concise, sincere, and personalized to the provided rating and comments. Use no markdown. '
-                + 'Always sign off as "Cheers,\nThe Dram & Draught Team" — never use a placeholder like [Your Name].',
+                + `Always sign off as "Cheers,\n${getBrand().contact.emailSignature}" — never use a placeholder like [Your Name].`,
             },
             {
               role: 'user',
@@ -1563,7 +1564,7 @@ function buildFeedbackMailto({ name, email, subject, body }) {
 }
 
 function getFeedbackFromAddress() {
-  return sanitizeEmail(process.env.GMAIL_SENDER_EMAIL || 'cheers@dramanddraught.com');
+  return sanitizeEmail(process.env.GMAIL_SENDER_EMAIL || getBrand().contact.fromEmail);
 }
 
 async function fetchAiBottleNotes(rawBottle) {
@@ -2056,49 +2057,49 @@ function isAdmin(req) {
 const fallbackLocations = [
   {
     name: 'Greensboro', slug: 'greensboro', city: 'Greensboro', state: 'NC',
-    address: '300 West Gate City Blvd', zipCode: '27406', phone: '', email: 'greensboro@dramanddraught.com',
+    address: '300 West Gate City Blvd', zipCode: '27406', phone: '', email: `greensboro@${getBrand().contact.emailDomain}`,
     specialText: '300+ Whiskeys | Craft Cocktails | NC Beers',
     hours: { monday: '4:00 PM - 12:00 AM', tuesday: '4:00 PM - 12:00 AM', wednesday: '4:00 PM - 12:00 AM', thursday: '4:00 PM - 2:00 AM', friday: '4:00 PM - 2:00 AM', saturday: '12:00 PM - 2:00 AM', sunday: '12:00 PM - 12:00 AM' },
     features: ['300+ Whiskeys', 'Craft Cocktails', 'NC Draft Beer', 'Wine Selection', 'Indoor & Outdoor Seating']
   },
   {
     name: 'Raleigh', slug: 'raleigh', city: 'Raleigh', state: 'NC',
-    address: '1 Glenwood Avenue, Suite 101', zipCode: '27603', phone: '', email: 'raleigh@dramanddraught.com',
+    address: '1 Glenwood Avenue, Suite 101', zipCode: '27603', phone: '', email: `raleigh@${getBrand().contact.emailDomain}`,
     specialText: 'Glenwood South Location | Happy Hour Daily',
     hours: { monday: '3:00 PM - 2:00 AM', tuesday: '3:00 PM - 2:00 AM', wednesday: '3:00 PM - 2:00 AM', thursday: '3:00 PM - 2:00 AM', friday: '3:00 PM - 2:00 AM', saturday: '12:00 PM - 2:00 AM', sunday: '12:00 PM - 12:00 AM' },
     features: ['300+ Whiskeys', 'Craft Cocktails', 'NC Draft Beer', 'Wine Selection', 'Late Night']
   },
   {
     name: 'Durham', slug: 'durham', city: 'Durham', state: 'NC',
-    address: '701 W. Main Street Suite 123', zipCode: '27701', phone: '', email: 'durham@dramanddraught.com',
+    address: '701 W. Main Street Suite 123', zipCode: '27701', phone: '', email: `durham@${getBrand().contact.emailDomain}`,
     specialText: 'Downtown Durham | Brightleaf Square',
     hours: { monday: '3:00 PM - 12:00 AM', tuesday: '3:00 PM - 12:00 AM', wednesday: '3:00 PM - 12:00 AM', thursday: '3:00 PM - 12:00 AM', friday: '3:00 PM - 2:00 AM', saturday: '12:00 PM - 2:00 AM', sunday: '12:00 PM - 12:00 AM' },
     features: ['300+ Whiskeys', 'Craft Cocktails', 'NC Draft Beer', 'Wine Selection', 'Historic Location']
   },
   {
     name: 'Winston-Salem', slug: 'winston-salem', city: 'Winston-Salem', state: 'NC',
-    address: '486 North Patterson Avenue STE 120', zipCode: '27101', phone: '', email: 'winston@dramanddraught.com',
+    address: '486 North Patterson Avenue STE 120', zipCode: '27101', phone: '', email: `winston@${getBrand().contact.emailDomain}`,
     specialText: 'Innovation Quarter | Indoor & Outdoor Seating',
     hours: { monday: '3:00 PM - 12:00 AM', tuesday: '3:00 PM - 12:00 AM', wednesday: '3:00 PM - 12:00 AM', thursday: '3:00 PM - 2:00 AM', friday: '3:00 PM - 2:00 AM', saturday: '12:00 PM - 2:00 AM', sunday: '12:00 PM - 12:00 AM' },
     features: ['300+ Whiskeys', 'Craft Cocktails', 'NC Draft Beer', 'Wine Selection', 'Outdoor Patio']
   },
   {
     name: 'Cary', slug: 'cary', city: 'Cary', state: 'NC',
-    address: '3 Fenton Main St', zipCode: '27511', phone: '', email: 'cary@dramanddraught.com',
+    address: '3 Fenton Main St', zipCode: '27511', phone: '', email: `cary@${getBrand().contact.emailDomain}`,
     specialText: 'Fenton Development | Extended Weekend Hours',
     hours: { monday: '4:00 PM - 12:00 AM', tuesday: '12:00 PM - 12:00 AM', wednesday: '12:00 PM - 12:00 AM', thursday: '12:00 PM - 12:00 AM', friday: '12:00 PM - 2:00 AM', saturday: '12:00 PM - 2:00 AM', sunday: '12:00 PM - 11:00 PM' },
     features: ['300+ Whiskeys', 'Craft Cocktails', 'NC Draft Beer', 'Wine Selection', 'Family Friendly']
   },
   {
     name: 'Charlotte', slug: 'charlotte', city: 'Charlotte', state: 'NC',
-    address: '1220 S Tryon St', zipCode: '28203', phone: '', email: 'charlotte@dramanddraught.com',
+    address: '1220 S Tryon St', zipCode: '28203', phone: '', email: `charlotte@${getBrand().contact.emailDomain}`,
     specialText: 'South End Location | Open Late',
     hours: { monday: '3:00 PM - 2:00 AM', tuesday: '3:00 PM - 2:00 AM', wednesday: '3:00 PM - 2:00 AM', thursday: '3:00 PM - 2:00 AM', friday: '3:00 PM - 2:00 AM', saturday: '12:00 PM - 2:00 AM', sunday: '12:00 PM - 12:00 AM' },
     features: ['300+ Whiskeys', 'Craft Cocktails', 'NC Draft Beer', 'Wine Selection', 'Late Night', 'South End']
   },
   {
     name: 'Wilmington', slug: 'wilmington', city: 'Wilmington', state: 'NC',
-    address: '109 Market St', zipCode: '28401', phone: '', email: 'wilmington@dramanddraught.com',
+    address: '109 Market St', zipCode: '28401', phone: '', email: `wilmington@${getBrand().contact.emailDomain}`,
     specialText: 'Historic Downtown | Steps from Riverwalk',
     hours: { monday: '2:00 PM - 12:00 AM', tuesday: '2:00 PM - 12:00 AM', wednesday: '2:00 PM - 12:00 AM', thursday: '2:00 PM - 12:00 AM', friday: '12:00 PM - 2:00 AM', saturday: '12:00 PM - 2:00 AM', sunday: '12:00 PM - 12:00 AM' },
     features: ['300+ Whiskeys', 'Craft Cocktails', 'NC Draft Beer', 'Wine Selection', 'Historic Downtown', 'Near Riverwalk']
@@ -2159,7 +2160,7 @@ async function uploadImageToMedia(dataUrl, { collection = 'menuqr', tags = '' } 
   try { buffer = Buffer.from(m[2], 'base64'); } catch { return null; }
   if (!buffer || buffer.length === 0) return null;
 
-  const origin = process.env.PUBLIC_WEB_ORIGIN || 'https://public.apps.dramanddraught.com';
+  const origin = getBrand().urls.public;
   const ext = (mime.split('/')[1] || 'jpg').replace('jpeg', 'jpg').replace('+xml', '');
   try {
     const form = new FormData();

@@ -1,3 +1,5 @@
+const { getBrand } = require('../brand');
+
 function brandMarkCss() {
   return `
         .brand-mark {
@@ -34,12 +36,14 @@ function brandMarkCss() {
 }
 
 function renderBrandMark({ className = '', wrapper = 'div', note = '' } = {}) {
+  const brand = getBrand();
   const safeClass = className ? ` ${className}` : '';
   const safeNote = note ? `<span class="brand-mark-tag">${note}</span>` : '';
+  const logoAlt = String(brand.assets.logoAlt || brand.identity.name).replace(/&/g, '&amp;');
 
   return `
     <${wrapper} class="brand-mark${safeClass}">
-      <img class="brand-mark-image" src="/assets/dram-draught-logo-white.png" alt="Dram &amp; Draught" />
+      <img class="brand-mark-image" src="${brand.assets.logo}" alt="${logoAlt}" />
       ${safeNote}
     </${wrapper}>
   `;

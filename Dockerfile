@@ -17,6 +17,14 @@ ENV NODE_ENV=production
 ENV PORT=80
 EXPOSE 80
 
+# Swarm only restarts a task whose container exits. A Node process that wedges
+# (deadlocked pool, blocked event loop) keeps its container "running" forever,
+# so the app 502s until someone triggers a rebuild by hand — that is what kept
+# the site down Aug 6-10 2026. This probe makes a wedge fatal so Swarm can
+# replace the task on its own. start-period covers `prisma migrate deploy`.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
+  CMD wget -qO- http://127.0.0.1:80/healthz || exit 1
+
 # Apply pending migrations on startup, ensure one-off seed events exist, then
 # run app. Migrations are managed via prisma/migrations/ — every schema change
 # must be authored as a migration file (npx prisma migrate dev) and committed.

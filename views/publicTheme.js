@@ -1,50 +1,40 @@
+const { getBrand } = require('../brand');
+
 function vintageThemeCss() {
+  const brand = getBrand();
+  const { colors, fonts } = brand.theme;
+  // Emit the palette from the active brand config so the whole public side
+  // re-skins by editing brands/<brand>/brand.config.js — no CSS edits needed.
+  const rootVars = Object.entries(colors)
+    .map(([name, value]) => `          --${name}: ${value};`)
+    .join('\n');
+
   return `
-        /* Mostra One — Art Deco display face for hero titles, brand tags, and
-           public section labels. Loaded from /assets/fonts/. font-display:swap
-           keeps the page legible if the font is slow to arrive. */
+        /* Display face for hero titles, brand tags, and public section labels.
+           Loaded from the active brand's asset paths. font-display:swap keeps
+           the page legible if the font is slow to arrive. */
         @font-face {
-          font-family: 'Mostra One';
+          font-family: '${fonts.displayFamily}';
           font-style: normal;
           font-weight: 400;
           font-display: swap;
-          src: url('/assets/fonts/MostraOne-Regular.ttf') format('truetype');
+          src: url('${brand.assets.displayFontRegular}') format('truetype');
         }
         @font-face {
-          font-family: 'Mostra One';
+          font-family: '${fonts.displayFamily}';
           font-style: normal;
           font-weight: 700;
           font-display: swap;
-          src: url('/assets/fonts/MostraOne-Bold.ttf') format('truetype');
+          src: url('${brand.assets.displayFontBold}') format('truetype');
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
-          --bg-a: #191a1d;
-          --bg-b: #040404;
-          --panel: #0f1012;
-          --panel-soft: #18191d;
-          --panel-strong: #111215;
-          --line: rgba(255, 255, 255, 0.12);
-          --line-strong: rgba(255, 255, 255, 0.22);
-          --text: #f3f1ee;
-          --muted: #a7a3a0;
-          --gold: #d2aa67;
-          --amber: #8a5635;
-          --olive: #5a6652;
-          --steel: #d5d0c8;
-          --smoke: #737780;
-          --cream: #ffffff;
-          --ink: #090909;
-          --shadow: rgba(0, 0, 0, 0.62);
-          --accent-light: #f6e3c3;
-          --accent-soft: rgba(210, 170, 103, 0.14);
-          --accent-soft-strong: rgba(210, 170, 103, 0.22);
-          --accent-dark: rgba(138, 86, 53, 0.22);
+${rootVars}
           /* Display face for headings + brand tags. Fall back to a sturdy
-             geometric stack if Mostra One hasn't arrived yet. */
-          --brand-display: 'Mostra One', 'Futura', 'Avenir Next', 'Trade Gothic', 'Helvetica Neue', sans-serif;
-          --brand-serif: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+             geometric stack if the display font hasn't arrived yet. */
+          --brand-display: ${fonts.displayStack};
+          --brand-serif: ${fonts.serifStack};
         }
 
         /* Default public-side headings use the Mostra display face. Letter
@@ -79,7 +69,7 @@ function vintageThemeCss() {
         body {
           position: relative;
           overflow-x: hidden;
-          font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+          font-family: var(--brand-serif);
           color: var(--text);
           color-scheme: dark;
           background:

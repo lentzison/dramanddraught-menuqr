@@ -17,6 +17,7 @@
 const crypto = require('crypto');
 const { getPool, getLocationIdByMenuqrSlug } = require('./bartenderDb');
 const { sendEmailViaGoogle } = require('./helpers');
+const { getBrand } = require('./brand');
 
 const BARTENDER_APP_URL = 'https://bartender-app.apps.dramanddraught.com';
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -131,7 +132,7 @@ function buildEmailBody({ firstName, locationName, roleLabel, registrationUrl, s
     registrationUrl,
     '',
     'Then install the dashboard app on your phone for quick access:',
-    'https://bartender.dramanddraught.com/install',
+    `${getBrand().urls.bartender}/install`,
     '',
     'Step 2: Complete Toast onboarding',
     `After creating your account, you'll receive an email from Toast (our POS/Payroll system) to complete your tax paperwork, intake documents, and set up direct deposit.`,
@@ -145,7 +146,7 @@ function buildEmailBody({ firstName, locationName, roleLabel, registrationUrl, s
     `If you have any questions or run into any issues, don't hesitate to reach out — I'm happy to help!`,
     '',
     'Looking forward to working with you,',
-    senderName || 'Dram & Draught',
+    senderName || getBrand().identity.name,
   ].join('\n');
 }
 
@@ -157,7 +158,7 @@ function buildEmailBody({ firstName, locationName, roleLabel, registrationUrl, s
 // either case, and we guarantee the registration link is present so an edit
 // can't accidentally drop the one thing the candidate needs.
 function renderInviteEmail(rawSubject, rawBody, ctx) {
-  const subject = (rawSubject && String(rawSubject).trim()) || 'Welcome to the Dram & Draught Team!';
+  const subject = (rawSubject && String(rawSubject).trim()) || `Welcome to the ${getBrand().identity.name} Team!`;
   let body = (rawBody && String(rawBody).trim()) || buildEmailBody(ctx);
   const repl = {
     '{{registrationUrl}}': ctx.registrationUrl || '',
@@ -181,7 +182,7 @@ async function createAndSendInvite({ application, locationSlug, role, adminEmail
 
     const roleEnum = role || POSITION_TO_ROLE[application.position] || 'OTHER';
     const roleLabel = ROLE_LABELS[roleEnum] || roleEnum;
-    const senderName = adminName || 'Dram & Draught Hiring';
+    const senderName = adminName || `${getBrand().identity.name} Hiring`;
     const { firstName, lastName } = splitName(application.name);
     const atts = Array.isArray(attachments) && attachments.length ? attachments : undefined;
 

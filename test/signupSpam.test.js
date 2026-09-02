@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
-  makeFormToken, verifyFormToken, detectSpam, detectSpamInRow, looksRandomToken, MIN_AGE_MS, MAX_AGE_MS,
+  makeFormToken, verifyFormToken, detectSpam, detectSpamInRow, looksRandomToken, looksRandomLetters, MIN_AGE_MS, MAX_AGE_MS,
 } = require('../signupSpam');
 
 test('form token round-trips after the minimum age', () => {
@@ -64,4 +64,30 @@ test('detectSpam: genuine vendor application passes', () => {
 test('detectSpamInRow works on stored rows', () => {
   assert.equal(detectSpamInRow({ name: 'bMMY0G43Tq', customAnswers: null }).length, 1);
   assert.equal(detectSpamInRow({ name: 'Kiana Jones', customAnswers: { a: 'Cupcakes, CakeCups' } }).length, 0);
+});
+
+test('letters-only bot variant (Aug 22–24) is flagged when name AND answer look random', () => {
+  const rows = [
+    ['gKTQRHZhCBIdvaHRHZZw', 'zsNrARYSHJwORUKaJLdZ'],
+    ['kGyCysimBdZfzSfRDl', 'iayOyNxRKgEQeQlWLnqrb'],
+    ['tvvtugayYtVZSvvO', 'eIxJkFGuFfyjrFQkH'],
+    ['yiMLxIeWszskUyajW', 'pKGCKjfHHNKvYxXRdgiAtDqk'],
+    ['fqCrbbHJtDuayvZl', 'RmWNRrJLgntUMCxtMlFUtW'],
+    ['ZaeANuNecMNDDiKCD', 'eifxZdREdxJGmQGsXaC'],
+    ['BnymaMRwqByOQkDlwdr', 'EnHesxHtIcuwcVlCaBZAV'],
+  ];
+  for (const [name, goods] of rows) {
+    assert.equal(looksRandomLetters(name), true, name);
+    assert.equal(detectSpam({ name, customAnswers: { goods } }).length, 2, name);
+  }
+});
+
+test('a single letters-only oddity is not enough on its own', () => {
+  // Camel-case brand name with a normal answer: one weak signal → not spam.
+  assert.deepEqual(detectSpam({ name: 'SimplySweetCrumbsBakery', customAnswers: { goods: 'Cupcakes and cake pops' } }), []);
+  // Normal name with a camel-case answer: still one weak signal.
+  assert.deepEqual(detectSpam({ name: 'Kiana Jones', customAnswers: { goods: 'CupcakesCakePopsAndCookies' } }), []);
+  for (const n of ['McConville', 'LaCharo Owens', 'Noir Candle Collection', 'ARTISTCOLLECTIVE', 'jonathanlongname']) {
+    assert.equal(looksRandomLetters(n), false, n);
+  }
 });

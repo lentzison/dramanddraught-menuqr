@@ -72,6 +72,7 @@ const { generateTvBoardPage, renderBoardPayload } = require('../views/tvBoardPag
 // under this 1.5MB string ceiling.
 const MAX_IMAGE_DATAURL_CHARS = 1.5 * 1024 * 1024;
 
+const { verifyFormToken } = require('../signupSpam');
 const signupAttemptLog = new Map(); // ip -> [timestamps]
 function signupRateLimited(ip, limit = 12, windowMs = 10 * 60 * 1000) {
   if (!ip) return false;
@@ -399,7 +400,7 @@ async function handlePublicEventsFeed(req, res, prisma) {
       include: {
         location: { select: { slug: true, name: true, city: true, state: true } },
         // Current-occurrence signups only (recurring events keep past dates on record).
-        _count: { select: { signups: { where: { occurrence: { is: { rolledOverAt: null } } } } } },
+        _count: { select: { signups: { where: { occurrence: { is: { rolledOverAt: null } }, status: { not: 'spam' } } } } },
       },
       take: 500,
     });
@@ -2375,7 +2376,7 @@ async function handleEventResignup(req, res, prisma, locSlug, eventSlug) {
   let live = null;
   if (prior.email) {
     live = await prisma.eventSignup.findFirst({
-      where: { eventId: event.id, email: { equals: prior.email, mode: 'insensitive' }, status: { not: 'rejected' }, ...occWhere },
+      where: { eventId: event.id, email: { equals: prior.email, mode: 'insensitive' }, status: { notIn: ['rejected', 'spam'] }, ...occWhere },
     }).catch(() => null);
   }
   if (!live) {
@@ -2402,7 +2403,7 @@ async function handleEventResignup(req, res, prisma, locSlug, eventSlug) {
   if (!live) { redirect(res, eventUrl); return true; }
 
   const signupCount = occId
-    ? await prisma.eventSignup.count({ where: { eventId: event.id, status: { notIn: ['waitlisted', 'rejected'] }, ...occWhere } }).catch(() => 0)
+    ? await prisma.eventSignup.count({ where: { eventId: event.id, status: { notIn: ['waitlisted', 'rejected', 'spam'] }, ...occWhere } }).catch(() => 0)
     : 0;
   const prevValues = {
     name: live.name || '',
@@ -2649,7 +2650,7 @@ async function loadEventRowsWithCounts(prisma, query) {
   // Count only CURRENT-occurrence signups (the current occurrence is the one
   // not yet rolled over) so a recurring event's "spots left" reflects the live
   // date, not the whole history.
-  const currentOnly = { occurrence: { is: { rolledOverAt: null } } };
+  const currentOnly = { occurrence: { is: { rolledOverAt: null } }, status: { not: 'spam' } };
   return prisma.event.findMany({
     ...query,
     include: {
@@ -2995,7 +2996,7 @@ async function handlePublic(req, res, pathname, prisma) {
     const occWhere = event.currentOccurrenceId ? { occurrenceId: event.currentOccurrenceId } : {};
     // Capacity is occupied only by confirmed/pending signups — waitlisted and
     // rejected signups don't count toward the cap.
-    const CAP_WHERE = { eventId: event.id, status: { notIn: ['waitlisted', 'rejected'] }, ...occWhere };
+    const CAP_WHERE = { eventId: event.id, status: { notIn: ['waitlisted', 'rejected', 'spam'] }, ...occWhere };
     const signupCount = await prisma.eventSignup.count({ where: CAP_WHERE }).catch(() => 0);
     const status = eventStatus(event, signupCount);
 
@@ -3010,6 +3011,28 @@ async function handlePublic(req, res, pathname, prisma) {
       sendHTML(res, 413, injectTracking(
         generateEventPage(location, event, signupCount, {
           errorMessage: 'Your photos were too large to upload all at once. Please add fewer or smaller images and try again.',
+        }),
+        sid,
+      ));
+      return true;
+    }
+    // Bot defenses (signupSpam.js). The signed form token proves the page
+    // was actually loaded, at least a few seconds ago and not a day ago. A
+    // failed check re-renders the form with the visitor's values intact so
+    // a real person whose token expired just resubmits.
+    const spamGuard = require('../signupSpam');
+    const honeypotValue = String(body[spamGuard.HONEYPOT_FIELD] || '').trim();
+    const tokenCheck = verifyFormToken(body[spamGuard.TOKEN_FIELD], event.id);
+    if (!tokenCheck.ok) {
+      console.warn(`Event signup token check failed (${tokenCheck.reason}) for ${location.slug}/${event.slug}`);
+      const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/events/${event.slug}`, getQueryString(req));
+      sendHTML(res, 200, injectTracking(
+        generateEventPage(location, event, signupCount, {
+          prevValues: {
+            name: body.name, email: body.email, phone: body.phone, partySize: body.partySize, notes: body.notes,
+            ...Object.fromEntries((Array.isArray(event.customQuestions) ? event.customQuestions : []).map(q => [q.id, body[`cq_${q.id}`] || ''])),
+          },
+          errorMessage: 'Your form session expired. Please review your details and submit again.',
         }),
         sid,
       ));
@@ -3129,6 +3152,7 @@ async function handlePublic(req, res, pathname, prisma) {
       sendHTML(res, 200, injectTracking(
         generateEventTermsPage(location, event, {
           name, email, phone, partySize, notes, customAnswers,
+          formToken: body[spamGuard.TOKEN_FIELD],
         }),
         sid,
       ));
@@ -3158,7 +3182,7 @@ async function handlePublic(req, res, pathname, prisma) {
         where: {
           eventId: event.id,
           email: { equals: email, mode: 'insensitive' },
-          status: { not: 'rejected' },
+          status: { notIn: ['rejected', 'spam'] },
           ...occWhere,
         },
       }).catch(() => null);
@@ -3193,6 +3217,14 @@ async function handlePublic(req, res, pathname, prisma) {
       }
     }
 
+    // Content heuristics + honeypot. Flagged submissions are stored with
+    // status "spam" — no GM email, no approval-queue entry, no capacity —
+    // but the bot still sees the normal confirmation page so it doesn't
+    // learn what tripped it. Admin can restore a false positive.
+    const spamReasons = spamGuard.detectSpam({ name, notes, customAnswers, honeypot: honeypotValue });
+    const isSpam = spamReasons.length > 0;
+    if (isSpam) console.warn(`Event signup flagged as spam (${spamReasons.join(', ')}) for ${location.slug}/${event.slug} from ${ip}`);
+
     let signup;
     try {
       signup = await prisma.eventSignup.create({
@@ -3209,7 +3241,8 @@ async function handlePublic(req, res, pathname, prisma) {
           visitorId: visitorId || null,
           sessionId: currentSession?.id || null,
           source: currentSession?.source || null,
-          status: isWaitlisting ? 'waitlisted' : (requiresApproval ? 'pending' : 'approved'),
+          status: isSpam ? 'spam' : isWaitlisting ? 'waitlisted' : (requiresApproval ? 'pending' : 'approved'),
+          rejectionReason: isSpam ? `Auto-flagged as spam: ${spamReasons.join(', ')}` : null,
         },
       });
     } catch (err) {
@@ -3222,6 +3255,15 @@ async function handlePublic(req, res, pathname, prisma) {
         }),
         sid,
       ));
+      return true;
+    }
+
+    if (isSpam) {
+      // Look identical to a real signup from the outside; skip analytics,
+      // visitor linking (don't attach harvested emails to visitors), and
+      // notification emails.
+      const sid = await trackPageView(req, res, prisma, location.slug, location.id, `/${location.slug}/events/${event.slug}/signup`, getQueryString(req));
+      sendHTML(res, 200, injectTracking(generateEventConfirmationPage(location, event, { ...signup, status: isWaitlisting ? 'waitlisted' : 'pending' }), sid));
       return true;
     }
 
@@ -3382,7 +3424,7 @@ async function handlePublic(req, res, pathname, prisma) {
     const signupCount = await prisma.eventSignup.count({
       where: {
         eventId: event.id,
-        status: { notIn: ['waitlisted', 'rejected'] },
+        status: { notIn: ['waitlisted', 'rejected', 'spam'] },
         ...(event.currentOccurrenceId ? { occurrenceId: event.currentOccurrenceId } : {}),
       },
     }).catch(() => 0);

@@ -702,7 +702,12 @@ function generateEventPage(location, event, signupCount, options = {}) {
 
   // Shared form fields, reused by both the open-signup form and the
   // when-full waitlist form (only one renders at a time, so IDs don't clash).
+  // Bot defenses (see signupSpam.js): honeypot + signed form token. Both
+  // ride along in every variant of the form (open / waitlist / re-signup).
+  const { honeypotHtml, formTokenHtml } = require('../signupSpam');
   const signupFieldsHtml = `
+      ${honeypotHtml()}
+      ${formTokenHtml(event.id)}
       <label for="ev-name">${isVendor ? 'Contact Name' : isParticipant ? 'Your Name' : 'Name'} <span style="color:var(--amber)">*</span></label>
       <input type="text" id="ev-name" name="name" required value="${escHTML(prevValues.name || '')}" autocomplete="name" />
 
@@ -3272,6 +3277,9 @@ function generateEventTermsPage(location, event, prevValues = {}) {
     pushHidden(`cq_${k}`, v);
   }
   hidden.push('<input type="hidden" name="_confirmed" value="true" />');
+  // Carry the step-1 form token through so the final POST still passes the
+  // bot check (the token was minted when the event page rendered).
+  pushHidden(require('../signupSpam').TOKEN_FIELD, prevValues.formToken);
 
   return `
     <!DOCTYPE html>

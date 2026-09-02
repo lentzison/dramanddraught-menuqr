@@ -3137,6 +3137,9 @@ function eventSignupsView(event, signups, user, flashMsg, occCtx = {}) {
   const occurrences = Array.isArray(occCtx.occurrences) ? occCtx.occurrences : [];
   const currentId = occCtx.currentOccurrenceId;
   const selected = occCtx.selectedOcc || currentId;
+  // Value the spam bulk/single actions post back so they act on the same
+  // occurrence scope the admin is looking at ('all' = whole history).
+  const occScopeValue = selected === 'all' ? 'all' : (selected && selected !== currentId ? selected : '');
   let occTabs = '';
   if (occurrences.length > 1) {
     const sorted = [...occurrences].sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
@@ -3158,6 +3161,7 @@ function eventSignupsView(event, signups, user, flashMsg, occCtx = {}) {
     if (s === 'pending') return '<span class="evs-badge evs-badge-pending">Pending</span>';
     if (s === 'rejected') return '<span class="evs-badge evs-badge-rejected">Rejected</span>';
     if (s === 'waitlisted') return '<span class="evs-badge evs-badge-waitlist">Waitlist</span>';
+    if (s === 'spam') return '<span class="evs-badge evs-badge-spam">Spam</span>';
     return '<span class="evs-badge evs-badge-approved">Approved</span>';
   };
 
@@ -3223,17 +3227,39 @@ function eventSignupsView(event, signups, user, flashMsg, occCtx = {}) {
         <input type="hidden" name="signupId" value="${escHTML(s.id)}" />
         <button type="submit" class="btn btn-sm ${checkedIn ? 'btn-secondary' : 'btn-success'}">${checkedIn ? '✓ Checked in — undo' : 'Check in'}</button>
       </form>` : '';
+    const markSpamForm = sStatus !== 'spam' ? `
+      <form method="POST" action="/admin/events/${escHTML(event.id)}/signups" title="Hide from the queue and counts; nothing is emailed">
+        <input type="hidden" name="_action" value="markSpam" />
+        <input type="hidden" name="signupId" value="${escHTML(s.id)}" />
+        <input type="hidden" name="occ" value="${escHTML(occScopeValue)}" />
+        <button type="submit" class="btn btn-secondary btn-sm">Mark spam</button>
+      </form>` : '';
     const removeForm = `
       <form method="POST" action="/admin/events/${escHTML(event.id)}/signups" onsubmit="return confirm('Remove this signup?')">
         <input type="hidden" name="_action" value="deleteSignup" />
         <input type="hidden" name="signupId" value="${escHTML(s.id)}" />
         <button type="submit" class="btn btn-secondary btn-sm">Remove</button>
-      </form>`;
+      </form>
+      ${markSpamForm}`;
 
     // Vendor events get approve/reject controls instead of just a Remove button.
     // Pending rows show the decision buttons; already-decided rows show who + when + remove.
     let actionPanel;
-    if (isWaitlisted) {
+    if (sStatus === 'spam') {
+      actionPanel = `
+        <div class="evs-actions">
+          <div class="evs-actions-title">Flagged as spam</div>
+          ${s.rejectionReason ? `<div class="evs-reason" title="Why it was flagged">${escHTML(s.rejectionReason)}</div>` : ''}
+          <form method="POST" action="/admin/events/${escHTML(event.id)}/signups">
+            <input type="hidden" name="_action" value="notSpam" />
+            <input type="hidden" name="signupId" value="${escHTML(s.id)}" />
+            <input type="hidden" name="occ" value="${escHTML(occScopeValue)}" />
+            <button type="submit" class="btn btn-success btn-sm">Not spam — restore</button>
+          </form>
+          ${removeForm}
+        </div>
+      `;
+    } else if (isWaitlisted) {
       actionPanel = `
         <div class="evs-actions evs-actions-pending">
           <div class="evs-actions-title">On the waitlist</div>
@@ -3251,6 +3277,7 @@ function eventSignupsView(event, signups, user, flashMsg, occCtx = {}) {
             <a class="btn btn-secondary" href="/admin/events/${escHTML(event.id)}/signups?decision=waitlist&signupId=${encodeURIComponent(s.id)}">Waitlist</a>
             <a class="btn btn-danger" href="/admin/events/${escHTML(event.id)}/signups?decision=reject&signupId=${encodeURIComponent(s.id)}">Reject</a>
             ${finalistControl}
+            ${markSpamForm}
           </div>
         `;
       } else {
@@ -3287,7 +3314,7 @@ function eventSignupsView(event, signups, user, flashMsg, occCtx = {}) {
               <div class="evs-sub">Signed up ${escHTML(formatFriendlyDate(s.createdAt))}</div>
             </div>
             <div class="evs-badges">
-              ${(isVendor || sType === 'participant' || isWaitlisted) ? statusBadge(s.status) : ''}
+              ${(isVendor || sType === 'participant' || isWaitlisted || sStatus === 'spam') ? statusBadge(s.status) : ''}
               ${s.isFinalist ? '<span class="evs-badge evs-badge-approved" title="Selected to compete in front of judges">★ Finalist</span>' : ''}
               ${checkedIn ? '<span class="evs-badge evs-badge-checkedin">✓ Checked in</span>' : ''}
             </div>
@@ -3312,12 +3339,14 @@ function eventSignupsView(event, signups, user, flashMsg, occCtx = {}) {
   const pendingNonFinalistCount = signups.filter(s => s.status === 'pending' && !s.isFinalist).length;
   const waitlistCount = signups.filter(s => s.status === 'waitlisted').length;
   const checkedInCount = signups.filter(s => s.checkedInAt).length;
-  // Capacity is occupied by everything except waitlisted/rejected signups.
-  const confirmedCount = signups.filter(s => s.status !== 'waitlisted' && s.status !== 'rejected').length;
+  const spamCount = signups.filter(s => s.status === 'spam').length;
+  const realSignups = signups.filter(s => s.status !== 'spam');
+  // Capacity is occupied by everything except waitlisted/rejected/spam signups.
+  const confirmedCount = signups.filter(s => s.status !== 'waitlisted' && s.status !== 'rejected' && s.status !== 'spam').length;
 
   const capacityText = event.capacity ? ` / ${event.capacity}` : '';
   const remainingSpots = event.capacity ? Math.max(event.capacity - confirmedCount, 0) : null;
-  const totalGuests = event.collectPartySize ? signups.reduce((sum, s) => sum + (s.partySize || 1), 0) : null;
+  const totalGuests = event.collectPartySize ? realSignups.reduce((sum, s) => sum + (s.partySize || 1), 0) : null;
 
   const finalistCount = signups.filter(s => s.isFinalist).length;
   const finalistTarget = Number.isFinite(event.finalistTarget) && event.finalistTarget > 0 ? event.finalistTarget : null;
@@ -3452,6 +3481,8 @@ function eventSignupsView(event, signups, user, flashMsg, occCtx = {}) {
       .evs-badges { display:flex; gap:6px; flex-wrap:wrap; align-items:flex-start; }
       .evs-checkin-form { margin:0; }
       .evs-badge-rejected { background:rgba(239,68,68,0.1); color:#fca5a5; border:1px solid rgba(239,68,68,0.3); }
+      .evs-badge-spam { background:rgba(148,163,184,0.12); color:#94a3b8; border:1px solid rgba(148,163,184,0.35); }
+      .evs-card[data-status="spam"] { opacity:0.7; }
       .evs-filter-tabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:16px; }
       .evs-filter-tab { background:#121417; border:1px solid var(--line); color:var(--text-muted); padding:8px 14px; border-radius:999px; font-size:0.8rem; font-weight:700; cursor:pointer; letter-spacing:0.04em; }
       .evs-filter-tab.active { background:var(--gold-strong); color:#111; border-color:var(--gold-strong); }
@@ -3521,6 +3552,18 @@ function eventSignupsView(event, signups, user, flashMsg, occCtx = {}) {
       <div style="display:flex; gap:8px; flex-wrap:wrap">
         <a href="/admin/events/${escHTML(event.id)}" class="btn btn-secondary">Edit Event</a>
         ${signups.length > 0 ? `<a href="/admin/events/${escHTML(event.id)}/signups/export${selected === 'all' ? '?scope=all' : (selected && selected !== currentId ? `?occ=${escHTML(selected)}` : '')}" class="btn btn-primary">Export CSV</a>` : ''}
+        ${realSignups.length > 0 ? `
+        <form method="POST" action="/admin/events/${escHTML(event.id)}/signups" style="margin:0;" title="Flag signups that look machine-generated (random names / answers). Nothing is deleted or emailed.">
+          <input type="hidden" name="_action" value="scanSpam" />
+          <input type="hidden" name="occ" value="${escHTML(occScopeValue)}" />
+          <button type="submit" class="btn btn-secondary">Scan for spam</button>
+        </form>` : ''}
+        ${spamCount > 0 ? `
+        <form method="POST" action="/admin/events/${escHTML(event.id)}/signups" style="margin:0;" onsubmit="return confirm('Permanently delete ${spamCount} spam signup${spamCount === 1 ? '' : 's'}? Restore any real ones first.')">
+          <input type="hidden" name="_action" value="deleteSpam" />
+          <input type="hidden" name="occ" value="${escHTML(occScopeValue)}" />
+          <button type="submit" class="btn btn-danger">Delete spam (${spamCount})</button>
+        </form>` : ''}
       </div>
     </div>
 
@@ -3573,20 +3616,21 @@ function eventSignupsView(event, signups, user, flashMsg, occCtx = {}) {
       ` : ''}
     </div>
 
-    ${(requiresApproval || waitlistCount > 0) && signups.length > 0 ? `
+    ${(requiresApproval || waitlistCount > 0 || spamCount > 0) && signups.length > 0 ? `
       <div class="evs-filter-tabs" id="evs-filter-tabs">
-        <button type="button" class="evs-filter-tab active" data-filter="all">All (${signups.length})</button>
+        <button type="button" class="evs-filter-tab active" data-filter="all">All (${realSignups.length})</button>
         ${requiresApproval ? `<button type="button" class="evs-filter-tab" data-filter="pending">Pending (${pendingCount})</button>` : ''}
         ${requiresApproval ? `<button type="button" class="evs-filter-tab" data-filter="approved">Approved (${approvedCount})</button>` : ''}
         ${waitlistCount > 0 ? `<button type="button" class="evs-filter-tab" data-filter="waitlisted">Waitlist (${waitlistCount})</button>` : ''}
         ${requiresApproval ? `<button type="button" class="evs-filter-tab" data-filter="rejected">Rejected (${rejectedCount})</button>` : ''}
+        ${spamCount > 0 ? `<button type="button" class="evs-filter-tab" data-filter="spam" title="Hidden from the queue, counts, exports, and emails">Spam (${spamCount})</button>` : ''}
       </div>
     ` : ''}
 
     ${signups.length > 0 ? `
       <div class="evs-toolbar">
         <input type="search" id="evs-search" class="evs-search" placeholder="Search by name, email, phone, notes, or answers" />
-        <div id="evs-filter-note" class="evs-filter-note">Showing all ${signups.length} ${nounPlural}</div>
+        <div id="evs-filter-note" class="evs-filter-note">Showing all ${realSignups.length} ${nounPlural}${spamCount > 0 ? ` (${spamCount} spam hidden)` : ''}</div>
       </div>
     ` : ''}
 
@@ -3617,16 +3661,17 @@ function eventSignupsView(event, signups, user, flashMsg, occCtx = {}) {
             var haystack = row.getAttribute('data-search') || '';
             var status = row.getAttribute('data-status') || 'approved';
             var matchesSearch = !query || haystack.indexOf(query) !== -1;
-            var matchesFilter = currentFilter === 'all' || status === currentFilter;
+            var matchesFilter = currentFilter === 'all' ? status !== 'spam' : status === currentFilter;
             var match = matchesSearch && matchesFilter;
             row.hidden = !match;
             if (match) visible++;
           });
           if (note) {
             var isFiltered = query || currentFilter !== 'all';
+            var realTotal = rows.filter(function(r) { return (r.getAttribute('data-status') || 'approved') !== 'spam'; }).length;
             note.textContent = isFiltered
-              ? 'Showing ' + visible + ' of ' + rows.length + ' ' + noun
-              : 'Showing all ' + rows.length + ' ' + noun;
+              ? 'Showing ' + visible + ' of ' + (currentFilter === 'spam' ? rows.length : realTotal) + ' ' + noun
+              : 'Showing all ' + realTotal + ' ' + noun + (rows.length > realTotal ? ' (' + (rows.length - realTotal) + ' spam hidden)' : '');
           }
         }
 

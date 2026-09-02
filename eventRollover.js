@@ -77,7 +77,7 @@ async function ensureNextOccurrence(prisma, event, afterDate, { manualDate } = {
 async function seriesRecipients(prisma, eventId) {
   const [signups, optOuts] = await Promise.all([
     prisma.eventSignup.findMany({
-      where: { eventId, email: { not: null }, status: { not: 'rejected' } },
+      where: { eventId, email: { not: null }, status: { notIn: ['rejected', 'spam'] } },
       select: { id: true, name: true, email: true, unsubscribeToken: true },
       orderBy: { createdAt: 'asc' },
     }),

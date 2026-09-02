@@ -617,7 +617,7 @@ async function handleAdminEvents(req, res, pathname, prisma) {
       include: {
         location: { select: { slug: true, name: true } },
         // Live-date signups only (the current occurrence is the one not yet rolled over).
-        _count: { select: { signups: { where: { occurrence: { is: { rolledOverAt: null } } } } } },
+        _count: { select: { signups: { where: { occurrence: { is: { rolledOverAt: null } }, status: { not: 'spam' } } } } },
       },
     }).catch(async (err) => {
       console.warn('Events list include failed, falling back:', err.message);
@@ -625,7 +625,7 @@ async function handleAdminEvents(req, res, pathname, prisma) {
       for (const ev of rows) {
         const loc = locations.find(l => l.id === ev.locationId);
         ev.location = loc ? { slug: loc.slug, name: loc.name } : { slug: '', name: '' };
-        ev._count = { signups: await prisma.eventSignup.count({ where: { eventId: ev.id, occurrence: { is: { rolledOverAt: null } } } }).catch(() => 0) };
+        ev._count = { signups: await prisma.eventSignup.count({ where: { eventId: ev.id, occurrence: { is: { rolledOverAt: null } }, status: { not: 'spam' } } }).catch(() => 0) };
       }
       return rows;
     });
@@ -1053,7 +1053,7 @@ async function handleAdminEvents(req, res, pathname, prisma) {
       const exportUrl = new URL(req.url, 'http://admin.local');
       const scope = String(exportUrl.searchParams.get('scope') || '').toLowerCase();
       const occParam = String(exportUrl.searchParams.get('occ') || '').trim();
-      const exportWhere = { eventId };
+      const exportWhere = { eventId, status: { not: 'spam' } };
       if (scope !== 'all') {
         const occId = occParam || event.currentOccurrenceId;
         if (occId) exportWhere.occurrenceId = occId;
@@ -1151,6 +1151,100 @@ async function handleAdminEvents(req, res, pathname, prisma) {
         if (action === 'deleteSignup' && signupId) {
           await prisma.eventSignup.delete({ where: { id: signupId } }).catch(() => null);
           redirect(res, `/admin/events/${eventId}/signups?msg=deleted`);
+          return true;
+        }
+
+        // ---- Spam handling (see signupSpam.js) ----
+        // Spam rows are kept (status "spam") so a false positive can be
+        // restored; they're excluded from capacity, counts, exports, emails.
+        const spamOcc = String(body.occ || '').trim();
+        const spamScope = spamOcc === 'all'
+          ? { eventId }
+          : { eventId, ...((spamOcc || event.currentOccurrenceId) ? { occurrenceId: spamOcc || event.currentOccurrenceId } : {}) };
+        const spamBackHash = spamOcc ? `?occ=${encodeURIComponent(spamOcc)}&` : '?';
+
+        if (action === 'markSpam' && signupId) {
+          const target = await prisma.eventSignup.findFirst({ where: { id: signupId, eventId } }).catch(() => null);
+          if (!target) {
+            redirect(res, `/admin/events/${eventId}/signups?msg=` + encodeURIComponent('error|Signup not found.'));
+            return true;
+          }
+          await prisma.eventSignup.update({
+            where: { id: signupId },
+            data: { status: 'spam', rejectionReason: `Marked as spam by ${user.email} (was ${target.status || 'approved'})`, isFinalist: false },
+          }).catch((err) => console.warn('Mark spam failed:', err.message));
+          writeAudit(prisma, req, user, {
+            action: 'update', resourceType: 'eventSignup', resourceId: signupId,
+            resourceLabel: `${target.name || ''} — ${event.title}`,
+            locationSlug: event.location?.slug || null,
+            details: { status: 'spam', previousStatus: target.status },
+          });
+          redirect(res, `/admin/events/${eventId}/signups${spamBackHash}msg=` + encodeURIComponent('success|Marked as spam.'));
+          return true;
+        }
+
+        if (action === 'notSpam' && signupId) {
+          const target = await prisma.eventSignup.findFirst({ where: { id: signupId, eventId } }).catch(() => null);
+          if (!target) {
+            redirect(res, `/admin/events/${eventId}/signups?msg=` + encodeURIComponent('error|Signup not found.'));
+            return true;
+          }
+          // Restore to the queue: pending for approval-type events, otherwise
+          // a confirmed guest. Admin can waitlist/reject from there as usual.
+          const { needsApproval } = require('../eventSignupTypes');
+          const restored = needsApproval(event) ? 'pending' : 'approved';
+          await prisma.eventSignup.update({
+            where: { id: signupId },
+            data: { status: restored, rejectionReason: null },
+          }).catch((err) => console.warn('Restore from spam failed:', err.message));
+          writeAudit(prisma, req, user, {
+            action: 'update', resourceType: 'eventSignup', resourceId: signupId,
+            resourceLabel: `${target.name || ''} — ${event.title}`,
+            locationSlug: event.location?.slug || null,
+            details: { status: restored, previousStatus: 'spam' },
+          });
+          redirect(res, `/admin/events/${eventId}/signups${spamBackHash}msg=` + encodeURIComponent(`success|Restored to ${restored}.`) + `#signup-${signupId}`);
+          return true;
+        }
+
+        // Run the content heuristics over every non-spam signup in scope and
+        // flag the ones that match. Used to clean up a bot run that landed
+        // before the form defenses existed.
+        if (action === 'scanSpam') {
+          const { detectSpamInRow } = require('../signupSpam');
+          const candidates = await prisma.eventSignup.findMany({
+            where: { ...spamScope, status: { not: 'spam' } },
+          }).catch(() => []);
+          let flagged = 0;
+          for (const row of candidates) {
+            const reasons = detectSpamInRow(row);
+            if (reasons.length === 0) continue;
+            await prisma.eventSignup.update({
+              where: { id: row.id },
+              data: { status: 'spam', rejectionReason: `Auto-flagged as spam: ${reasons.join(', ')} (scan by ${user.email}, was ${row.status || 'approved'})`, isFinalist: false },
+            }).then(() => { flagged++; }).catch((err) => console.warn('Scan spam update failed:', err.message));
+          }
+          writeAudit(prisma, req, user, {
+            action: 'update', resourceType: 'event', resourceId: eventId,
+            resourceLabel: `${event.title} — spam scan`,
+            locationSlug: event.location?.slug || null,
+            details: { scanned: candidates.length, flagged },
+          });
+          redirect(res, `/admin/events/${eventId}/signups${spamBackHash}msg=` + encodeURIComponent(`success|Scanned ${candidates.length} signup${candidates.length === 1 ? '' : 's'}, flagged ${flagged} as spam.`));
+          return true;
+        }
+
+        if (action === 'deleteSpam') {
+          const result = await prisma.eventSignup.deleteMany({
+            where: { ...spamScope, status: 'spam' },
+          }).catch((err) => { console.warn('Delete spam failed:', err.message); return { count: 0 }; });
+          writeAudit(prisma, req, user, {
+            action: 'delete', resourceType: 'eventSignup', resourceId: eventId,
+            resourceLabel: `${event.title} — deleted spam signups`,
+            locationSlug: event.location?.slug || null,
+            details: { deleted: result.count },
+          });
+          redirect(res, `/admin/events/${eventId}/signups${spamBackHash}msg=` + encodeURIComponent(`success|Deleted ${result.count} spam signup${result.count === 1 ? '' : 's'}.`));
           return true;
         }
 
